@@ -11,7 +11,7 @@ import streamlit as st
 
 import engine
 
-st.set_page_config(page_title="火烧云预报工具 v1.4.63", page_icon="🌇", layout="wide")
+st.set_page_config(page_title="火烧云预报工具 v1.4.64", page_icon="🌇", layout="wide")
 
 # Community-hosted apps may have a public URL. Configure APP_PASSWORD in Streamlit
 # secrets or the environment to keep the interface restricted to the owner.
@@ -187,7 +187,7 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
     return img
 
 st.title("🌇 火烧云预报工具")
-st.caption("网页迁移版 v1.4.63 · 绝对云底海拔与案例海拔保存修正 · 地名联想/Excel 坐标与海拔 · 经验评分并非经历史观测校准的统计概率")
+st.caption("网页迁移版 v1.4.64 · 绝对云底海拔与案例海拔保存修正 · 地名联想/Excel 坐标与海拔 · 经验评分并非经历史观测校准的统计概率")
 
 with st.expander("使用说明与重要限制", expanded=False):
     st.markdown("""
@@ -248,7 +248,14 @@ with st.sidebar:
     st.subheader("晚霞参数")
     evening_cloud_base = st.number_input("晚霞手动云底/回退值（km）", 0.1, 15.0, 2.0, 0.1)
     evening_aod_text = st.text_input("晚霞手动 AOD（留空自动获取）", "")
-    run = st.button("查询 / 更新朝霞与晚霞", type="primary", use_container_width=True)
+    morning_col, evening_col = st.columns(2)
+    with morning_col:
+        run_morning = st.button("查询朝霞", use_container_width=True)
+    with evening_col:
+        run_evening = st.button("查询晚霞", use_container_width=True)
+    run_all = st.button("查询 / 更新朝霞与晚霞", type="primary", use_container_width=True)
+    run = run_morning or run_evening or run_all
+    query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
 
 if run:
     engine.messagebox.last_error = None
@@ -267,8 +274,9 @@ if run:
         "evening_aod": evening_aod_text.strip(),
     }
     runner = WebForecastEngine(values)
-    with st.spinner("正在获取天气、云层剖面与 CAMS AOD，并计算朝霞/晚霞……这可能需要几分钟。"):
-        runner._fetch_weather_task()
+    _direction_text = "朝霞与晚霞" if query_direction == "all" else ("朝霞" if query_direction == "morning" else "晚霞")
+    with st.spinner(f"正在获取天气、云层剖面与 CAMS AOD，并计算{_direction_text}……这可能需要几分钟。"):
+        runner._fetch_weather_task("both" if query_direction == "all" else query_direction)
     if engine.messagebox.last_error:
         st.error(f"{engine.messagebox.last_error[0]}：{engine.messagebox.last_error[1]}")
     elif not runner.direction_results:
@@ -279,25 +287,102 @@ if run:
         st.session_state["fire_cloud_last_meta"] = {
             "place": place, "date": forecast_date.isoformat(), "model": model_label,
             "lat": lat, "lon": lon, "elevation": elevation, "fetched_at": runner.last_fetch_time,
+            "query_direction": query_direction,
         }
         st.success("查询完成。")
+
+def _styled_cloud_summary(summary):
+    """Display-only styling: emphasize mid/high cloud percentages without changing values."""
+    import html
+    text = html.escape(str(summary or ""))
+    text = re.sub(r"(?<!\S)(中|高)\s*(\d+(?:\.\d+)?%)",
+                  r'<span style="color:#c62828;font-weight:800;">\\1 \\2</span>', text)
+    return text.replace("\\n", "<br>")
+
+def _probability_label(value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return "暂不可判定"
+    if value < 45:
+        return "小概率"
+    if value <= 75:
+        return "有概率"
+    return "高概率"
+
+def _color_label(value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return "暂不可判定"
+    if value < 30:
+        return "平平无奇"
+    if value < 50:
+        return "普通"
+    if value < 70:
+        return "绚烂"
+    if value <= 90:
+        return "史诗"
+    return "世纪"
+
+def _burn_label(inferred, summary):
+    """Heuristic burn-size class = (mid + high cloud cover) × tintable-cloud ratio."""
+    mid, high = inferred.get("mid"), inferred.get("high")
+    if not isinstance(mid, (int, float)) or not isinstance(high, (int, float)):
+        return "暂不可判定", None
+    match = re.search(r"可染色云量占比\s+(?:约\s*)?(\d+(?:\.\d+)?)%", str(summary or ""))
+    if not match:
+        return "暂不可判定", None
+    tintable_ratio = float(match.group(1))
+    burn_index = max(0.0, (float(mid) + float(high)) * tintable_ratio / 100.0)
+    if burn_index < 10:
+        label = "小小烧"
+    elif burn_index < 30:
+        label = "微烧"
+    elif burn_index < 50:
+        label = "小烧"
+    elif burn_index < 70:
+        label = "中烧"
+    else:
+        label = "大烧"
+    return label, burn_index
 
 results = st.session_state.get("fire_cloud_last_results")
 meta = st.session_state.get("fire_cloud_last_meta", {})
 if results:
     st.caption(f"最近一次结果：{meta.get('place','')} · {meta.get('date','')} · {meta.get('model','')} · {meta.get('fetched_at') or '时间信息不可用'}")
-    morning, evening = st.columns(2)
-    for col, key, title in [(morning, "morning", "🌄 朝霞"), (evening, "evening", "🌆 晚霞")]:
+    visible_direction = meta.get("query_direction", "all")
+    directions = [("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")]
+    if visible_direction in ("morning", "evening"):
+        directions = [item for item in directions if item[0] == visible_direction]
+    columns = st.columns(len(directions))
+    for col, (key, title) in zip(columns, directions):
         result = results.get(key, {})
         inferred = result.get("inferred", {})
         with col:
             st.subheader(title)
             if result.get("summary"):
-                st.text(result["summary"])
+                st.markdown(_styled_cloud_summary(result["summary"]), unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
-            c1.metric("常规评分", f"{inferred.get('regular_score', inferred.get('score', '—'))}%")
-            c2.metric("上限评分", f"{inferred.get('upper_score', '—')}%")
-            c3.metric("色彩评分", f"{inferred.get('color_score', '—')}/100")
+            regular_score = inferred.get("regular_score", inferred.get("score", "—"))
+            upper_score = inferred.get("upper_score", "—")
+            color_score = inferred.get("color_score", "—")
+            c1.metric("常规概率", f"{regular_score}%")
+            c2.metric("上限概率", f"{upper_score}%")
+            c3.metric("色彩评分", f"{color_score}/100")
+            burn_label, burn_index = _burn_label(inferred, result.get("summary", ""))
+            regular_label = _probability_label(regular_score)
+            color_class = _color_label(color_score)
+            burn_text = f"{burn_label}（估算指数 {burn_index:.1f}）" if burn_index is not None else burn_label
+            st.markdown(
+                f'<div style="font-size:18px;font-weight:800;line-height:1.75;margin:6px 0 12px 0;">'
+                f'当前判读：常规概率为「{regular_label}」 · 色彩表现为「{color_class}」 · 烧云规模为「{burn_text}」'
+                f'<br><span style="font-size:15px;">判读标准：常规概率 &lt;45% 小概率，45%–75% 有概率，&gt;75% 高概率；'
+                f'色彩 &lt;30 平平无奇，30–50 普通，50–70 绚烂，70–90 史诗，&gt;90 世纪；'
+                f'烧云规模按（中云量+高云量）×可染色云量占比估算：&lt;10% 小小烧，10%–&lt;30% 微烧，'
+                f'30%–&lt;50% 小烧，50%–&lt;70% 中烧，≥70% 大烧。</span></div>',
+                unsafe_allow_html=True,
+            )
             rgb = inferred.get("peak_color_rgb") or inferred.get("color_rgb")
             if isinstance(rgb, (tuple, list)) and len(rgb) >= 3:
                 hex_color = "#%02x%02x%02x" % tuple(max(0, min(255, int(v))) for v in rgb[:3])
@@ -312,11 +397,6 @@ if results:
             st.image(_draw_dynamic_color_curve(points, curve.get("peak"), key), use_container_width=True)
             if points:
                 df = pd.DataFrame(points)
-                if "minutes_from_event" in df.columns and "brightness" in df.columns:
-                    raw = df[["minutes_from_event", "brightness"]].copy()
-                    raw = raw.rename(columns={"minutes_from_event": "相对事件时刻（分钟）", "brightness": "原始亮度经验指数"})
-                    with st.expander("查看原始亮度经验指数曲线"):
-                        st.line_chart(raw.set_index("相对事件时刻（分钟）"))
                 if curve.get("peak"):
                     peak = curve["peak"]
                     st.caption(f"预测峰值时刻：事件前/后 {peak.get('minutes_from_event', 0):+.1f} 分钟；原始亮度指数 {peak.get('brightness', '—')}；相对亮度 {peak.get('relative_brightness', '—')}。")
