@@ -391,6 +391,28 @@ def _color_label(value):
         return "史诗"
     return "世纪"
 
+def _aod_adjective(value):
+    """Return the requested air-transparency adjective for a numeric AOD value."""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if not math.isfinite(value) or value < 0:
+        return ""
+    if value < 0.1:
+        return "超级水晶"
+    if value < 0.2:
+        return "水晶"
+    if value < 0.3:
+        return ""
+    if value < 0.4:
+        return "小污"
+    if value < 0.6:
+        return "污"
+    if value < 0.8:
+        return "大污"
+    return "沙尘级"
+
 def _burn_label(inferred, summary):
     """Local 0–200 km scale estimate; missing tintable ratio is treated as zero."""
     local = inferred.get("local_scale_clouds") or {}
@@ -475,7 +497,14 @@ if results:
             burn_label, burn_index = _burn_label(inferred, result.get("summary", ""))
             regular_label = _probability_label(regular_score)
             color_class = _color_label(color_score)
-            burn_text = burn_label
+            # Prefer the actual AOD carried by the result; use the summary text as fallback.
+            aod_value = inferred.get("aod", result.get("aod"))
+            if aod_value is None:
+                aod_match = re.search(r"\bAOD\s*[:：]?\s*(\d+(?:\.\d+)?)", str(result.get("summary", "")), re.IGNORECASE)
+                if aod_match:
+                    aod_value = float(aod_match.group(1))
+            aod_adjective = _aod_adjective(aod_value)
+            burn_text = f"{aod_adjective}{burn_label}"
             color_palette = {"平平无奇": "#e2c76a", "普通": "#c99b24", "绚烂": "#e67e22", "史诗": "#d62828", "世纪": "#9d174d"}
             color_hex = color_palette.get(color_class, "#4b5563")
             st.markdown(
