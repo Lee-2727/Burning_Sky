@@ -27,9 +27,69 @@ import re
 import csv
 import hashlib
 import threading
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
 from datetime import datetime, date, timedelta, timezone
+
+# Tkinter is only needed by the desktop GUI. Streamlit Cloud is headless and may
+# not ship the compiled _tkinter module, so provide lightweight import-time
+# compatibility objects there. The web wrapper calls the calculation methods
+# directly and never creates the desktop window.
+try:
+    import tkinter as tk
+    from tkinter import ttk, messagebox, filedialog
+except (ImportError, ModuleNotFoundError):
+    from types import SimpleNamespace
+
+    class _HeadlessTk:
+        pass
+
+    class _HeadlessMessageBox:
+        last_error = None
+        last_info = None
+
+        @classmethod
+        def showerror(cls, title, message, **kwargs):
+            cls.last_error = (str(title), str(message))
+            return None
+
+        @classmethod
+        def showinfo(cls, title, message, **kwargs):
+            cls.last_info = (str(title), str(message))
+            return None
+
+        @classmethod
+        def askyesno(cls, *args, **kwargs):
+            return False
+
+    tk = SimpleNamespace(Tk=_HeadlessTk, TclError=Exception)
+    ttk = SimpleNamespace()
+    messagebox = _HeadlessMessageBox
+    filedialog = SimpleNamespace()
+
+# Expose forecast errors to the Streamlit wrapper while preserving desktop dialogs.
+if not hasattr(messagebox, "last_error"):
+    messagebox.last_error = None
+if not hasattr(messagebox, "last_info"):
+    messagebox.last_info = None
+if not getattr(messagebox, "_firecloud_tracking_wrapped", False):
+    _original_showerror = getattr(messagebox, "showerror", None)
+    _original_showinfo = getattr(messagebox, "showinfo", None)
+
+    def _tracked_showerror(title, message, **kwargs):
+        messagebox.last_error = (str(title), str(message))
+        if _original_showerror:
+            return _original_showerror(title, message, **kwargs)
+        return None
+
+    def _tracked_showinfo(title, message, **kwargs):
+        messagebox.last_info = (str(title), str(message))
+        if _original_showinfo:
+            return _original_showinfo(title, message, **kwargs)
+        return None
+
+    messagebox.showerror = _tracked_showerror
+    messagebox.showinfo = _tracked_showinfo
+    messagebox._firecloud_tracking_wrapped = True
+
 from xml.sax.saxutils import escape as xml_escape
 
 try:
