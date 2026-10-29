@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-火烧云预报工具 v1.4.49（峰值云色块与概率并列）
+火烧云预报工具 v1.4.51（朝晚霞查询与数据时间修正）
 Python 3.11 / Tkinter，无第三方依赖。
 
 重要说明：
@@ -27,6 +27,8 @@ import re
 import csv
 import hashlib
 import threading
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
 from datetime import datetime, date, timedelta, timezone
 from xml.sax.saxutils import escape as xml_escape
 
@@ -36,7 +38,7 @@ except ImportError:
     Image = ImageDraw = ImageFont = None
 
 
-APP_TITLE = "火烧云预报工具 v1.4.49（峰值云色块与概率并列）"
+APP_TITLE = "火烧云预报工具 v1.4.63（近场低云过滤修正）"
 
 # 全国天气数据内存缓存：避免用户反复绘图时重复请求相同模型和坐标。
 _NATIONAL_WEATHER_CACHE = {}
@@ -498,6 +500,93 @@ def analyze_aerosol_path(aod_samples, cloud_base_km, beta_crit_km_inv=0.02):
 
 
 
+def apply_high_elevation_nearby_low_cloud_filter(samples, profiles, site_elevation_m, radius_km=80.0):
+    """高海拔机位的近场低云过滤；不删除80 km以外的光路低云。
+
+    仅当本地气压层剖面显示：低层云候选主要位于机位海拔以下，且机位上方
+    0–3 km 没有同等低层云候选时，才启用过滤。该判据是模式资料启发式判断。
+    """
+    try:
+        site_elevation_m = float(site_elevation_m)
+    except (TypeError, ValueError):
+        return {"applied": False, "reason": "机位海拔无效", "removed_points": 0}
+    if not math.isfinite(site_elevation_m) or site_elevation_m <= 0:
+        return {"applied": False, "reason": "海拔为0或无效，保持原算法", "removed_points": 0}
+
+    local = next((p for p in profiles or []
+                  if abs(float(p.get("distance_km", 999999))) < 0.01), None)
+    levels = (local or {}).get("levels") or []
+    below_candidates = []
+    above_candidates = []
+    for row in levels:
+        if not isinstance(row, dict) or not row.get("cloudy_candidate"):
+            continue
+        h_asl = row.get("height_m_asl")
+        if not isinstance(h_asl, (int, float)) or not math.isfinite(float(h_asl)):
+            continue
+        h_asl = float(h_asl)
+        if h_asl < site_elevation_m:
+            below_candidates.append(h_asl)
+        elif h_asl <= site_elevation_m + 3000.0:
+            above_candidates.append(h_asl)
+    # 只有确有机位以下低层云证据，且机位上方低层没有同类候选，才执行过滤。
+    if not below_candidates or above_candidates:
+        return {"applied": False,
+                "reason": "剖面未能确认低云整体位于机位以下；保留原始云量与算法",
+                "removed_points": 0}
+
+    removed = 0
+    for sample in samples or []:
+        try:
+            distance = float(sample.get("distance_km", 1e9))
+        except (TypeError, ValueError):
+            continue
+        if distance > float(radius_km):
+            continue
+        low = sample.get("cloud_cover_low")
+        if not isinstance(low, (int, float)) or not math.isfinite(float(low)) or float(low) <= 0:
+            continue
+        sample.setdefault("_elevation_filter_original_low", low)
+        sample["cloud_cover_low"] = 0.0
+        # 总云量没有可直接反演的独立剩余量；用保留下来的中/高云最大覆盖作保守代理，
+        # 不触碰中云、高云和80 km外任何采样点。
+        layers = [v for v in (sample.get("cloud_cover_mid"), sample.get("cloud_cover_high"))
+                  if isinstance(v, (int, float)) and math.isfinite(float(v))]
+        if layers:
+            sample["cloud_cover"] = max(layers)
+        sample["elevation_low_cloud_filtered"] = True
+        removed += 1
+
+    # 对0–80 km剖面，仅屏蔽低于机位海拔的低层云候选，再重新估算有效云底。
+    # 这让云底/理论极限云距/云洞等后续计算统一使用过滤后的剖面。
+    for profile in profiles or []:
+        try:
+            distance = float(profile.get("distance_km", 1e9))
+        except (TypeError, ValueError):
+            continue
+        if distance > float(radius_km):
+            continue
+        original_levels = profile.get("levels") or []
+        filtered_levels = []
+        changed = False
+        for row in original_levels:
+            copy_row = dict(row)
+            h_asl = copy_row.get("height_m_asl")
+            if (copy_row.get("cloudy_candidate") and isinstance(h_asl, (int, float))
+                    and math.isfinite(float(h_asl)) and float(h_asl) < site_elevation_m):
+                copy_row["cloudy_candidate"] = False
+                changed = True
+            filtered_levels.append(copy_row)
+        if changed:
+            estimate = estimate_cloud_base_from_profile(filtered_levels, site_elevation_m)
+            profile.update(estimate)
+            profile["levels"] = estimate.get("levels", filtered_levels)
+            profile["elevation_filter_applied"] = True
+    return {"applied": True, "reason": "确认机位以下低云后，已过滤0–80 km低云并保留远端低云",
+            "removed_points": removed, "radius_km": float(radius_km),
+            "below_site_candidate_levels": len(below_candidates)}
+
+
 def estimate_cloud_base_from_profile(profile_levels, ground_elevation_m, cloud_cover_threshold=25.0,
                                      rh_threshold=85.0):
     """从气压层云量/RH/位势高度估算最低可能云底（离地高度）。
@@ -557,21 +646,27 @@ def estimate_cloud_base_from_profile(profile_levels, ground_elevation_m, cloud_c
 def analyze_cloud_base_geometry(samples, profile_samples, aod_samples, local_date, utc_offset,
                                 latitude, longitude, cloud_base_mode, manual_base_km,
                                 manual_aod=None, weighted_aod=None, scale_height_km=2.0,
-                                event_type="sunset"):
-    """把剖面云底、教程 AOD 等效高度、最远几何距离和实际云量采样串联起来。"""
+                                event_type="sunset", ground_elevation_m=0.0):
+    """将云底统一为海拔绝对高度（ASL，米/千米），再计算有效云底和理论照明距离。
+
+    estimate_cloud_base_from_profile 返回的是相对当地地面的离地高度（AGL）；
+    这里加上观测点海拔，转换为绝对高度。手动云底值则直接按绝对高度输入。
+    0 m 机位时，数值与旧版离地高度输入一致。
+    """
     profile_by_distance = {x["distance_km"]: x for x in profile_samples}
     aod_by_distance = {x["distance_km"]: x for x in aod_samples}
     rows = []
     for sample in samples:
         dist = sample["distance_km"]
         profile = profile_by_distance.get(dist, {})
-        profile_base = profile.get("estimated_base_km")
+        profile_base_agl = profile.get("estimated_base_km")
         if cloud_base_mode == "手动指定":
-            cloud_base_km, base_source = manual_base_km, "手动值"
-        elif profile_base is not None:
-            cloud_base_km, base_source = profile_base, "剖面推算"
+            cloud_base_km, base_source = manual_base_km, "手动绝对高度"
+        elif profile_base_agl is not None:
+            cloud_base_km = float(profile_base_agl) + max(0.0, float(ground_elevation_m or 0.0)) / 1000.0
+            base_source = "剖面离地高度 + 地点海拔（绝对高度）"
         else:
-            cloud_base_km, base_source = manual_base_km, "自动失败→手动回退"
+            cloud_base_km, base_source = manual_base_km, "自动失败→手动绝对高度回退"
 
         aod_record = aod_by_distance.get(dist, {})
         if manual_aod is not None:
@@ -604,7 +699,9 @@ def analyze_cloud_base_geometry(samples, profile_samples, aod_samples, local_dat
         geometry = geometry_fn(local_date, utc_offset, latitude, longitude,
                                effective_base * 1000.0, max(1.0, float(dist)))
         rows.append({
-            "distance_km": dist, "cloud_base_km": cloud_base_km, "base_source": base_source,
+            "distance_km": dist, "cloud_base_km": cloud_base_km, "cloud_base_asl_km": cloud_base_km,
+            "cloud_base_agl_km": max(0.0, cloud_base_km - max(0.0, float(ground_elevation_m or 0.0)) / 1000.0),
+            "base_source": base_source,
             "profile_status": profile.get("status", "未获取剖面"),
             "aod": aod_value, "aod_source": aod_source,
             "equivalent_height_km": eq_height, "effective_base_km": effective_base,
@@ -626,9 +723,11 @@ def analyze_cloud_base_geometry(samples, profile_samples, aod_samples, local_dat
 
 
 def estimate_path_cloud_boundaries(samples, local_cloud_reach_km=None):
-    """沿太阳方位区分近端连续中高云区、晴空间隔、远端云和最远云点。
+    """识别理论极限云距以内的全部晴空间隔，并分别记录区间、长度与最远位置。
 
-    仅基于离散采样点；“云”按中云或高云任一达到 25% 判断，不能视为精确云缘。
+    中高云目标按中云/高云任一 >=25% 识别；有效晴空间隔要求低/中/高云均 <=15%。
+    若晴空间隔延伸到理论照明距离，则其终点截断在理论极限云距。
+    由于数据是离散采样，边界仍是经验估算，不是精确云缘。
     """
     ordered = sorted(samples, key=lambda x: x.get("distance_km", 0))
     def midhigh(row):
@@ -638,70 +737,75 @@ def estimate_path_cloud_boundaries(samples, local_cloud_reach_km=None):
     def all_layer_values(row):
         vals = [row.get(k) for k in ("cloud_cover_low", "cloud_cover_mid", "cloud_cover_high")]
         return vals if all(isinstance(v, (int, float)) for v in vals) else None
-    def is_effective_gap(row):
+    def is_gap(row):
         vals = all_layer_values(row)
-        # 缺失任一云层数据都不能当作晴空；只有低/中/高云量均 <=15% 才记作候选云洞。
         return vals is not None and max(vals) <= 15.0
-    cloudy = [r for r in ordered if midhigh(r) is not None and midhigh(r) >= 25.0]
-    # 近端云区：先在 0–50 km 内找到第一处中高云，再沿距离延伸，直到第一个明确的无云采样点。
-    near_candidates = [r for r in cloudy if r.get("distance_km", 0) <= 50]
-    near_edge = None
-    remote_start = None
-    clear_gap_start = clear_gap_end = None
-    if near_candidates:
-        first = near_candidates[0]
-        first_idx = ordered.index(first)
-        near_edge = first
-        seen_clear = False
-        for row in ordered[first_idx + 1:]:
-            amount = midhigh(row)
-            if is_effective_gap(row):
-                if not seen_clear:
-                    clear_gap_start = row
-                seen_clear = True
-                clear_gap_end = row
-            elif amount is not None and amount >= 25.0:
-                if seen_clear:
-                    remote_start = row
-                    break
-                near_edge = row
-            else:
-                # 既不是明确云洞，也不是明确中高云目标区：不擅自视作晴空。
-                if seen_clear:
-                    # 一旦候选云洞后出现云量数据不完整的点，不能把不完整点当作可靠的云洞延续。
-                    pass
-                continue
-    # 若没有近端云，首个被识别的中高云作为远端云候选；最远云距仍独立给出。
-    if not near_candidates and cloudy:
-        remote_start = cloudy[0]
-    if near_candidates and remote_start is None and clear_gap_end is not None:
-        later = [r for r in cloudy if r.get("distance_km", 0) > clear_gap_end.get("distance_km", 0)]
-        if later:
-            remote_start = later[0]
-    # “火烧云范围”表示本地连续中高云区沿太阳方向的末端；不把晴空间隔后的远端云算进本地云区。
-    fire_cloud_range = near_edge.get("distance_km") if near_edge else None
-    # 云边距取两种上限中较近者：本地云高度决定的理论照明距离，或沿太阳方向重新出现云的距离。
-    candidates = []
-    if isinstance(local_cloud_reach_km, (int, float)) and local_cloud_reach_km > 0:
-        candidates.append(float(local_cloud_reach_km))
-    if remote_start is not None:
-        candidates.append(float(remote_start.get("distance_km", 0)))
-    cloud_edge_distance = min(candidates) if candidates else None
-    # 对有足够空间采样的路径，区分“明确存在云洞”“有充分证据表明云层连续”与“资料不足”。
-    # 只检查本地有效云底理论照明距离以内；不把超出相关范围的云况当作本地光路证据。
-    relevant = ordered
+
     try:
-        if isinstance(local_cloud_reach_km, (int, float)) and local_cloud_reach_km > 0:
-            relevant = [r for r in ordered if float(r.get("distance_km", 0)) <= float(local_cloud_reach_km)]
+        reach = float(local_cloud_reach_km) if local_cloud_reach_km is not None else None
+        if reach is not None and reach <= 0:
+            reach = None
     except (TypeError, ValueError):
-        relevant = ordered
+        reach = None
+    relevant = [r for r in ordered if reach is None or float(r.get("distance_km", 0)) <= reach]
+    cloudy = [r for r in relevant if midhigh(r) is not None and midhigh(r) >= 25.0]
+
+    # 将连续的有效晴空采样点聚合成多个云洞。边界取相邻采样点中点，最后一个云洞若延伸到
+    # 理论照明上限，则终点直接截断到极限云距，避免把采样终点误当作真实云缘。
+    gaps = []
+    i = 0
+    while i < len(relevant):
+        if not is_gap(relevant[i]):
+            i += 1
+            continue
+        j = i
+        while j + 1 < len(relevant) and is_gap(relevant[j + 1]):
+            j += 1
+        first_d = float(relevant[i].get("distance_km", 0))
+        last_d = float(relevant[j].get("distance_km", 0))
+        prev_d = float(relevant[i-1].get("distance_km", first_d)) if i > 0 else first_d
+        next_d = float(relevant[j+1].get("distance_km", last_d)) if j + 1 < len(relevant) else last_d
+        gap_start = first_d if i == 0 else (prev_d + first_d) / 2.0
+        if j + 1 < len(relevant):
+            gap_end = (last_d + next_d) / 2.0
+        elif reach is not None and reach >= last_d:
+            gap_end = reach
+        else:
+            gap_end = last_d
+        gap_start = max(0.0, gap_start)
+        gap_end = max(gap_start, gap_end)
+        # 只保留有一定空间尺度的云洞，避免单个稀疏采样点被夸大。
+        if gap_end - gap_start >= 15.0:
+            gaps.append({"start_km": round(gap_start, 1), "end_km": round(gap_end, 1),
+                         "size_km": round(gap_end-gap_start, 1),
+                         "reaches_limit": bool(reach is not None and j == len(relevant)-1 and gap_end >= reach)})
+        i = j + 1
+
+    near_candidates = [r for r in cloudy if float(r.get("distance_km", 0)) <= 50.0]
+    near_edge = near_candidates[0] if near_candidates else (cloudy[0] if cloudy else None)
+    # 本地连续中高云区：从近端第一片云开始，遇到第一个明确云洞前的最后一个云点。
+    fire_cloud_range = None
+    if near_edge is not None:
+        fire_cloud_range = float(near_edge.get("distance_km", 0))
+        for row in relevant:
+            d = float(row.get("distance_km", 0))
+            if d < fire_cloud_range:
+                continue
+            if is_gap(row):
+                break
+            amount = midhigh(row)
+            if amount is not None and amount >= 25.0:
+                fire_cloud_range = d
+
+    largest_gap = max(gaps, key=lambda g: g["size_km"], default=None)
+    farthest_gap = max(gaps, key=lambda g: g["end_km"], default=None)
+    # “极限云距”严格代表本地有效云底的理论照明距离，不再被远端云起点缩短。
+    cloud_edge_distance = reach
     complete = [r for r in relevant if all_layer_values(r) is not None]
     path_span = (float(complete[-1].get("distance_km", 0)) - float(complete[0].get("distance_km", 0))) if len(complete) >= 2 else 0.0
-    has_gap = any(is_effective_gap(r) for r in relevant)
-    continuous_evidence = (
-        len(complete) >= 4 and path_span >= 50.0 and not has_gap and
-        all(max(all_layer_values(r)) >= 25.0 for r in complete)
-    )
+    has_gap = bool(gaps)
+    continuous_evidence = (len(complete) >= 4 and path_span >= 50.0 and not has_gap and
+                           all(max(all_layer_values(r)) >= 25.0 for r in complete))
     if has_gap:
         gap_status = "effective_gap_candidate"
     elif continuous_evidence:
@@ -710,12 +814,18 @@ def estimate_path_cloud_boundaries(samples, local_cloud_reach_km=None):
         gap_status = "unknown"
     return {
         "near_cloud_edge_km": near_edge.get("distance_km") if near_edge else None,
-        "remote_cloud_start_km": remote_start.get("distance_km") if remote_start else None,
+        "remote_cloud_start_km": min((float(r.get("distance_km", 0)) for r in cloudy
+                                       if near_edge is not None and float(r.get("distance_km", 0)) > float(near_edge.get("distance_km", 0))), default=None),
         "cloud_edge_distance_km": cloud_edge_distance,
-        "fire_cloud_range_km": fire_cloud_range,
-        "local_cloud_reach_km": local_cloud_reach_km,
-        "clear_gap_start_km": clear_gap_start.get("distance_km") if clear_gap_start else None,
-        "clear_gap_end_km": clear_gap_end.get("distance_km") if clear_gap_end else None,
+        "local_cloud_reach_km": reach,
+        "fire_cloud_range_km": round(fire_cloud_range, 1) if fire_cloud_range is not None else None,
+        "clear_gap_start_km": largest_gap["start_km"] if largest_gap else None,
+        "clear_gap_end_km": largest_gap["end_km"] if largest_gap else None,
+        "clear_gaps": gaps,
+        "clear_gap_count": len(gaps),
+        "largest_gap_size_km": largest_gap["size_km"] if largest_gap else 0.0,
+        "farthest_gap_distance_km": farthest_gap["end_km"] if farthest_gap else None,
+        "farthest_gap_start_km": farthest_gap["start_km"] if farthest_gap else None,
         "gap_status": gap_status,
         "gap_evidence_points": len(complete),
         "gap_evidence_span_km": round(path_span, 1),
@@ -746,7 +856,7 @@ def _cloud_height_color(height_km, cloud_cover=None, relative_humidity=None):
     return "#%02x%02x%02x" % rgb
 
 
-def infer_from_cloud_path(samples, aod=None):
+def infer_from_cloud_path(samples, aod=None, local_low_cloud_above_ground=None):
     """透明的经验推断，不是经历史观测校准的概率模型。
 
     samples: [{distance_km, cloud_cover, cloud_cover_low, cloud_cover_mid,
@@ -760,7 +870,20 @@ def infer_from_cloud_path(samples, aod=None):
     def weighted_mean(key):
         pairs = [(x.get(key), w) for x, w in zip(usable, weights) if x.get(key) is not None]
         return sum(v*w for v,w in pairs) / sum(w for _,w in pairs) if pairs else None
-    low = weighted_mean("cloud_cover_low")
+    elevation_filtered = any(bool(x.get("elevation_low_cloud_filtered")) for x in usable)
+    if elevation_filtered:
+        # 海拔过滤已经改写了0–80 km采样点的低云量；结果区和评分都必须读取过滤后的数据，
+        # 包括距离0 km的本地采样点，不能再沿用“排除本地点”的旧分支而把过滤效果藏起来。
+        low = weighted_mean("cloud_cover_low")
+    elif local_low_cloud_above_ground is False:
+        # 原有0 m/未触发海拔过滤的逻辑保持不变：若本地剖面未显示地面以上低云，
+        # 不把观测点的聚合低云量误当作本地遮挡；远端路径点低云仍参与加权。
+        low_pairs = [(x.get("cloud_cover_low"), w) for x, w in zip(usable, weights)
+                     if not (x.get("distance_km") is not None and abs(float(x.get("distance_km", 999999))) < 0.01)
+                     and x.get("cloud_cover_low") is not None]
+        low = sum(v*w for v, w in low_pairs) / sum(w for _, w in low_pairs) if low_pairs else None
+    else:
+        low = weighted_mean("cloud_cover_low")
     mid = weighted_mean("cloud_cover_mid")
     high = weighted_mean("cloud_cover_high")
     total = weighted_mean("cloud_cover")
@@ -1142,7 +1265,15 @@ def apply_peak_cloud_color(inferred, boundaries, samples):
     gap_status = b.get("gap_status", "unknown")
     gap_start = num(b, "clear_gap_start_km")
     edge = num(b, "cloud_edge_distance_km", "fire_cloud_range_km")
-    gap_found = gap_status == "effective_gap_candidate" and gap_start is not None
+    gaps = b.get("clear_gaps") or []
+    gap_count = len(gaps)
+    near_gap = min(gaps, key=lambda g: float(g.get("start_km", 0)), default=None)
+    far_gap = max(gaps, key=lambda g: float(g.get("end_km", 0)), default=None)
+    largest_gap = max(gaps, key=lambda g: float(g.get("size_km", 0)), default=None)
+    near_gap_start = float(near_gap.get("start_km", 0)) if near_gap else gap_start
+    far_gap_end = float(far_gap.get("end_km", 0)) if far_gap else None
+    largest_gap_size = float(largest_gap.get("size_km", 0)) if largest_gap else float(b.get("largest_gap_size_km", 0) or 0)
+    gap_found = bool(gaps) or (gap_status == "effective_gap_candidate" and gap_start is not None)
 
     # 远处是否存在足够大的中/高云目标区。不能把本地云少误判为“必有红霞”。
     remote_targets = []
@@ -1164,12 +1295,21 @@ def apply_peak_cloud_color(inferred, boundaries, samples):
     # 本地较通透、远处有可着色云并且确有云隙时，才偏红/粉。
     if local_low is not None and local_low >= 40 and (local_high is None or local_high < 25):
         base_rgb, pos, name = (255, 145, 48), 0.36, "低云占优：金橘色倾向"
-    elif (gap_found and gap_start <= 50) or (not gap_found and edge is not None and edge <= 45):
-        base_rgb, pos, name = (255, 164, 55), 0.30, "云洞/云缘较近：金黄橘色倾向"
-    elif local_cloudy and ((gap_found and gap_start >= 100) or (not gap_found and edge is not None and edge >= 120)):
-        base_rgb, pos, name = (190, 91, 157), 0.86, "本地云量较多且云洞/云缘偏远：粉紫色倾向"
+    elif gap_found and near_gap_start is not None and near_gap_start <= 50 and far_gap_end is not None and far_gap_end >= 80 and gap_count >= 2:
+        # 近端云洞偏金、远端云洞偏红；多个云洞同时存在时给出综合色相，而不是只看第一个云洞。
+        near_size = float(near_gap.get("size_km", 0) or 0) if near_gap else 0.0
+        far_size = float(far_gap.get("size_km", 0) or 0) if far_gap else 0.0
+        red_weight = far_size / max(1.0, near_size + far_size)
+        if red_weight >= 0.55:
+            base_rgb, pos, name = (239, 73, 83), 0.69, "近端金霞与远端红霞共同贡献：综合色偏红"
+        else:
+            base_rgb, pos, name = (255, 151, 58), 0.39, "近端金霞与远端红霞共同贡献：综合色偏金橘"
+    elif (gap_found and near_gap_start is not None and near_gap_start <= 50) or (not gap_found and edge is not None and edge <= 45):
+        base_rgb, pos, name = (255, 164, 55), 0.30, "近端云洞较有利：金黄橘色倾向"
+    elif local_cloudy and ((gap_found and ((far_gap_end or 0) >= 100 or largest_gap_size >= 100)) or (not gap_found and edge is not None and edge >= 120)):
+        base_rgb, pos, name = (190, 91, 157), 0.86, "本地云量较多且有效云洞偏远：粉紫色倾向"
     elif (not local_cloudy and has_remote_target and gap_found and
-          ((gap_start is not None and gap_start >= 40) or
+          ((near_gap_start is not None and near_gap_start >= 40) or
            (remote_target_distance is not None and remote_target_distance >= 50))):
         base_rgb, pos, name = (232, 66, 105), 0.73, "近处较通透、远处有受光云：红粉色倾向"
     elif local_low is not None and local_low >= 25 and (local_high is None or local_high < 30):
@@ -1244,13 +1384,27 @@ def apply_path_score_pair(inferred, geometry, boundaries):
     if not isinstance(reach, (int, float)) or reach <= 0:
         geometry_score = min(geometry_score, 25)
 
-    gap_found = (boundaries.get("gap_status") == "effective_gap_candidate" and
-                 boundaries.get("clear_gap_start_km") is not None and
-                 boundaries.get("remote_cloud_start_km") is not None and
-                 boundaries.get("cloud_edge_distance_km") is not None)
+    gaps = boundaries.get("clear_gaps") or []
+    gap_count = len(gaps)
+    largest_gap = float(boundaries.get("largest_gap_size_km", 0) or 0)
+    total_gap_size = sum(float(g.get("size_km", 0) or 0) for g in gaps)
+    reach_for_gap = boundaries.get("local_cloud_reach_km") or boundaries.get("cloud_edge_distance_km")
+    gap_fraction = min(1.0, total_gap_size / max(1.0, float(reach_for_gap))) if isinstance(reach_for_gap, (int, float)) else 0.0
+    gap_found = gap_count > 0 or (boundaries.get("gap_status") == "effective_gap_candidate" and boundaries.get("clear_gap_start_km") is not None)
     gap_status = boundaries.get("gap_status", "unknown")
-    gap_regular = 100 if gap_found else (0 if gap_status == "continuous_cloud" else 15)
-    gap_upper = 100 if gap_found else (10 if gap_status == "continuous_cloud" else 78)
+    inferred["clear_gap_count"] = gap_count
+    inferred["largest_gap_size_km"] = round(largest_gap, 1)
+    inferred["total_gap_size_km"] = round(total_gap_size, 1)
+    inferred["gap_fraction_of_reach"] = round(gap_fraction, 3)
+    inferred["farthest_gap_distance_km"] = boundaries.get("farthest_gap_distance_km")
+    if gap_found:
+        # 全部云洞共同贡献：最大云洞决定基础通透度，云洞总长度占比与数量提供有限加成。
+        size_component = max(0.0, min(100.0, largest_gap / 1.5))
+        gap_regular = min(100.0, 25.0 + 0.55 * size_component + 25.0 * gap_fraction + min(10.0, max(0, gap_count-1)*3.0))
+        gap_upper = min(100.0, max(gap_regular, 45.0 + 0.45 * size_component + 30.0 * gap_fraction + min(10.0, max(0, gap_count-1)*3.0)))
+    else:
+        gap_regular = 0 if gap_status == "continuous_cloud" else 15
+        gap_upper = 10 if gap_status == "continuous_cloud" else 78
 
     if target is None:
         target_regular, target_upper = 35, 50
@@ -1400,6 +1554,16 @@ def calculate_color_performance_score(inferred):
             score += 4
             reasons.append("预报能见度较好，有利于保持远景反差")
 
+    # 云洞色彩贡献不再只看第一个晴空间隔：多个有效云洞及较大的总晴空跨度，
+    # 可增加远近云层同时参与显色的潜力；加分封顶，避免仅凭云洞数量虚高。
+    gap_count = int(inferred.get("clear_gap_count", 0) or 0)
+    largest_gap = float(inferred.get("largest_gap_size_km", 0) or 0)
+    gap_fraction = float(inferred.get("gap_fraction_of_reach", 0) or 0)
+    if gap_count > 0:
+        gap_bonus = min(12.0, min(6.0, max(0.0, largest_gap) / 25.0) +
+                        min(4.0, max(0, gap_count - 1) * 2.0) + min(2.0, gap_fraction * 4.0))
+        score += gap_bonus
+        reasons.append(f"极限云距内识别到 {gap_count} 个有效云洞，最大约 {largest_gap:.0f} km；多个云洞共同增加远近云层显色潜力（加分 {gap_bonus:.0f}）。")
     if isinstance(aod, (int, float)):
         if aod <= 0.12:
             score += 4
@@ -1440,7 +1604,33 @@ def calculate_color_performance_score(inferred):
     return inferred
 
 
-def apply_low_cloud_screen_constraint(inferred, samples=None, zones=None, source="online", max_relevant_distance_km=None):
+def has_local_low_cloud_above_ground(profile_levels, max_height_agl_km=3.0):
+    """Return True/False when pressure-level profile supports a low-cloud layer above local terrain.
+
+    The profile heights are converted from metres ASL to kilometres AGL by
+    estimate_cloud_base_from_profile. None means there is insufficient profile evidence.
+    This is a coarse model-level filter, not a direct cloud-base observation.
+    """
+    if not isinstance(profile_levels, (list, tuple)) or not profile_levels:
+        return None
+    usable = [r for r in profile_levels if isinstance(r, dict)
+              and isinstance(r.get("height_agl_km"), (int, float))
+              and math.isfinite(float(r["height_agl_km"]))]
+    if not usable:
+        return None
+    for row in usable:
+        h = float(row["height_agl_km"])
+        if 0.0 <= h <= float(max_height_agl_km) and row.get("cloudy_candidate"):
+            return True
+    # Only return False if there were usable levels in the low-layer window; otherwise the
+    # vertical sampling may simply be too coarse to establish absence.
+    if any(0.0 <= float(row["height_agl_km"]) <= float(max_height_agl_km) for row in usable):
+        return False
+    return None
+
+
+def apply_low_cloud_screen_constraint(inferred, samples=None, zones=None, source="online", max_relevant_distance_km=None,
+                                      local_low_cloud_above_ground=None):
     """Apply a conservative score ceiling for broad, continuous high-coverage low-cloud screens.
 
     This is a heuristic constraint, not a claim that cloud-cover percentage equals opacity.
@@ -1481,7 +1671,9 @@ def apply_low_cloud_screen_constraint(inferred, samples=None, zones=None, source
         if current: runs.append(current)
     elif samples:
         valid = sorted([x for x in samples if x.get("distance_km") is not None and x.get("cloud_cover_low") is not None
-                        and (relevant_limit is None or float(x["distance_km"]) <= relevant_limit)], key=lambda x: x["distance_km"])
+                        and (relevant_limit is None or float(x["distance_km"]) <= relevant_limit)
+                        and not (local_low_cloud_above_ground is False and abs(float(x.get("distance_km", 999999))) < 0.01)],
+                       key=lambda x: x["distance_km"])
         if valid:
             valid_sample_count = len(valid)
             gaps = [valid[i+1]["distance_km"]-valid[i]["distance_km"] for i in range(len(valid)-1) if valid[i+1]["distance_km"] > valid[i]["distance_km"]]
@@ -1535,7 +1727,7 @@ def apply_low_cloud_screen_constraint(inferred, samples=None, zones=None, source
     # For a single-point forecast there is no path width information, but very high local low cloud
     # still merits a cautious ceiling rather than being averaged away by other scoring components.
     local_low = inferred.get("low")
-    if (not zones and local_low is not None and local_low >= 85 and
+    if (not zones and local_low_cloud_above_ground is not False and local_low is not None and local_low >= 85 and
             (valid_sample_count <= 1 or not any(r.get("end", 0)-r.get("start", 0) >= 30 for r in runs))):
         runs.append({"start":0.0, "end":0.0, "covers":[float(local_low)], "local_only":True})
 
@@ -1695,17 +1887,20 @@ def score_two_day_event_shared_core(hourly, idx, model_id, ground_elevation_m=0.
         aerosol_height = aerosol_equivalent_height_km(aod, 0.5) if aod is not None else 0.0
         effective_base = max(0.0, cloud_base - (aerosol_height or 0.0))
         reach = math.sqrt(8.0 * 6371.0088 * effective_base) if effective_base > 0 else 0.0
-    inferred = infer_from_cloud_path([sample], aod)
+    local_low_above_ground = has_local_low_cloud_above_ground(profile.get("levels") if isinstance(profile, dict) else None)
+    inferred = infer_from_cloud_path([sample], aod, local_low_cloud_above_ground=local_low_above_ground)
     geometry = {"rows": [{"distance_km": 0.0, "effective_base_km": effective_base, "reach_km": reach}]}
     boundaries = estimate_path_cloud_boundaries([sample], reach)
     inferred = apply_path_score_pair(inferred, geometry, boundaries)
-    inferred = apply_low_cloud_screen_constraint(inferred, samples=[sample], source="two_day", max_relevant_distance_km=reach)
+    inferred = apply_low_cloud_screen_constraint(inferred, samples=[sample], source="two_day",
+                                                 max_relevant_distance_km=reach,
+                                                 local_low_cloud_above_ground=local_low_above_ground)
     return inferred, {"cloud_base_km": cloud_base, "effective_base_km": effective_base,
                       "reach_km": reach, "aod": aod,
                       "profile_found": cloud_base is not None}
 
 
-class FireCloudApp:
+class FireCloudApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
@@ -1794,7 +1989,7 @@ class FireCloudApp:
         ttk.Label(header, text="火烧云预报工具", style="Title.TLabel").pack(anchor="w")
         ttk.Label(
             header,
-            text="v1.4.15 · 案例保存/加载；现场实况记录；Excel 实况模拟",
+            text="v1.4.63 · 地名联想/近场低云过滤修正；案例保存/加载",
             style="Sub.TLabel"
         ).pack(anchor="w", pady=(4, 0))
         # 全国地图快捷入口放在窗口顶部，避免左侧设置项较多时被挤到可视区域之外。
@@ -1834,6 +2029,7 @@ class FireCloudApp:
             ("预报日期 YYYY-MM-DD", date.today().isoformat(), "date"),
             ("纬度（°）", "31.8047", "lat"),
             ("经度（°）", "117.2214", "lon"),
+            ("海拔（m）", "0", "elevation"),
         ]
         for label, value, key in visible_defaults:
             self._add_var(key, value)
@@ -1843,11 +2039,22 @@ class FireCloudApp:
             entry = ttk.Entry(row, textvariable=self.vars[key], width=25)
             entry.pack(fill="x", pady=(2, 0))
             if key == "place":
-                entry.bind("<Return>", self.lookup_place_coordinates)
-                entry.bind("<FocusOut>", self.lookup_place_coordinates)
-                ttk.Label(row, text="输入城市名后按 Enter 或离开输入框，可自动填入坐标", style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(2, 0))
+                entry.bind("<KeyRelease>", self.update_place_suggestions)
+                entry.bind("<Return>", self.on_place_enter)
+                entry.bind("<Down>", self.focus_place_suggestions)
+                self.place_suggestion_list = tk.Listbox(
+                    row, height=6, activestyle="dotbox", exportselection=False,
+                    font=("Microsoft YaHei UI", 9), relief="solid", bd=1
+                )
+                self.place_suggestion_list.pack(fill="x", pady=(2, 0))
+                self.place_suggestion_list.pack_forget()
+                self.place_suggestion_list.bind("<ButtonRelease-1>", self.select_place_suggestion)
+                self.place_suggestion_list.bind("<Return>", self.select_place_suggestion)
+                ttk.Label(row, text="输入前几个字即可联想 Excel 地名；点击候选项，或按 Enter 选择首项。垭口等地点可自行添加表格行。", style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(2, 0))
+            elif key == "elevation":
+                ttk.Label(row, text="读取地名表中的海拔；也可直接修改，单位为米。", style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(2, 0))
 
-        self.place_lookup_status_var = tk.StringVar(value="内置常用城市坐标表已就绪；未匹配时可继续手动输入经纬度。")
+        self.place_lookup_status_var = tk.StringVar(value="优先读取同目录 china_city_coordinates.xlsx；地名表中的海拔可手动维护。")
         ttk.Label(form, textvariable=self.place_lookup_status_var, style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(0, 4))
 
         # 云底来源模式仍为全局设置；AOD 与手动云底数值分别放在朝霞/晚霞结果区。
@@ -1859,7 +2066,7 @@ class FireCloudApp:
             base_row, textvariable=self.vars["cloud_base_mode"],
             values=["自动剖面推算", "手动指定"], state="readonly"
         ).pack(fill="x", pady=(2, 0))
-        ttk.Label(base_row, text="自动模式优先使用各自方向剖面，手动云底仅在自动推算失败时回退；要让手动值直接生效，请切换为‘手动指定’，再点击‘查询 / 更新朝霞与晚霞结果’。", style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(3, 0))
+        ttk.Label(base_row, text="自动模式优先使用各自方向剖面，手动云底仅在自动推算失败时回退；要让手动值直接生效，请切换为‘手动指定’，再点击对应的‘查询朝霞’或‘查询晚霞’。", style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(3, 0))
 
         self._add_var("weather_model", "ECMWF IFS 0.25°")
         row = ttk.Frame(form, style="Card.TFrame")
@@ -1873,9 +2080,17 @@ class FireCloudApp:
 
         btns = ttk.Frame(left, style="Card.TFrame")
         btns.pack(fill="x", pady=(8, 0))
-        self.fetch_button = ttk.Button(btns, text="查询 / 更新朝霞与晚霞结果", style="Accent.TButton", command=self.fetch_weather)
-        self.fetch_button.pack(fill="x", pady=(0, 6))
-        self.fetch_status_var = tk.StringVar(value="查询将在后台执行；429 时会快速退出，不会无限等待。")
+        self.fetch_buttons = {}
+        query_row = ttk.Frame(btns, style="Card.TFrame")
+        query_row.pack(fill="x", pady=(0, 6))
+        self.fetch_buttons["morning"] = ttk.Button(query_row, text="查询朝霞", style="Accent.TButton", command=lambda: self.fetch_weather("morning"))
+        self.fetch_buttons["morning"].pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.fetch_buttons["evening"] = ttk.Button(query_row, text="查询晚霞", style="Accent.TButton", command=lambda: self.fetch_weather("evening"))
+        self.fetch_buttons["evening"].pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self.fetch_buttons["both"] = ttk.Button(btns, text="一键查询朝晚霞", style="Accent.TButton", command=lambda: self.fetch_weather("both"))
+        self.fetch_buttons["both"].pack(fill="x", pady=(0, 6))
+        self.fetch_button = self.fetch_buttons["morning"]  # 兼容旧代码中对按钮状态的引用
+        self.fetch_status_var = tk.StringVar(value="可分别查询朝霞/晚霞，也可一键更新两个时段。")
         ttk.Label(btns, textvariable=self.fetch_status_var, style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(0, 6))
         ttk.Button(btns, text="恢复合肥默认设置", command=self.reset_defaults).pack(fill="x")
         ttk.Label(
@@ -1923,8 +2138,8 @@ class FireCloudApp:
         self.morning_score_label = tk.Label(morning_score_num_col, text="—", font=("Microsoft YaHei UI", 23, "bold"),
                                             fg="#1d4ed8", bg="#ffffff", width=5)
         self.morning_score_label.pack(pady=(0, 0))
-        ttk.Label(morning_score_num_col, text="发生概率*", style="Sub.TLabel").pack()
-        self.morning_upper_label = ttk.Label(morning_score_frame, text="上限 —", style="Card.TLabel", anchor="center")
+        ttk.Label(morning_score_num_col, text="常规概率*", style="Sub.TLabel").pack()
+        self.morning_upper_label = ttk.Label(morning_score_frame, text="上限概率 —", style="Card.TLabel", anchor="center")
         self.morning_upper_label.pack(pady=(5, 0))
         self.morning_color_score_label = tk.Label(morning_score_frame, text="色彩 —/100", font=("Microsoft YaHei UI", 9, "bold"),
                                                   fg="#c66a2b", bg="#ffffff", wraplength=116, justify="center")
@@ -1932,7 +2147,7 @@ class FireCloudApp:
         self.morning_rainbow_label = tk.Label(morning_score_frame, text="彩虹：—", font=("Microsoft YaHei UI", 8),
                                               fg="#7c5a9e", bg="#ffffff", wraplength=116, justify="center")
         self.morning_rainbow_label.pack(fill="x", pady=(7, 3))
-        self._set_text(self.morning_summary, "朝霞：尚未查询。选择日期与 ECMWF/GFS 模式后点击‘查询朝霞与晚霞’。")
+        self._set_text(self.morning_summary, "朝霞：尚未查询。选择日期与 ECMWF/GFS 模式后点击对应的‘查询朝霞’或‘查询晚霞’。")
         self.morning_params_frame = ttk.Frame(right, style="Card.TFrame")
         self.morning_params_frame.pack(fill="x", pady=(0, 6))
         self._add_var("morning_aod", "")
@@ -1940,7 +2155,7 @@ class FireCloudApp:
         ttk.Label(self.morning_params_frame, text="朝霞 AOD（留空使用 CAMS）", style="Card.TLabel").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=2)
         ttk.Entry(self.morning_params_frame, textvariable=self.vars["morning_aod"], width=10).grid(row=0, column=1, sticky="w", padx=(0, 16), pady=2)
         ttk.Button(self.morning_params_frame, text="清空/恢复 CAMS", command=lambda: self.vars["morning_aod"].set("")).grid(row=0, column=2, sticky="w", padx=(0, 14), pady=2)
-        ttk.Label(self.morning_params_frame, text="云底高度手动值/回退值（km，离地；改后需重新查询）", style="Card.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=2)
+        ttk.Label(self.morning_params_frame, text="云底绝对高度手动值/回退值（km，海拔；改后需重新查询）", style="Card.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=2)
         ttk.Entry(self.morning_params_frame, textvariable=self.vars["morning_cloud_base_km"], width=10).grid(row=1, column=1, sticky="w", pady=2)
         self.morning_aod_status_var = tk.StringVar(value="AOD 留空时自动使用朝霞方向 CAMS 值")
         ttk.Label(self.morning_params_frame, textvariable=self.morning_aod_status_var, style="Sub.TLabel").grid(row=0, column=3, sticky="w", padx=(8, 0), pady=2)
@@ -1977,8 +2192,8 @@ class FireCloudApp:
         self.evening_score_label = tk.Label(evening_score_num_col, text="—", font=("Microsoft YaHei UI", 23, "bold"),
                                             fg="#1d4ed8", bg="#ffffff", width=5)
         self.evening_score_label.pack(pady=(0, 0))
-        ttk.Label(evening_score_num_col, text="发生概率*", style="Sub.TLabel").pack()
-        self.evening_upper_label = ttk.Label(evening_score_frame, text="上限 —", style="Card.TLabel", anchor="center")
+        ttk.Label(evening_score_num_col, text="常规概率*", style="Sub.TLabel").pack()
+        self.evening_upper_label = ttk.Label(evening_score_frame, text="上限概率 —", style="Card.TLabel", anchor="center")
         self.evening_upper_label.pack(pady=(5, 0))
         self.evening_color_score_label = tk.Label(evening_score_frame, text="色彩 —/100", font=("Microsoft YaHei UI", 9, "bold"),
                                                   fg="#c66a2b", bg="#ffffff", wraplength=116, justify="center")
@@ -1994,7 +2209,7 @@ class FireCloudApp:
         ttk.Label(self.evening_params_frame, text="晚霞 AOD（留空使用 CAMS）", style="Card.TLabel").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=2)
         ttk.Entry(self.evening_params_frame, textvariable=self.vars["evening_aod"], width=10).grid(row=0, column=1, sticky="w", padx=(0, 16), pady=2)
         ttk.Button(self.evening_params_frame, text="清空/恢复 CAMS", command=lambda: self.vars["evening_aod"].set("")).grid(row=0, column=2, sticky="w", padx=(0, 14), pady=2)
-        ttk.Label(self.evening_params_frame, text="云底高度手动值/回退值（km，离地；改后需重新查询）", style="Card.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=2)
+        ttk.Label(self.evening_params_frame, text="云底绝对高度手动值/回退值（km，海拔；改后需重新查询）", style="Card.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=2)
         ttk.Entry(self.evening_params_frame, textvariable=self.vars["evening_cloud_base_km"], width=10).grid(row=1, column=1, sticky="w", pady=2)
         self.evening_aod_status_var = tk.StringVar(value="AOD 留空时自动使用晚霞方向 CAMS 值")
         ttk.Label(self.evening_params_frame, textvariable=self.evening_aod_status_var, style="Sub.TLabel").grid(row=0, column=3, sticky="w", padx=(8, 0), pady=2)
@@ -2032,20 +2247,22 @@ class FireCloudApp:
         except tk.TclError:
             pass
 
-    def fetch_weather(self):
-        """在后台执行单次朝晚霞查询，主窗口保持响应并阻止重复点击。"""
+    def fetch_weather(self, direction_key="both"):
+        """在后台查询指定方向；不清空另一方向已有结果。"""
         if self.fetch_in_progress:
             return
         self.fetch_in_progress = True
+        self._active_query_direction = direction_key
         try:
-            self.fetch_button.configure(state="disabled")
-            self.fetch_status_var.set("正在查询：天气接口有超时限制；如果被限流会停止并提示。")
+            for key, button in getattr(self, "fetch_buttons", {}).items():
+                button.configure(state="disabled")
+            self.fetch_status_var.set(("正在查询朝霞" if direction_key == "morning" else "正在查询晚霞" if direction_key == "evening" else "正在查询朝霞与晚霞") + "；天气接口遇到限流时会停止并提示。")
         except Exception:
             pass
 
         def worker():
             try:
-                self._fetch_weather_task()
+                self._fetch_weather_task(direction_key)
             finally:
                 try:
                     self.after(0, self._finish_fetch_weather)
@@ -2057,13 +2274,14 @@ class FireCloudApp:
     def _finish_fetch_weather(self):
         self.fetch_in_progress = False
         try:
-            self.fetch_button.configure(state="normal")
+            for button in getattr(self, "fetch_buttons", {}).values():
+                button.configure(state="normal")
             self.fetch_status_var.set("查询结束。若显示 HTTP 429，请先暂停 10–20 分钟再试。")
         except Exception:
             pass
 
-    def _fetch_weather_task(self):
-        """后台查询：按所选 ECMWF/GFS 模式预测朝霞和晚霞。"""
+    def _fetch_weather_task(self, requested_direction="both"):
+        """后台查询：按所选模式计算朝霞、晚霞或指定的单一方向。"""
         try:
             data = self._read_inputs()
             model_label = self.vars["weather_model"].get()
@@ -2071,8 +2289,29 @@ class FireCloudApp:
             cloud_base_mode = self.vars["cloud_base_mode"].get()
 
             fetched_at = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
+            # 读取 Open-Meteo 模型元数据：起报时间与数据上线时间，均不是本机查询时间。
+            model_meta = _get_model_metadata_signature(model_id)
+            def _fmt_model_epoch(value):
+                try:
+                    return datetime.fromtimestamp(float(value), tz=timezone.utc).astimezone(
+                        timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+                except (TypeError, ValueError, OSError, OverflowError):
+                    return None
+            model_init_time = _fmt_model_epoch((model_meta or {}).get("initialisation"))
+            model_available_time = _fmt_model_epoch((model_meta or {}).get("availability"))
+            model_modified_time = _fmt_model_epoch((model_meta or {}).get("modification"))
+            if model_available_time:
+                model_time_text = f"模型数据上线：{model_available_time}（北京时间）"
+            elif model_modified_time:
+                model_time_text = f"模型数据处理完成：{model_modified_time}（北京时间；上线时间不可用）"
+            elif model_init_time:
+                model_time_text = f"模式起报时间：{model_init_time}（北京时间；数据上线时间不可用）"
+            else:
+                model_time_text = "模型数据时间：暂时无法读取（元数据接口不可用）"
+            # 起报时间已由上方模型数据时间字段说明，不再重复追加“| 模式起报”。
             results = {}
-            for direction_index, direction_key in enumerate(("morning", "evening")):
+            directions_to_query = (("morning", "evening") if requested_direction == "both" else (requested_direction,))
+            for direction_index, direction_key in enumerate(directions_to_query):
                 base_progress = 3 if direction_index == 0 else 51
                 self._set_main_progress(base_progress, ("正在计算朝霞路径……" if direction_key == "morning" else "朝霞完成，正在计算晚霞路径……"))
                 if direction_key == "morning":
@@ -2086,7 +2325,7 @@ class FireCloudApp:
                 aod_key = f"{direction_key}_aod"
                 cloud_base_km = parse_float(self.vars[cloud_base_key].get(), f"{direction_name}云底高度手动值/回退值")
                 if not 0.1 <= cloud_base_km <= 15.0:
-                    raise ValueError(f"{direction_name}云底高度应在 0.1–15 km 之间，请以云底离地高度输入。")
+                    raise ValueError(f"{direction_name}云底绝对高度应在 0.1–15 km 之间，请以海拔绝对高度输入。")
                 aod_text = self.vars[aod_key].get().strip()
                 manual_aod = parse_float(aod_text, f"{direction_name} AOD") if aod_text else None
                 if manual_aod is not None and manual_aod < 0:
@@ -2100,7 +2339,8 @@ class FireCloudApp:
                 coarse_coords = [destination_point(data["lat"], data["lon"], azimuth, d) for d in coarse_distances]
                 self._set_main_progress(base_progress + 7, f"{direction_name}：获取初始云层剖面……")
                 try:
-                    coarse_profiles = self._fetch_cloud_base_profiles(coarse_coords, coarse_distances, event_utc, model_id)["samples"]
+                    coarse_profiles = self._fetch_cloud_base_profiles(coarse_coords, coarse_distances, event_utc, model_id,
+                                                                          local_ground_elevation_m=data.get("elevation_m"))["samples"]
                 except Exception as exc:
                     coarse_profiles = [{"distance_km": d, "estimated_base_km": None, "status": f"剖面失败：{exc}", "levels": []} for d in coarse_distances]
                 self._set_main_progress(base_progress + 13, f"{direction_name}：获取气溶胶数据……")
@@ -2236,18 +2476,25 @@ class FireCloudApp:
                 self.web_aod_valid_time = aod_time
                 self._set_main_progress(base_progress + 44, f"{direction_name}：细化云底剖面并计算评分……")
                 try:
-                    profile_result = self._fetch_cloud_base_profiles(coords, distances, event_utc, model_id)
+                    profile_result = self._fetch_cloud_base_profiles(coords, distances, event_utc, model_id,
+                                                                          local_ground_elevation_m=data.get("elevation_m"))
                     profiles = profile_result["samples"]
                 except Exception as profile_exc:
                     profiles = [{"distance_km": d, "estimated_base_km": None,
                                  "status": f"剖面获取失败：{profile_exc}", "levels": []}
                                 for d in distances]
+                elevation_filter_result = apply_high_elevation_nearby_low_cloud_filter(
+                    samples, profiles, data.get("elevation_m", 0.0), radius_km=80.0)
                 geometry = analyze_cloud_base_geometry(
                     samples, profiles, aod_samples, data["date"], data["utc_offset"], data["lat"], data["lon"],
                     cloud_base_mode, cloud_base_km, manual_aod=manual_aod,
                     weighted_aod=effective_aod, scale_height_km=0.5,
-                    event_type="sunrise" if direction_key == "morning" else "sunset")
-                inferred = infer_from_cloud_path(samples, effective_aod)
+                    event_type="sunrise" if direction_key == "morning" else "sunset",
+                    ground_elevation_m=data.get("elevation_m", 0.0))
+                local_profile = next((p for p in profiles if abs(float(p.get("distance_km", 999999))) < 0.01), None)
+                local_low_above_ground = has_local_low_cloud_above_ground(local_profile.get("levels") if local_profile else None)
+                inferred = infer_from_cloud_path(samples, effective_aod,
+                                                 local_low_cloud_above_ground=local_low_above_ground)
                 farthest = geometry["farthest"]
                 local_geometry = next((r for r in geometry.get("rows", []) if r.get("distance_km") == 0), None)
                 local_reach = local_geometry.get("reach_km") if local_geometry else None
@@ -2255,13 +2502,22 @@ class FireCloudApp:
                     local_reach = max_reach if max_reach > 0 else None
                 boundaries = estimate_path_cloud_boundaries(samples, local_reach)
                 inferred = apply_path_score_pair(inferred, geometry, boundaries)
-                inferred = apply_low_cloud_screen_constraint(inferred, samples=samples, source="online_path", max_relevant_distance_km=max_reach)
+                inferred = apply_low_cloud_screen_constraint(inferred, samples=samples, source="online_path",
+                                                             max_relevant_distance_km=max_reach,
+                                                             local_low_cloud_above_ground=local_low_above_ground)
                 inferred = apply_peak_cloud_color(inferred, boundaries, samples)
+                if elevation_filter_result.get("applied"):
+                    inferred.setdefault("score_notes", []).append(
+                        "高海拔近场低云过滤：" + elevation_filter_result.get("reason", "已应用") +
+                        f"；处理采样点 {elevation_filter_result.get('removed_points', 0)} 个。80 km外低云保留参与原有光路判断。")
+                    inferred.setdefault("reasons", []).append(
+                        "结果区低云量已按海拔过滤后的采样点重新加权；0–80 km内已确认位于机位以下的低云按0计，80 km外低云仍参与统计。")
                 # 不再把“最远中高云采样点”作为独立结论展示，避免与“云边距”混淆。
                 cloud_edge_text = '未估算' if boundaries['cloud_edge_distance_km'] is None else f"约 {boundaries['cloud_edge_distance_km']:.0f} km"
                 fire_range_text = '未识别' if boundaries['fire_cloud_range_km'] is None else f"约 {boundaries['fire_cloud_range_km']} km"
-                gap_text = ('未形成可判读的晴空间隔' if boundaries['clear_gap_start_km'] is None else
-                            f"约 {boundaries['clear_gap_start_km']}–{boundaries['clear_gap_end_km']} km")
+                all_gaps = boundaries.get('clear_gaps') or []
+                gap_text = ('未形成可判读的晴空间隔' if not all_gaps else
+                            '；'.join(f"{g['start_km']:.0f}–{g['end_km']:.0f} km（{g['size_km']:.0f} km）" for g in all_gaps))
                 cap_note = "已触及 600 km 采样上限；若理论深入距离更远，需进一步提高上限或采用更稀疏的远距离采样。" if sample_limit >= 600 and max_reach > 600 else ""
                 if rainbow_result.get("score") is None:
                     rainbow_summary = "彩虹出现机会：暂不可估"
@@ -2271,26 +2527,67 @@ class FireCloudApp:
                         rainbow_summary += f"；反太阳方向约 {rainbow_result['distance_km']:.0f} km 处降水条件最突出"
                 # 主结果区只保留拍摄决策所需的摘要；完整解释和逐点数据仍在“详细采样报告”中。
                 aod_short = ('手动 ' + format(effective_aod, '.2f') if manual_aod is not None else
-                             ('—' if effective_aod is None else format(effective_aod, '.2f') + ' CAMS'))
+                             ('—' if effective_aod is None else format(effective_aod, '.2f')))
                 base_short = ('—' if local_geometry is None or local_geometry.get('cloud_base_km') is None else
                               format(local_geometry.get('cloud_base_km'), '.2f') + ' km')
+                base_source_raw = local_geometry.get('base_source', '未知来源') if local_geometry else '未知来源'
+                if '剖面推算' in base_source_raw:
+                    base_source_short = '推算'
+                elif '自动失败' in base_source_raw:
+                    base_source_short = '默认值'
+                elif '手动' in base_source_raw:
+                    base_source_short = '手动值'
+                else:
+                    base_source_short = '默认值' if cloud_base_mode == '自动' else base_source_raw
+                # “可染色云量占比”是启发式估算，不是气象模式直接输出的观测量。
+                # 先估算本地总云量中中/高云所占比例，再根据太阳方向云路是否存在近距离晴空缺口、
+                # 以及本地连续云区是否延伸很远进行折减。晴空缺口越远/路径云层越连续，估算占比越低。
+                local_total = inferred.get("total")
+                local_mid = inferred.get("mid")
+                local_high = inferred.get("high")
+                target_cloud = max([v for v in (local_mid, local_high) if isinstance(v, (int, float))], default=None)
+                all_gaps = boundaries.get("clear_gaps") or []
+                gap_start = min((float(g.get("start_km", 0)) for g in all_gaps), default=boundaries.get("clear_gap_start_km"))
+                gap_count = len(all_gaps)
+                total_gap_size = sum(float(g.get("size_km", 0) or 0) for g in all_gaps)
+                local_cloud_extent = boundaries.get("fire_cloud_range_km")
+                if isinstance(local_total, (int, float)) and local_total > 0 and target_cloud is not None:
+                    base_ratio = max(0.0, min(1.0, target_cloud / local_total))
+                    if isinstance(gap_start, (int, float)):
+                        # 近端云洞有利于金色表现；多个云洞的总宽度和数量也会增加潜在可染色机会。
+                        gap_factor = max(0.15, min(1.0, 1.0 - max(0.0, gap_start - 30.0) / 220.0))
+                        reach_for_ratio = boundaries.get("local_cloud_reach_km") or boundaries.get("cloud_edge_distance_km")
+                        if isinstance(reach_for_ratio, (int, float)) and reach_for_ratio > 0:
+                            gap_factor = min(1.0, gap_factor + 0.18 * min(1.0, total_gap_size / reach_for_ratio) + 0.04 * min(3, max(0, gap_count-1)))
+                    else:
+                        # 未识别到晴空间隔时，连续云路越长，越保守；数据不足也不直接判为 0。
+                        extent = float(local_cloud_extent) if isinstance(local_cloud_extent, (int, float)) else 100.0
+                        gap_factor = max(0.15, min(0.65, 0.65 - max(0.0, extent - 30.0) / 300.0))
+                    tintable_ratio = max(0, min(100, round(base_ratio * gap_factor * 100)))
+                    tintable_text = f"约 {tintable_ratio}%估算"
+                elif isinstance(local_total, (int, float)) and local_total <= 0:
+                    tintable_text = "0%估算（本地无云）"
+                else:
+                    tintable_text = "暂不可估"
                 summary = (
+                    f"{model_time_text}\n"
                     f"{direction_name} · {data['place']} · {data['date'].isoformat()}　{event_dt.strftime('%H:%M')} / 方位 {azimuth:.0f}°\n"
-                    f"{model_label}　|　云量 总 {self._fmt_pct(inferred['total'])} · 低 {self._fmt_pct(inferred['low'])} · 中 {self._fmt_pct(inferred['mid'])} · 高 {self._fmt_pct(inferred['high'])}\n"
-                    f"火烧云范围 {fire_range_text}　|　云边距 {cloud_edge_text}　|　晴空间隔 {gap_text}\n"
-                    f"云底 {base_short}（{local_geometry.get('base_source', '未知来源') if local_geometry else '未知来源'}）　|　AOD {aod_short}\n"
-                    f"数据更新：{fetched_at}　|　沿太阳方位离散采样估算，详见“各采样点具体云况”。"
+                    f"{model_label}　|　云量 总 {self._fmt_pct(inferred['total'])} · 低 {self._fmt_pct(inferred['low'])} · 中 {self._fmt_pct(inferred['mid'])} · 高 {self._fmt_pct(inferred['high'])} · 可染色云量占比 {tintable_text}\n"
+                    f"潜在霞云距 {fire_range_text}　|　极限云距 {cloud_edge_text}　|　晴空间隔 {gap_text}\n"
+                    f"云底 {base_short}（{base_source_short}）　|　AOD {aod_short}"
                 )
                 detail_lines = [
                     f"{direction_name}详细采样报告", f"地点：{data['place']}；日期：{data['date']}；模式：{model_label}；事件时刻：{event_dt}；方位角：{azimuth:.2f}°",
                     f"火烧云发生概率估计：{inferred['regular_score']}%（经验估计，尚未经历史样本校准）",
                     f"有利情景上限：{inferred['upper_score']}%（表示条件理想时的潜在机会，不代表实际发生概率）",
                     f"色彩表现评分：{inferred.get('color_score', '—')}/100（{inferred.get('color_score_label', '待估')}；{inferred.get('color_score_note', '经验指数')}）",
-                    f"火烧云范围（本地连续中高云末端）：{fire_range_text}；云边距：{cloud_edge_text}；晴空间隔：{gap_text}",
+                    f"可染色云量占比：{tintable_text}。该值是结合本地中高云比例、太阳方向晴空间隔距离和连续云区延伸距离的启发式估算，不是模式直接输出的真实受光比例。",
+                    model_time_text,
+                    f"潜在霞云距（本地连续中高云末端）：{fire_range_text}；极限云距（几何上限）：{cloud_edge_text}；晴空间隔：{gap_text}",
                     (f"彩虹出现机会：暂不可估；{rainbow_result.get('note', '反太阳方向降水条件数据不可用。')}" if rainbow_result.get("score") is None else
                      f"彩虹出现机会：{rainbow_result['label']}（经验指数 {rainbow_result['score']}/100，非统计概率）；反太阳方向采样点 {rainbow_result['distance_km']:.0f} km，降水概率 {self._fmt_pct(rainbow_result.get('precip_probability'))}，小时降水 {('—' if rainbow_result.get('precipitation') is None else format(rainbow_result['precipitation'], '.2f')+' mm/h')}"),
                     f"采样动态扩展：初始 0–200 km；粗采样最大理论距离 {max_reach:.1f} km；按约 100 km 缓冲扩展，最终采样上限 {distances[-1]} km。",
-                    "距离 | 中心坐标 | 总云/低云/中云/高云 | 能见度 | 风速 | 云底 | 有效云底 | 理论深入距离 | 几何筛选",
+                    "距离 | 中心坐标 | 总云/低云/中云/高云 | 能见度 | 风速 | 云底绝对海拔 | 有效云底绝对海拔 | 理论深入距离 | 几何筛选",
                 ]
                 prof_map = {x["distance_km"]: x for x in profiles}
                 geo_map = {x["distance_km"]: x for x in geometry["rows"]}
@@ -2319,8 +2616,8 @@ class FireCloudApp:
                             f"风速 {('—' if rec.get('wind_speed_10m') is None else format(rec['wind_speed_10m'],'.1f')+' m/s')}"
                         )
                 detail_lines.extend(["", "【双评分说明】", *["• "+r for r in inferred["reasons"]],
-                                     "常规评分偏保守，反映当前预报证据；上限评分是假设有利云层形态/云隙恰好形成时的潜在观赏效果。两者都不是发生概率，尚未用历史实况校准。",
-                                     "边界定义：以中云或高云任一云量≥25%标记中高云采样点；火烧云范围取本地连续中高云区沿太阳方向的末端。云边距取本地云底高度推算的理论照明距离与晴空间隔后远端云起点两者中的较小值；若未识别到远端云，则使用理论照明距离。所有边界均为离散采样估算，不是连续云缘。",
+                                     "常规概率为基于当前预报证据的经验估计；上限概率是假设有利云层形态/云隙恰好形成时的潜在机会估计。两者尚未经历史实况校准。",
+                                     "边界定义：以中云或高云任一云量≥25%标记中高云采样点；潜在霞云距取本地连续中高云区沿太阳方向的末端。极限云距仅由本地有效云底按 D=2√(2Rh_eff) 计算，不再被远端云起点缩短。晴空间隔列出极限云距以内识别到的全部有效云洞，括号内为各云洞宽度；若最后一个云洞延伸至理论上限，则终点截断到极限云距。云洞边界为离散采样估算，不是连续云缘。",
                                      "重要限制：当前边界沿观测点至太阳方位的单线采样估算；地图视图使用现有每个距离点周边约15 km采样点，属于稀疏空间示意，不等于卫星云图或连续三维云体。要确认真实云洞边界，需要更密集二维采样与云顶/云底信息。",
                                      "彩虹原理依据教程第 2.3.2 节：一次内反射彩虹的视角约 42°，位于反太阳方向；观察者不一定要在本地下雨。当前仅用反太阳方向 0/25/50/100/150 km 的模式降水概率、小时降水量和本地总云量估算机会指数，无法识别雨滴直径、液态相态、云幡结构或实际可见度，因此指数不是统计概率。",
                                      "说明：剖面云底为气压层云量/RH启发式推算，不是实测。云底采用最低可能云层，不保证就是最易着色的云层。",
@@ -2329,12 +2626,20 @@ class FireCloudApp:
                 # 自动预报只有低/中/高云量层，没有精确云底云顶，因此使用宽高度带作为明确标注的近似。
                 curve_zones = []
                 ordered_curve_samples = sorted(samples, key=lambda q: q.get("distance_km", 0))
+                local_curve_reach = None
+                if local_geometry and isinstance(local_geometry.get("reach_km"), (int, float)) and local_geometry.get("reach_km") > 0:
+                    local_curve_reach = float(local_geometry["reach_km"])
                 for si, sm_curve in enumerate(ordered_curve_samples):
                     dist_c = float(sm_curve.get("distance_km", 0))
+                    if local_curve_reach is not None and dist_c > local_curve_reach:
+                        continue
                     prev_d = float(ordered_curve_samples[si-1].get("distance_km", dist_c)) if si > 0 else dist_c
                     next_d = float(ordered_curve_samples[si+1].get("distance_km", dist_c)) if si+1 < len(ordered_curve_samples) else dist_c
                     left_d = max(0.0, (prev_d + dist_c) / 2.0) if si > 0 else 0.0
                     right_d = (dist_c + next_d) / 2.0 if si+1 < len(ordered_curve_samples) else dist_c + max(5.0, (dist_c-prev_d)/2.0 if si > 0 else 12.5)
+                    if local_curve_reach is not None:
+                        left_d = min(left_d, local_curve_reach)
+                        right_d = min(right_d, local_curve_reach)
                     if right_d <= left_d:
                         right_d = left_d + 5.0
                     for cloud_key, height_band in (("cloud_cover_low", (0.0, 2000.0)),
@@ -2350,6 +2655,13 @@ class FireCloudApp:
                               "utc_offset": data["utc_offset"], "aod": effective_aod,
                               "visibility_km": (sum(visibility_values)/len(visibility_values) if visibility_values else None)}
                 dynamic_curve = self._build_dynamic_light_curve(curve_data, curve_zones, (event_dt, azimuth), single_mode=True) if curve_zones else {"samples": [], "peak": None, "note": "缺少可用云量采样，未生成动态曲线。"}
+                # 峰值云色与动态曲线峰值时刻对齐：使用所有有效距离段共同计算出的峰值时刻色彩，
+                # 避免 GUI 色块只由第一个云洞的距离规则决定；色相仍属于示意估算。
+                dynamic_peak = dynamic_curve.get("peak")
+                if dynamic_peak and isinstance(dynamic_peak.get("color"), (tuple, list)) and len(dynamic_peak["color"]) == 3:
+                    inferred["color_rgb"] = tuple(int(max(0, min(255, c))) for c in dynamic_peak["color"])
+                    inferred["peak_cloud_color_rule"] = "动态曲线峰值时刻的综合受光色（所有有效距离段加权；色相为示意估算）"
+                    inferred["color_name"] = inferred["peak_cloud_color_rule"]
                 results[direction_key] = {"summary": summary, "details": "\n".join(detail_lines), "inferred": inferred,
                                           "samples": samples, "raw_details": raw_details, "profiles": profiles, "geometry": geometry,
                                           "distances": distances, "max_reach": max_reach, "aod": effective_aod,
@@ -2360,18 +2672,24 @@ class FireCloudApp:
                                           "raw_weather": raw_locations}
 
             self._set_main_progress(100, "朝霞与晚霞预报完成")
-            self.direction_results = results
+            merged_results = dict(getattr(self, "direction_results", {}) or {})
+            merged_results.update(results)
+            self.direction_results = merged_results
             self.last_fetch_time = fetched_at
-            self.last_report = "\n\n".join(results[k]["details"] for k in ("morning", "evening") if k in results)
-            self._set_text(self.morning_summary, results.get("morning", {}).get("summary", "朝霞暂无结果"))
-            self._set_text(self.evening_summary, results.get("evening", {}).get("summary", "晚霞暂无结果"))
+            self.last_report = "\n\n".join(self.direction_results[k]["details"] for k in ("morning", "evening") if k in self.direction_results)
+            if "morning" in results:
+                self._set_text(self.morning_summary, results["morning"].get("summary", "朝霞暂无结果"))
+            if "evening" in results:
+                self._set_text(self.evening_summary, results["evening"].get("summary", "晚霞暂无结果"))
             for direction_key, prefix in (("morning", "morning"), ("evening", "evening")):
+                if direction_key not in results:
+                    continue
                 result = results.get(direction_key, {})
                 inferred_result = result.get("inferred", {})
                 regular_score = inferred_result.get("regular_score", inferred_result.get("score", "—"))
                 upper_score = inferred_result.get("upper_score", "—")
                 getattr(self, f"{prefix}_score_label").configure(text=f"{regular_score}%" if regular_score != "—" else "—")
-                getattr(self, f"{prefix}_upper_label").configure(text=f"上限 {upper_score}%")
+                getattr(self, f"{prefix}_upper_label").configure(text=f"上限概率 {upper_score}%")
                 color_score = inferred_result.get("color_score")
                 color_label = inferred_result.get("color_score_label", "色彩待估")
                 getattr(self, f"{prefix}_color_score_label").configure(
@@ -2379,12 +2697,13 @@ class FireCloudApp:
                 rainbow = result.get("rainbow", {})
                 getattr(self, f"{prefix}_rainbow_label").configure(
                     text=self._rainbow_indicator_text(rainbow, result.get("event_dt"), direction_key))
-            self._draw_peak_color_swatch("morning")
-            self._draw_peak_color_swatch("evening")
-            self._draw_colorbar("morning")
-            self._draw_colorbar("evening")
+            for _draw_key in results:
+                self._draw_peak_color_swatch(_draw_key)
+                self._draw_colorbar(_draw_key)
             # 分别显示每个方向本次采用的 AOD 来源，不覆盖用户手动输入。
             for direction_key, status_var in (("morning", self.morning_aod_status_var), ("evening", self.evening_aod_status_var)):
+                if direction_key not in results:
+                    continue
                 direction_result = results.get(direction_key, {})
                 direction_aod = direction_result.get("aod")
                 manual_text = self.vars[f"{direction_key}_aod"].get().strip()
@@ -2394,7 +2713,8 @@ class FireCloudApp:
                     status_var.set(f"采用该方向 CAMS AOD={direction_aod:.3f}")
                 else:
                     status_var.set("该方向 CAMS AOD 不可用；未做 AOD 修正")
-            messagebox.showinfo("查询完成", f"已完成 {model_label} 朝霞与晚霞预报。\n朝霞与晚霞使用各自太阳方位和采样路径；详细采样数据请点击对应按钮查看。")
+            done_name = "朝霞" if requested_direction == "morning" else "晚霞" if requested_direction == "evening" else "朝霞与晚霞"
+            messagebox.showinfo("查询完成", f"已完成 {model_label} {done_name}预报。")
         except Exception as exc:
             self._set_main_progress(0, "查询失败；请查看错误提示")
             messagebox.showerror("获取失败", f"无法完成朝霞/晚霞预报：\n{exc}")
@@ -2435,7 +2755,7 @@ class FireCloudApp:
         coords = [destination_point(lat, lon, anti_azimuth, d) for d in distances]
         locations = FireCloudApp._fetch_weather_locations(coords, model_id)
         candidates = []
-        for dist, coord, loc in zip(distances, coords, locations):
+        for profile_index, (dist, coord, loc) in enumerate(zip(distances, coords, locations)):
             hourly = loc.get("hourly", {})
             times = hourly.get("time", [])
             if not times:
@@ -2695,7 +3015,7 @@ class FireCloudApp:
         ttk.Label(grid_control, text="地图评分：").pack(side="left")
         score_mode_var = tk.StringVar(value="常规评分")
         score_mode_box = ttk.Combobox(grid_control, textvariable=score_mode_var,
-                                      values=["常规评分", "上限评分"], state="readonly", width=9)
+                                      values=["常规概率", "上限概率"], state="readonly", width=9)
         score_mode_box.pack(side="left", padx=(0, 10))
         ttk.Label(
             grid_control,
@@ -2750,7 +3070,7 @@ class FireCloudApp:
 
         def draw_map(canvas, points, polygons, city_results, title):
             map_render_data[title] = (canvas, points, polygons, city_results, title)
-            score_key = "upper_score" if score_mode_var.get() == "上限评分" else "score"
+            score_key = "upper_score" if score_mode_var.get() == "上限概率" else "score"
             canvas.delete("all")
             w, h = max(canvas.winfo_width(), 500), max(canvas.winfo_height(), 280)
             margin = 34
@@ -2844,8 +3164,8 @@ class FireCloudApp:
                 fill = self._national_color(score)
                 canvas.create_oval(x-3.8, y-3.8, x+3.8, y+3.8, fill=fill, outline="#182230", width=1, tags=("city", name))
                 canvas.create_text(x+5, y-5, text=name, anchor="sw", fill="#172b4d", font=("Microsoft YaHei UI", 7), tags=("citylabel", name))
-                tip = (f"{name} · {title}\n常规评分：{'缺失' if res.get('score') is None else res.get('score')} / 100"
-                       f"\n上限评分：{'缺失' if res.get('upper_score') is None else res.get('upper_score')} / 100"
+                tip = (f"{name} · {title}\n常规概率：{'缺失' if res.get('score') is None else res.get('score')} / 100"
+                       f"\n上限概率：{'缺失' if res.get('upper_score') is None else res.get('upper_score')} / 100"
                        f"\n总云 {self._pct(res.get('total'))} / 低云 {self._pct(res.get('low'))} / 中云 {self._pct(res.get('mid'))} / 高云 {self._pct(res.get('high'))}\n降水概率 {self._pct(res.get('precip'))}")
                 canvas.tag_bind(name, "<Button-1>", lambda _e, text=tip: messagebox.showinfo("省会点详情", text, parent=win))
             canvas.create_text(w/2, h-8, text=f"中国区域示意投影 · {score_mode_var.get()}（经验指数，非概率）", fill="#667085", font=("Microsoft YaHei UI", 8))
@@ -2952,6 +3272,7 @@ class FireCloudApp:
         try:
             lat = parse_float(self.vars["lat"].get(), "纬度")
             lon = parse_float(self.vars["lon"].get(), "经度")
+            elevation_m = parse_float(self.vars["elevation"].get(), "海拔") if self.vars.get("elevation") and self.vars["elevation"].get().strip() else 0.0
             if not -90 <= lat <= 90 or not -180 <= lon <= 180:
                 raise ValueError("纬度范围为 -90 到 90，经度范围为 -180 到 180。")
             local_now = datetime.now().astimezone()
@@ -3141,15 +3462,20 @@ class FireCloudApp:
                         samples, profiles, aod_samples, event["date"], utc_offset, lat, lon,
                         base_mode, manual_base, manual_aod=manual_aod, weighted_aod=effective_aod,
                         scale_height_km=0.5,
-                        event_type="sunrise" if direction_key == "morning" else "sunset")
-                    inferred = infer_from_cloud_path(samples, effective_aod)
+                        event_type="sunrise" if direction_key == "morning" else "sunset",
+                        ground_elevation_m=data.get("elevation_m", 0.0))
+                    local_low_above_ground = has_local_low_cloud_above_ground(local_profile.get("levels") if local_profile else None)
+                    inferred = infer_from_cloud_path(samples, effective_aod,
+                                                     local_low_cloud_above_ground=local_low_above_ground)
                     local_geometry = next((r for r in geometry.get("rows", []) if r.get("distance_km") == 0), None)
                     reach = local_geometry.get("reach_km") if local_geometry else None
                     if not isinstance(reach, (int, float)) or reach <= 0:
                         reach = max((r.get("reach_km") or 0 for r in geometry.get("rows", [])), default=0)
                     boundaries = estimate_path_cloud_boundaries(samples, reach)
                     inferred = apply_path_score_pair(inferred, geometry, boundaries)
-                    inferred = apply_low_cloud_screen_constraint(inferred, samples=samples, source="online_path", max_relevant_distance_km=reach)
+                    inferred = apply_low_cloud_screen_constraint(inferred, samples=samples, source="online_path",
+                                                                 max_relevant_distance_km=reach,
+                                                                 local_low_cloud_above_ground=local_low_above_ground)
                     return inferred, {"target_cloud": inferred.get("target_cloud"), "total": inferred.get("total"),
                                       "low": inferred.get("low"), "mid": inferred.get("mid"), "high": inferred.get("high"),
                                       "color_score": inferred.get("color_score"),
@@ -3239,7 +3565,8 @@ class FireCloudApp:
                             if abs((datetime.fromisoformat(times[idx]) - event_utc).total_seconds()) > 5400:
                                 score, vals = None, {}
                             else:
-                                loc_elevation = loc.get("elevation", 0.0)
+                                # 本地两日预测优先使用 GUI 中选定/手动修改的观测点海拔。
+                                loc_elevation = elevation_m
                                 if not isinstance(loc_elevation, (int, float)) or not math.isfinite(loc_elevation):
                                     loc_elevation = 0.0
                                 event_aod = aod_for_event(event_utc)
@@ -3313,7 +3640,7 @@ class FireCloudApp:
                                 f"{lead}\n"
                                 f"云量：总云 {self._pct(total)} ｜ 低云 {self._pct(low)} ｜ 中云 {self._pct(mid)} ｜ 高云 {self._pct(high)}\n"
                                 f"降水概率：{self._pct(precip)} ｜ AOD：{aod_text}\n"
-                                f"云底剖面：{('约 '+format(vals.get('cloud_base_km'), '.2f')+' km' if vals.get('cloud_base_km') is not None else '不可用')}；理论照明距离：{('约 '+format(vals.get('reach_km'), '.0f')+' km' if vals.get('reach_km') is not None else '不可用')}\n"
+                                f"云底绝对海拔：{('约 '+format(vals.get('cloud_base_km'), '.2f')+' km ASL' if vals.get('cloud_base_km') is not None else '不可用')}；理论照明距离：{('约 '+format(vals.get('reach_km'), '.0f')+' km' if vals.get('reach_km') is not None else '不可用')}\n"
                                 f"色彩倾向：{vals.get('color_name') or '待估'}；色彩评分是独立的经验指数。\n"
                                 f"{cloud_tendency}\n"
                                 "发生评分与色彩评分使用统一核心；颜色色块来自云况/能见度/AOD和低云屏障，不再用发生评分直接着色。\n"
@@ -3795,7 +4122,7 @@ class FireCloudApp:
         )
 
     @staticmethod
-    def _fetch_cloud_base_profiles(coords, distances, sunset_utc, model_id):
+    def _fetch_cloud_base_profiles(coords, distances, sunset_utc, model_id, local_ground_elevation_m=None):
         """读取沿日落方向中心采样点的气压层云量/RH/位势高度，推算最低可能云底。"""
         if model_id == "ecmwf_ifs025":
             levels = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50]
@@ -3834,7 +4161,7 @@ class FireCloudApp:
             150: 13500, 100: 15800, 50: 19300,
         }
         results = []
-        for dist, coord, loc in zip(distances, coords, locations):
+        for profile_index, (dist, coord, loc) in enumerate(zip(distances, coords, locations)):
             hourly = loc.get("hourly", {})
             times = hourly.get("time", [])
             if not times:
@@ -3849,7 +4176,11 @@ class FireCloudApp:
                 results.append({"distance_km": dist, "estimated_base_km": None, "status": "无接近日落时刻的剖面", "levels": []})
                 continue
             ground_elevation = loc.get("elevation")
-            if not isinstance(ground_elevation, (int, float)) or not math.isfinite(ground_elevation):
+            # 第一个点就是观测地点；优先采用用户在 GUI/Excel 中确认的海拔。
+            if profile_index == 0 and isinstance(local_ground_elevation_m, (int, float)) and math.isfinite(float(local_ground_elevation_m)):
+                ground_elevation = float(local_ground_elevation_m)
+                elevation_note = f"用户地点海拔 {ground_elevation:.0f} m（用于本地云层高度换算）"
+            elif not isinstance(ground_elevation, (int, float)) or not math.isfinite(ground_elevation):
                 ground_elevation = 0.0
                 elevation_note = "地形海拔缺失，按 0 m 近似"
             else:
@@ -4053,7 +4384,9 @@ class FireCloudApp:
         canvas.configure(height=136)
         if dynamic:
             # 主图显示本次预测的相对亮度（峰值归一化为100）；原始指数仍保留在峰值标签和报告中。
-            x0, x1, y0, y1 = 38, width-12, 10, 76
+            x0, x1, y0, y1 = 38, width-12, 25, 76
+            canvas.create_text(8, 5, text="云色时序（不考虑云量）", anchor="nw",
+                               fill="#243447", font=("Microsoft YaHei UI", 9, "bold"))
             def xx(i): return x0+(x1-x0)*i/max(1,len(dynamic)-1)
             def yy(v): return y1-(y1-y0)*max(0,min(100,float(v)))/100.0
             canvas.configure(background="white")
@@ -4109,7 +4442,9 @@ class FireCloudApp:
             # 不要退回“预测色块 + colorbar”布局；保留与正常情况一致的曲线坐标框。
             # 这里只画零亮度参考线和时间轴，不伪造动态采样，也不修改任何评分/天气算法。
             canvas.configure(background="white")
-            x0, x1, y0, y1 = 38, width-12, 10, 76
+            x0, x1, y0, y1 = 38, width-12, 25, 76
+            canvas.create_text(8, 5, text="云色时序（不考虑云量）", anchor="nw",
+                               fill="#243447", font=("Microsoft YaHei UI", 9, "bold"))
             def empty_yy(v): return y1-(y1-y0)*max(0,min(100,float(v)))/100.0
             for val in (0,20,40,60,80,100):
                 y=empty_yy(val)
@@ -4122,8 +4457,8 @@ class FireCloudApp:
             event_dt=direction_result.get("event_dt")
             if event_dt:
                 is_morning = direction_key == "morning"
-                start_dt=event_dt-timedelta(minutes=30 if is_morning else 45)
-                end_dt=event_dt+timedelta(minutes=25 if is_morning else 20)
+                start_dt=event_dt-timedelta(minutes=30)
+                end_dt=event_dt+timedelta(minutes=30)
                 for tick in range(7):
                     tx=x0+(x1-x0)*tick/6
                     tick_dt=start_dt+(end_dt-start_dt)*tick/6
@@ -4180,6 +4515,145 @@ class FireCloudApp:
         canvas.create_text(x0, 70, text=result.get("color_name", "颜色倾向待估算"),
                            anchor="w", fill="#5e6c84", font=("Microsoft YaHei UI", 8))
 
+    def _load_place_suggestion_records(self):
+        """读取 Excel/旧 CSV 地名；返回 (name, lat, lon, elevation_m)。"""
+        records = {}
+        for name, lat, lon in list(self.CHINA_CAPITALS) + list(self.MAP_CITIES):
+            records.setdefault(str(name), (str(name), float(lat), float(lon), None))
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        xlsx_path = os.path.join(base_dir, "china_city_coordinates.xlsx")
+        csv_path = os.path.join(base_dir, "china_city_coordinates_common.csv")
+        try:
+            from openpyxl import load_workbook
+            if os.path.isfile(xlsx_path):
+                wb = load_workbook(xlsx_path, data_only=True, read_only=True)
+                ws = wb["地名坐标表"] if "地名坐标表" in wb.sheetnames else wb.active
+                rows = ws.iter_rows(values_only=True)
+                headers = [str(v).strip() if v is not None else "" for v in next(rows, ())]
+                def col(*names):
+                    for candidate in names:
+                        if candidate in headers:
+                            return headers.index(candidate)
+                    return None
+                ni, lati, loni = col("地名", "城市名称", "name"), col("纬度", "lat"), col("经度", "lon", "longitude")
+                ei = col("海拔（m）", "海拔(m)", "海拔", "elevation_m", "elevation")
+                if ni is not None and lati is not None and loni is not None:
+                    for row in rows:
+                        if ni >= len(row) or not row[ni]:
+                            continue
+                        try:
+                            lat, lon = float(row[lati]), float(row[loni])
+                        except (TypeError, ValueError, IndexError):
+                            continue
+                        elev = None
+                        if ei is not None and ei < len(row) and row[ei] not in (None, ""):
+                            try: elev = float(row[ei])
+                            except (TypeError, ValueError): pass
+                        name = str(row[ni]).strip()
+                        if name and -90 <= lat <= 90 and -180 <= lon <= 180:
+                            records[name] = (name, lat, lon, elev)
+                wb.close()
+        except Exception:
+            pass
+        if os.path.isfile(csv_path):
+            try:
+                with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+                    for row in csv.DictReader(f):
+                        name = (row.get("地名") or row.get("城市名称") or row.get("name") or "").strip()
+                        if not name: continue
+                        try:
+                            lat = float(row.get("纬度") or row.get("lat")); lon = float(row.get("经度") or row.get("lon"))
+                        except (TypeError, ValueError): continue
+                        eraw = row.get("海拔（m）") or row.get("海拔(m)") or row.get("海拔") or row.get("elevation_m")
+                        try: elev = float(eraw) if eraw not in (None, "") else None
+                        except (TypeError, ValueError): elev = None
+                        if -90 <= lat <= 90 and -180 <= lon <= 180:
+                            previous = records.get(name)
+                            if elev is None and previous: elev = previous[3]
+                            records[name] = (name, lat, lon, elev)
+            except OSError:
+                pass
+        return list(records.values())
+
+    def update_place_suggestions(self, event=None):
+        """根据输入前缀显示本地 Excel/CSV 地名联想，不发起网络请求。"""
+        if event is not None and event.keysym in ("Return", "Escape", "Up", "Down", "Left", "Right", "Tab"):
+            if event.keysym == "Escape":
+                self.place_suggestion_list.pack_forget()
+            return
+        query = self.vars.get("place").get().strip() if self.vars.get("place") else ""
+        if len(query) < 1:
+            self.place_suggestion_list.pack_forget()
+            return
+        q = self._normalize_city_name(query).casefold()
+        records = self._load_place_suggestion_records()
+        starts, contains = [], []
+        for rec in records:
+            name = rec[0]
+            norm = self._normalize_city_name(name).casefold()
+            if not norm: continue
+            if norm.startswith(q) or name.casefold().startswith(query.casefold()):
+                starts.append(rec)
+            elif q in norm or query.casefold() in name.casefold():
+                contains.append(rec)
+        matches = starts + contains
+        # 稳定去重并限制高度，避免超长地名表挤占设置面板。
+        unique, seen = [], set()
+        for rec in matches:
+            if rec[0] not in seen:
+                unique.append(rec); seen.add(rec[0])
+            if len(unique) >= 8: break
+        lb = self.place_suggestion_list
+        lb.delete(0, "end")
+        self._place_suggestion_records = unique
+        for name, lat, lon, elev in unique:
+            elev_text = f" · {elev:.0f}m" if elev is not None else " · 海拔未填"
+            lb.insert("end", f"{name}  ({lat:.4f}, {lon:.4f}){elev_text}")
+        if unique:
+            lb.configure(height=min(6, len(unique)))
+            if not lb.winfo_manager(): lb.pack(fill="x", pady=(2, 0), before=lb.master.winfo_children()[-1])
+        else:
+            lb.pack_forget()
+
+    def focus_place_suggestions(self, event=None):
+        lb = getattr(self, "place_suggestion_list", None)
+        if lb is not None and lb.winfo_manager() and getattr(self, "_place_suggestion_records", []):
+            lb.focus_set()
+            lb.selection_clear(0, "end")
+            lb.selection_set(0)
+            lb.activate(0)
+            return "break"
+        return None
+
+    def on_place_enter(self, event=None):
+        lb = getattr(self, "place_suggestion_list", None)
+        if lb is not None and lb.winfo_manager() and getattr(self, "_place_suggestion_records", []):
+            selected = lb.curselection()
+            idx = selected[0] if selected else 0
+            self._apply_place_suggestion(idx)
+            return "break"
+        self.lookup_place_coordinates()
+        return "break"
+
+    def select_place_suggestion(self, event=None):
+        lb = getattr(self, "place_suggestion_list", None)
+        if lb is None: return
+        selected = lb.curselection()
+        if not selected and event is not None and getattr(event, "y", None) is not None:
+            idx = lb.nearest(event.y)
+        else:
+            idx = selected[0] if selected else 0
+        self._apply_place_suggestion(idx)
+        return "break"
+
+    def _apply_place_suggestion(self, idx):
+        records = getattr(self, "_place_suggestion_records", [])
+        if not 0 <= idx < len(records): return
+        name = records[idx][0]
+        self.vars["place"].set(name)
+        self.place_suggestion_list.pack_forget()
+        self.lookup_place_coordinates()
+
     @staticmethod
     def _normalize_city_name(value):
         """规范地名以匹配城市表，支持“安徽省合肥市”等常见写法。"""
@@ -4194,59 +4668,111 @@ class FireCloudApp:
         return value
 
     def lookup_place_coordinates(self, _event=None):
-        """从内置常用地级市坐标表查找地点；不发起任何网络请求。"""
+        """优先从同目录 Excel 地名表读取地点、坐标和海拔；兼容旧 CSV。"""
         query = self.vars.get("place").get().strip() if self.vars.get("place") else ""
         if not query:
             return
         query_norm = self._normalize_city_name(query)
-        # 优先读取脚本同目录 CSV，方便用户自行补充城市/景区坐标；CSV 不可用时仍使用内置表。
         records_by_name = {}
         for name, lat, lon in list(self.CHINA_CAPITALS) + list(self.MAP_CITIES):
-            records_by_name.setdefault(name, (name, lat, lon))
-        table_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "china_city_coordinates_common.csv")
+            records_by_name.setdefault(name, (name, lat, lon, None))
+
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        xlsx_path = os.path.join(base_dir, "china_city_coordinates.xlsx")
+        csv_path = os.path.join(base_dir, "china_city_coordinates_common.csv")
         try:
-            with open(table_path, "r", encoding="utf-8-sig", newline="") as f:
-                for row in csv.DictReader(f):
-                    name = (row.get("城市名称") or row.get("name") or "").strip()
-                    if not name:
-                        continue
-                    try:
-                        lat = float(row.get("纬度") or row.get("lat"))
-                        lon = float(row.get("经度") or row.get("lon"))
-                    except (TypeError, ValueError):
-                        continue
-                    if -90 <= lat <= 90 and -180 <= lon <= 180:
-                        records_by_name[name] = (name, lat, lon)
-        except OSError:
+            from openpyxl import load_workbook
+            if os.path.isfile(xlsx_path):
+                wb = load_workbook(xlsx_path, data_only=True, read_only=True)
+                ws = wb["地名坐标表"] if "地名坐标表" in wb.sheetnames else wb.active
+                rows = ws.iter_rows(values_only=True)
+                headers = [str(v).strip() if v is not None else "" for v in next(rows, ())]
+                def col(*names):
+                    for candidate in names:
+                        if candidate in headers:
+                            return headers.index(candidate)
+                    return None
+                ni = col("地名", "城市名称", "name")
+                lati = col("纬度", "lat")
+                loni = col("经度", "lon", "longitude")
+                ei = col("海拔（m）", "海拔(m)", "海拔", "elevation_m", "elevation")
+                if ni is not None and lati is not None and loni is not None:
+                    for row in rows:
+                        if ni >= len(row) or not row[ni]:
+                            continue
+                        try:
+                            lat, lon = float(row[lati]), float(row[loni])
+                        except (TypeError, ValueError, IndexError):
+                            continue
+                        elev = None
+                        if ei is not None and ei < len(row) and row[ei] not in (None, ""):
+                            try:
+                                elev = float(row[ei])
+                            except (TypeError, ValueError):
+                                elev = None
+                        name = str(row[ni]).strip()
+                        if -90 <= lat <= 90 and -180 <= lon <= 180:
+                            records_by_name[name] = (name, lat, lon, elev)
+                wb.close()
+        except Exception:
             pass
+
+        # 兼容用户或旧版本仍在使用的 CSV 表。
+        if os.path.isfile(csv_path):
+            try:
+                with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+                    for row in csv.DictReader(f):
+                        name = (row.get("地名") or row.get("城市名称") or row.get("name") or "").strip()
+                        if not name:
+                            continue
+                        try:
+                            lat = float(row.get("纬度") or row.get("lat"))
+                            lon = float(row.get("经度") or row.get("lon"))
+                        except (TypeError, ValueError):
+                            continue
+                        elev_raw = row.get("海拔（m）") or row.get("海拔(m)") or row.get("海拔") or row.get("elevation_m")
+                        try:
+                            elev = float(elev_raw) if elev_raw not in (None, "") else None
+                        except (TypeError, ValueError):
+                            elev = None
+                        if -90 <= lat <= 90 and -180 <= lon <= 180:
+                            # 旧 CSV 若没有海拔列，不得覆盖 Excel 中已维护的海拔值。
+                            if elev is None and name in records_by_name:
+                                elev = records_by_name[name][3]
+                            records_by_name[name] = (name, lat, lon, elev)
+            except OSError:
+                pass
+
         records = list(records_by_name.values())
         exact = []
-        for name, lat, lon in records:
-            norm = self._normalize_city_name(name)
-            if query_norm == norm:
-                exact.append((name, lat, lon))
-        # 兼容输入“安徽 合肥”“四川省成都市”等带额外分隔字符的形式。
+        for name, lat, lon, elev in records:
+            if query_norm == self._normalize_city_name(name):
+                exact.append((name, lat, lon, elev))
         if not exact:
             compact = re.sub(r"[省市区县旗盟州自治区特别行政区、,，/\\-]", "", query)
-            for name, lat, lon in records:
+            for name, lat, lon, elev in records:
                 norm = self._normalize_city_name(name)
                 if compact.endswith(norm) and norm:
-                    exact.append((name, lat, lon))
-        # 去重同名项；若同名多条，优先保留首都表/主城市表中的第一条。
-        unique = []
-        seen = set()
+                    exact.append((name, lat, lon, elev))
+        unique, seen = [], set()
         for rec in exact:
             if rec[0] not in seen:
                 unique.append(rec); seen.add(rec[0])
         if not unique:
+            # 没有匹配到 Excel 地名时，海拔默认回到 0 m，避免沿用上一个地点的高程。
+            if "elevation" in self.vars:
+                self.vars["elevation"].set("0")
             if hasattr(self, "place_lookup_status_var"):
-                self.place_lookup_status_var.set(f"城市表未找到“{query}”；坐标未更改，可手动输入经纬度。")
+                self.place_lookup_status_var.set(f"地名表未找到“{query}”；当前海拔按 0 m 默认值处理，坐标可手动输入或在 Excel 中添加地点。")
             return
-        name, lat, lon = unique[0]
+        name, lat, lon, elev = unique[0]
         self.vars["lat"].set(f"{lat:.4f}")
         self.vars["lon"].set(f"{lon:.4f}")
+        if "elevation" in self.vars:
+            self.vars["elevation"].set("0" if elev is None else f"{elev:.0f}")
         if hasattr(self, "place_lookup_status_var"):
-            self.place_lookup_status_var.set(f"已匹配：{name} · 纬度 {lat:.4f}°，经度 {lon:.4f}°（近似城市中心坐标）")
+            elev_text = "Excel 未填写海拔，当前按 0 m 计算（可手动修改）" if elev is None else f"海拔 {elev:.0f} m"
+            self.place_lookup_status_var.set(f"已匹配：{name} · 纬度 {lat:.4f}°，经度 {lon:.4f}° · {elev_text}")
 
     def reset_defaults(self):
         defaults = {
@@ -4254,6 +4780,7 @@ class FireCloudApp:
             "date": date.today().isoformat(),
             "lat": "31.8047",
             "lon": "117.2214",
+            "elevation": "0",
             "weather_model": "ECMWF IFS 0.25°",
             "morning_cloud_base_km": "2.0",
             "evening_cloud_base_km": "2.0",
@@ -4276,6 +4803,7 @@ class FireCloudApp:
         data = {
             "lat": parse_float(self.vars["lat"].get(), "纬度"),
             "lon": parse_float(self.vars["lon"].get(), "经度"),
+            "elevation_m": (parse_float(self.vars["elevation"].get(), "海拔") if self.vars.get("elevation") and self.vars["elevation"].get().strip() else 0.0),
             # 当前版本以中国标准时间为默认；自动识别任意地点时区尚未实现。
             "utc_offset": 8.0,
             "cloud_base": 2500.0,
@@ -4299,13 +4827,28 @@ class FireCloudApp:
 
     def calculate(self):
         """兼容旧版内部调用；v0.5 的主流程只使用自动云况预报。"""
-        messagebox.showinfo("提示", "请选择 ECMWF/GFS 模式，然后点击‘查询朝霞与晚霞’。")
+        messagebox.showinfo("提示", "请选择 ECMWF/GFS 模式，然后点击对应的‘查询朝霞’或‘查询晚霞’。")
 
     @staticmethod
     def _set_text(widget, value):
         widget.configure(state="normal")
         widget.delete("1.0", "end")
         widget.insert("1.0", value)
+        # 仅突出摘要中的中云/高云字段，不改变数据与评分。
+        try:
+            import re
+            widget.tag_configure("mid_high_cloud", foreground="#c62828", font=("Microsoft YaHei UI", 10, "bold"))
+            widget.tag_configure("tintable_ratio", foreground="#111111", font=("Microsoft YaHei UI", 10, "bold"))
+            widget.tag_configure("model_time", foreground="#111111", font=("Microsoft YaHei UI", 9, "bold"))
+            for match in re.finditer(r"(?<!\S)(?:中|高)\s*\d+(?:\.\d+)?%", value):
+                start = match.start()
+                widget.tag_add("mid_high_cloud", f"1.0+{start}c", f"1.0+{match.end()}c")
+            for match in re.finditer(r"可染色云量占比：[^\n]+", value):
+                widget.tag_add("tintable_ratio", f"1.0+{match.start()}c", f"1.0+{match.end()}c")
+            for match in re.finditer(r"(?:模型数据上线|模型数据处理完成|模式起报时间|模型数据时间)：[^\n]+", value):
+                widget.tag_add("model_time", f"1.0+{match.start()}c", f"1.0+{match.end()}c")
+        except Exception:
+            pass
         widget.configure(state="disabled")
 
     def _export_live_curve_comparison(self, source_xlsx, result, out_dir):
@@ -4453,7 +4996,16 @@ class FireCloudApp:
         if "基本信息" not in wb.sheetnames or "云层区间" not in wb.sheetnames:
             raise ValueError("Excel 必须包含‘基本信息’和‘云层区间’两个工作表。请使用随版本提供的模板。")
         meta = {}
-        for row in wb["基本信息"].iter_rows(min_row=2, values_only=True):
+        info_ws = wb["基本信息"]
+        info_rows = list(info_ws.iter_rows(values_only=True))
+        # 标准模板采用“字段 | 值”逐行布局；同时兼容用户把字段名放在首行列标题、值放在第二行的布局。
+        if info_rows:
+            header = [str(v).strip() if v is not None else "" for v in info_rows[0]]
+            if len(info_rows) > 1:
+                for key, value in zip(header, info_rows[1]):
+                    if key:
+                        meta[key] = value
+        for row in info_rows[1:]:
             if row and row[0] is not None:
                 meta[str(row[0]).strip()] = row[1] if len(row) > 1 else None
         def get(key, default=None):
@@ -4469,6 +5021,7 @@ class FireCloudApp:
             if isinstance(dval, date): sim_date = dval
             else: sim_date = date.fromisoformat(str(dval).strip()[:10])
             lat, lon = float(get("纬度", 31.8047)), float(get("经度", 117.2214))
+            elevation_m = float(get("海拔_m", get("观测点海拔_m", get("海拔（m）", get("海拔", 0.0)))))
             utc_offset = float(get("时区 UTC偏移", 8))
             aod_raw = get("AOD", None)
             aod = None if aod_raw is None else float(aod_raw)
@@ -4478,6 +5031,8 @@ class FireCloudApp:
             raise ValueError(f"基本信息中的日期、经纬度、时区或 AOD 格式不正确：{exc}")
         if not -90 <= lat <= 90 or not -180 <= lon <= 180 or not -12 <= utc_offset <= 14:
             raise ValueError("经纬度或 UTC 时区偏移超出有效范围。")
+        if not -500 <= elevation_m <= 9000:
+            raise ValueError("海拔应在 -500 至 9000 米之间。")
         if aod is not None and aod < 0: raise ValueError("AOD 不能小于 0。")
         ws = wb["云层区间"]
         rows = list(ws.iter_rows(values_only=True))
@@ -4531,8 +5086,8 @@ class FireCloudApp:
         if zones[0]["start"] > 1e-6:
             raise ValueError("距离区间必须从 0 km 开始；请补上 0 到第一个区间起点的记录。")
         return {"direction":direction, "direction_cn":"朝霞" if direction=="morning" else "晚霞", "date":sim_date,
-                "place":str(get("地点", "未命名地点")), "lat":lat, "lon":lon, "utc_offset":utc_offset,
-                "aod":aod, "visibility_km":(float(get("能见度_km")) if get("能见度_km", None) is not None else None),
+                "place":str(get("地点", "未命名地点")), "lat":lat, "lon":lon, "elevation_m":elevation_m,
+                "utc_offset":utc_offset, "aod":aod, "visibility_km":(float(get("能见度_km")) if get("能见度_km", None) is not None else None),
                 "event_datetime":event_datetime, "event_azimuth":event_azimuth, "zones":zones, "source_excel":path}
 
     @staticmethod
@@ -4593,11 +5148,9 @@ class FireCloudApp:
             return {"samples": [], "peak": None, "note": "无法计算日出/日落时刻，未生成动态曲线。"}
         event_dt=sun_event[0]
         is_morning=data.get("direction")=="morning"
-        # 两种模式（单次单模式、实况模拟）共用此函数，统一使用紧凑且有意义的窗口。
-        # 朝霞：日出前 30 分钟至日出后 25 分钟；晚霞：日落前 45 分钟至日落后 20 分钟。
-        # 不把日出后一小时或日落前后一大段通常无明显火烧云意义的时间塞进曲线。
-        start_dt=event_dt-timedelta(minutes=30 if is_morning else 45)
-        end_dt=event_dt+timedelta(minutes=25 if is_morning else 20)
+        # 朝霞、晚霞统一只展示太阳事件前后各 30 分钟，共 1 小时。
+        start_dt=event_dt-timedelta(minutes=30)
+        end_dt=event_dt+timedelta(minutes=30)
         earth_r=6371.0088
         cloud_layers=[]
         # 即使 Excel 是 0–200 km 一个宽区间，也要在内部细分距离采样，
@@ -4868,9 +5421,168 @@ class FireCloudApp:
         d.text((25,115),"相对亮度",font=label_font,fill=(51,65,85))
         img.save(path,"JPEG",quality=95,subsampling=0,optimize=True)
 
+    @staticmethod
+    def _filter_live_zones_for_observer_elevation(zones, elevation_m, radius_km=80.0):
+        """按“先验证云洞、再决定是否启用”的规则处理高海拔机位。
+
+        所有云层高度均为绝对海拔 ASL。规则：
+        1) 海拔为0，或本地0–80 km参考云底高于机位：完整沿用原算法；
+        2) 若机位高于本地参考云底，先用0–80 km内高于机位的云层重估新云底和理论极限云距；
+        3) 仅当新极限云距内、80 km以外存在明确的宽云洞（云量<=15%、有效宽度>=15 km，且路径上云洞两侧均有云区证据），
+           才正式移除所有低于机位的云层并重新评分；否则回退原始0 m逻辑。
+        """
+        try:
+            elevation_m = float(elevation_m or 0.0)
+        except (TypeError, ValueError):
+            elevation_m = 0.0
+        original = [dict(z, layers=list(z.get("layers", []))) for z in zones]
+        if not math.isfinite(elevation_m) or elevation_m <= 0:
+            return original, {
+                "enabled": False, "radius_km": radius_km, "removed_layers": 0,
+                "removed_zone_km": 0.0, "candidate_cloud_base_m": None,
+                "candidate_reach_km": None, "gap_evidence": None,
+                "note": "观测点海拔为0 m或无效，完整沿用原算法。"
+            }
+
+        local_zones = [z for z in original if float(z["start"]) < radius_km and float(z["end"]) > 0]
+        local_layers = [(lo, hi) for z in local_zones for lo, hi in z.get("layers", [])]
+        if not local_layers:
+            return original, {
+                "enabled": False, "radius_km": radius_km, "removed_layers": 0,
+                "removed_zone_km": 0.0, "candidate_cloud_base_m": None,
+                "candidate_reach_km": None, "gap_evidence": None,
+                "note": "0–80 km内没有可用于估算本地云底的高度层，回退原始0 m算法。"
+            }
+        local_base_m = min(lo for lo, hi in local_layers)
+        if local_base_m > elevation_m:
+            return original, {
+                "enabled": False, "radius_km": radius_km, "removed_layers": 0,
+                "removed_zone_km": 0.0, "local_base_m": local_base_m,
+                "candidate_cloud_base_m": None, "candidate_reach_km": None,
+                "gap_evidence": None,
+                "note": f"本地参考云底 {local_base_m:.0f} m 高于机位 {elevation_m:.0f} m，保持原算法，不启用海拔过滤。"
+            }
+
+        # 只用0–80 km采样重估新云底：暂时排除低于机位的层，并裁切穿过机位高度的层。
+        candidate_layers = []
+        for z in local_zones:
+            for lo, hi in z.get("layers", []):
+                if hi <= elevation_m:
+                    continue
+                candidate_layers.append((max(lo, elevation_m), hi))
+        if not candidate_layers:
+            return original, {
+                "enabled": False, "radius_km": radius_km, "removed_layers": 0,
+                "removed_zone_km": 0.0, "local_base_m": local_base_m,
+                "candidate_cloud_base_m": None, "candidate_reach_km": None,
+                "gap_evidence": None,
+                "note": f"机位 {elevation_m:.0f} m 高于0–80 km内全部云层，无法从近场采样重估新云底，回退原始0 m算法。"
+            }
+        candidate_base_m = min(lo for lo, hi in candidate_layers)
+        candidate_reach_km = math.sqrt(8.0 * 6371.0088 * max(0.0, candidate_base_m / 1000.0))
+
+        # 在新极限云距内寻找80 km以外的明确云洞。云洞宽度按与[80 km, 新极限云距]的交集计算；
+        # 云洞后方云区可以延伸到极限云距以外，用来确认它是云层间隙而非路径终点。
+        cloud_zones = [z for z in original if float(z.get("cover", 0.0)) > 15.0 and z.get("layers")]
+        gap_evidence = []
+        for z in original:
+            start, end = float(z["start"]), float(z["end"])
+            cover = float(z.get("cover", 0.0))
+            if cover > 15.0 or end <= radius_km or start >= candidate_reach_km:
+                continue
+            clipped_start = max(start, radius_km)
+            clipped_end = min(end, candidate_reach_km)
+            if clipped_end - clipped_start < 15.0:
+                continue
+            has_left_cloud = any(float(c["start"]) < start and float(c["end"]) > 0 for c in cloud_zones)
+            has_right_cloud = any(float(c["start"]) >= end - 1e-6 for c in cloud_zones)
+            if has_left_cloud and has_right_cloud:
+                gap_evidence.append({"start_km": clipped_start, "end_km": clipped_end,
+                                     "width_km": clipped_end-clipped_start, "cover": cover})
+
+        if not gap_evidence:
+            return original, {
+                "enabled": False, "radius_km": radius_km, "removed_layers": 0,
+                "removed_zone_km": 0.0, "local_base_m": local_base_m,
+                "candidate_cloud_base_m": candidate_base_m,
+                "candidate_reach_km": candidate_reach_km, "gap_evidence": [],
+                "note": (f"机位 {elevation_m:.0f} m 高于本地参考云底 {local_base_m:.0f} m；"
+                         f"近场重估云底 {candidate_base_m:.0f} m、极限云距约 {candidate_reach_km:.0f} km，"
+                         f"但80 km以外至极限云距内未找到明确云洞，回退原始0 m算法。")
+            }
+
+        # 有明确漏光云洞证据后，正式移除所有低于机位的云层（不局限于80 km）；
+        # 穿过机位高度的云层只保留高于机位的部分。其后由原评分/云洞/距离流程统一重算。
+        out = []
+        removed_layers = 0
+        removed_zone_km = 0.0
+        for z in original:
+            layers = []
+            for lo, hi in z.get("layers", []):
+                if hi <= elevation_m:
+                    removed_layers += 1
+                    continue
+                if lo < elevation_m < hi:
+                    layers.append((elevation_m, hi))
+                    removed_layers += 1
+                else:
+                    layers.append((lo, hi))
+            cover = float(z.get("cover", 0.0))
+            if z.get("layers") and not layers:
+                cover = 0.0
+                removed_zone_km += float(z["end"]) - float(z["start"])
+            out.append({**z, "cover": cover, "layers": layers, "elevation_filter_applied": True})
+        out.sort(key=lambda z: (z["start"], z["end"], min((lo for lo, hi in z["layers"]), default=-1)))
+        gap_summary = "; ".join(f"{g['start_km']:.0f}–{g['end_km']:.0f} km（{g['width_km']:.0f} km）" for g in gap_evidence)
+        return out, {
+            "enabled": True, "radius_km": radius_km, "removed_layers": removed_layers,
+            "removed_zone_km": round(removed_zone_km, 3), "local_base_m": local_base_m,
+            "candidate_cloud_base_m": candidate_base_m, "candidate_reach_km": candidate_reach_km,
+            "gap_evidence": gap_evidence,
+            "note": (f"机位 {elevation_m:.0f} m 高于本地参考云底 {local_base_m:.0f} m；"
+                     f"0–80 km重估云底 {candidate_base_m:.0f} m、极限云距约 {candidate_reach_km:.0f} km；"
+                     f"在80 km以外发现明确云洞：{gap_summary}。已移除所有低于机位的云层并重新计算。")
+        }
+
+
+    @staticmethod
+    def _live_zone_band_cover(zones, band_lo, band_hi):
+        """按原始距离采样计算某高度带云量，用于海拔过滤前后诊断。"""
+        if not zones:
+            return 0.0
+        max_dist = max(z["end"] for z in zones)
+        step = 5.0
+        distances = []
+        d = 0.0
+        while d < max_dist:
+            distances.append(d + min(step / 2, (max_dist - d) / 2))
+            d += step
+        if not distances or distances[-1] < max_dist:
+            distances.append(max_dist)
+        vals = []
+        for dist in distances:
+            matching = [z for z in zones if z["start"] <= dist < z["end"] or
+                        (abs(dist - max_dist) < 1e-6 and z["end"] == max_dist)]
+            layer_covers = [(lo, hi, float(z["cover"])) for z in matching
+                            for lo, hi in z["layers"] if hi > band_lo and lo < band_hi]
+            cover = sum(item[2] for item in layer_covers) / len(layer_covers) if layer_covers else 0.0
+            weight = 1.0 / (1.0 + dist / 100.0)
+            vals.append((cover, weight))
+        return sum(v*w for v,w in vals) / sum(w for _,w in vals) if vals else 0.0
+
     def _calculate_live_simulation(self, data):
-        """把手填区间转换为路径采样，评分核心沿用 apply_path_score_pair。"""
-        zones = data["zones"]
+        """把手填区间转换为路径采样；海拔过滤后复用原评分核心。"""
+        original_zones = data["zones"]
+        original_band_cover = {
+            "low": self._live_zone_band_cover(original_zones, 0, 2000),
+            "mid": self._live_zone_band_cover(original_zones, 2000, 6000),
+            "high": self._live_zone_band_cover(original_zones, 6000, 100000),
+        }
+        zones, elevation_filter = self._filter_live_zones_for_observer_elevation(
+            original_zones, data.get("elevation_m", 0.0), 80.0
+        )
+        data["original_zones"] = original_zones
+        data["zones"] = zones
         max_dist = max(z["end"] for z in zones)
         step = 5.0
         distances = []
@@ -4881,17 +5593,23 @@ class FireCloudApp:
         if not distances or distances[-1] < max_dist: distances.append(max_dist)
         samples = []
         for dist in distances:
-            zone = next((z for z in zones if z["start"] <= dist < z["end"] or (abs(dist-max_dist)<1e-6 and z["end"]==max_dist)), None)
-            if zone is None:
-                samples.append({"distance_km":dist,"cover":0.0,"layers":[],"zone":None})
+            matching = [z for z in zones if z["start"] <= dist < z["end"] or (abs(dist-max_dist)<1e-6 and z["end"]==max_dist)]
+            if not matching:
+                samples.append({"distance_km":dist,"cover":0.0,"layers":[],"layer_covers":[],"zone":None})
             else:
-                samples.append({"distance_km":dist,"cover":zone["cover"],"layers":zone["layers"],"zone":zone})
+                # 同一距离段允许多行表示不同高度层；合并采样，避免只取第一行而丢失其他云层。
+                layer_covers = [(lo, hi, float(z["cover"])) for z in matching for lo, hi in z["layers"]]
+                layers = [(lo, hi) for lo, hi, _ in layer_covers]
+                cover = sum(float(z["cover"]) for z in matching) / len(matching)
+                samples.append({"distance_km":dist,"cover":cover,"layers":layers,
+                                "layer_covers":layer_covers,"zone":matching[0],"zones":matching})
         sample_weights = [1.0 / (1.0 + sm["distance_km"] / 100.0) for sm in samples]
         def band_cover(band_lo, band_hi):
             vals=[]
             for sm, weight in zip(samples, sample_weights):
-                intersects = any(hi > band_lo and lo < band_hi for lo,hi in sm["layers"])
-                vals.append((sm["cover"] if intersects else 0.0, weight))
+                matching_cover = [cover for lo, hi, cover in sm.get("layer_covers", [])
+                                  if hi > band_lo and lo < band_hi]
+                vals.append((sum(matching_cover)/len(matching_cover) if matching_cover else 0.0, weight))
             return sum(v*w for v,w in vals)/sum(w for _,w in vals) if vals else None
         low = band_cover(0, 2000)
         mid = band_cover(2000, 6000)
@@ -4899,14 +5617,17 @@ class FireCloudApp:
         # 距离加权云量；沿用现有路径分析“近处权重大、远处权重小”的衰减形式。
         weighted_total = sum(sm["cover"]*w for sm,w in zip(samples,sample_weights)) / sum(sample_weights) if sample_weights else 0
         # 采用起点附近最低云层作为几何参考；若首段不是从0km开始，明确由首个观测区间代表路径起始参考。
-        first = next((z for z in zones if z["start"] <= 0 < z["end"]), zones[0])
+        first_candidates = [z for z in zones if z["start"] <= 0 < z["end"] and z["layers"]]
+        first = first_candidates[0] if first_candidates else next((z for z in zones if z["start"] <= 0 < z["end"]), zones[0])
+        first_layers = [(lo, hi) for z in first_candidates for lo, hi in z["layers"]]
         all_layers = [(lo,hi) for z in zones for lo,hi in z["layers"]]
         if not all_layers: raise ValueError("所有距离区间都标记为无云，没有可模拟的云层。")
-        local_base_m = min((lo for lo,hi in first["layers"]), default=min(lo for lo,hi in all_layers))
+        # 同一距离段可能分多行输入不同高度层；几何云底必须取起点处所有有效层的最低云底。
+        local_base_m = min((lo for lo,hi in first_layers), default=min(lo for lo,hi in all_layers))
         # 高度层从 0m 起时，不能把云底物理上判为恰好 0m；用该层中点作几何近似并在报告中注明。
         geometry_base_m = local_base_m
         if geometry_base_m <= 0:
-            first_layer = next(((lo,hi) for lo,hi in first["layers"]), all_layers[0])
+            first_layer = next(iter(first_layers), all_layers[0])
             geometry_base_m = (first_layer[0] + first_layer[1]) / 2
         max_top_m = max(hi for lo,hi in all_layers)
         effective_km = max(0.0, geometry_base_m/1000.0)
@@ -4965,7 +5686,8 @@ class FireCloudApp:
         return {"samples":samples,"max_distance":max_dist,"max_height_m":max_top_m,"inferred":inferred,"geometry":geometry,
                 "boundaries":boundaries,"sun_event":sunset_info,"low":low,"mid":mid,"high":high,"total":weighted_total,
                 "local_base_m":local_base_m,"reach_km":reach_km,"solar_barriers":barrier_analysis,
-                "dynamic_light_curve":dynamic_curve}
+                "dynamic_light_curve":dynamic_curve,"elevation_filter":elevation_filter,
+                "original_band_cover":original_band_cover}
 
     def _draw_live_scene(self, data, result, path):
         if Image is None: raise RuntimeError("生成 JPG 需要 Pillow：python -m pip install pillow")
@@ -5095,9 +5817,12 @@ class FireCloudApp:
         high_text = "未知" if result["high"] is None else f"{result['high']:.1f}%"
         visibility = data.get("visibility_km")
         visibility_text = "缺测" if visibility is None else f"{visibility:.1f} km"
-        lines=["火烧云实况模拟分析报告",f"Excel：{source_path}",f"地点：{data['place']}",f"日期：{data['date']}",f"类型：{data['direction_cn']}",f"坐标：{data['lat']:.5f}, {data['lon']:.5f}",f"当地时区：UTC{data['utc_offset']:+g}",
-               f"太阳时刻：{ev[0].strftime('%H:%M:%S') if ev and ev[0] else '无法计算'}",f"太阳方位角：{az_text}",f"AOD：{aod_text}",
-               f"发生概率估计：{inf['regular_score']}%（光路屏障前 {inf.get('pre_barrier_regular_score', inf['regular_score'])}%，屏障扣分 {inf.get('solar_barrier_penalty',0):.1f} 个百分点）",f"有利情景上限：{inf['upper_score']}%（光路屏障前 {inf.get('pre_barrier_upper_score', inf['upper_score'])}%，屏障扣分 {inf.get('solar_barrier_upper_penalty',0):.1f} 个百分点）",f"太阳光路屏障判断：{result.get('solar_barriers',{}).get('severity','未知')}",f"连续低云硬约束：{('未命中' if not inf.get('low_cloud_screen') else inf.get('low_cloud_screen'))}",f"低云颜色约束：{inf.get('low_cloud_color_note', '无')}",f"估算低层云量：{low_text}",f"估算中层云量：{mid_text}",f"估算高层云量：{high_text}",f"距离加权云量：{result['total']:.1f}%",f"参考起点云层下界：{result['local_base_m']:.0f} m",f"几何代表云底：{result['geometry']['rows'][0]['effective_base_km']*1000:.0f} m（若高度层从0m起，则用该层中点近似）",f"理论照明距离（简化几何）：{result['reach_km']:.1f} km",f"能见度：{visibility_text}", "", "太阳光路屏障明细："]
+        lines=["火烧云实况模拟分析报告",f"Excel：{source_path}",f"地点：{data['place']}",f"日期：{data['date']}",f"类型：{data['direction_cn']}",f"坐标：{data['lat']:.5f}, {data['lon']:.5f}",f"观测点海拔：{data.get('elevation_m', 0.0):.0f} m（云层高度范围按海拔绝对高度 ASL 解释）",f"当地时区：UTC{data['utc_offset']:+g}",
+               f"太阳时刻：{ev[0].strftime('%H:%M:%S') if ev and ev[0] else '无法计算'}",f"太阳方位角：{az_text}",f"AOD：{aod_text}",f"海拔过滤：{result.get('elevation_filter', {}).get('note', '未提供过滤诊断')}",
+               f"海拔判定细节：原始本地云底 {result.get('elevation_filter', {}).get('local_base_m', '未估算')} m；新云底 {result.get('elevation_filter', {}).get('candidate_cloud_base_m', '未重估')} m；新极限云距 {result.get('elevation_filter', {}).get('candidate_reach_km', '未重估')} km；明确云洞证据 {result.get('elevation_filter', {}).get('gap_evidence', '无/未触发')}",
+               f"发生概率估计：{inf['regular_score']}%（光路屏障前 {inf.get('pre_barrier_regular_score', inf['regular_score'])}%，屏障扣分 {inf.get('solar_barrier_penalty',0):.1f} 个百分点）",f"有利情景上限：{inf['upper_score']}%（光路屏障前 {inf.get('pre_barrier_upper_score', inf['upper_score'])}%，屏障扣分 {inf.get('solar_barrier_upper_penalty',0):.1f} 个百分点）",f"太阳光路屏障判断：{result.get('solar_barriers',{}).get('severity','未知')}",f"连续低云硬约束：{('未命中' if not inf.get('low_cloud_screen') else inf.get('low_cloud_screen'))}",f"低云颜色约束：{inf.get('low_cloud_color_note', '无')}",f"估算低层云量：{low_text}",f"估算中层云量：{mid_text}",f"估算高层云量：{high_text}",
+               f"过滤前高度带云量（低/中/高）：{result.get('original_band_cover', {}).get('low', 0):.1f}% / {result.get('original_band_cover', {}).get('mid', 0):.1f}% / {result.get('original_band_cover', {}).get('high', 0):.1f}%；过滤后：{low_text} / {mid_text} / {high_text}",
+               f"距离加权云量：{result['total']:.1f}%",f"参考起点云层下界：{result['local_base_m']:.0f} m",f"几何代表云底：{result['geometry']['rows'][0]['effective_base_km']*1000:.0f} m（若高度层从0m起，则用该层中点近似）",f"理论照明距离（简化几何）：{result['reach_km']:.1f} km",f"能见度：{visibility_text}", "", "太阳光路屏障明细："]
         barrier_info = result.get("solar_barriers", {})
         lines.append(barrier_info.get("note", "未提供光路屏障说明"))
         if barrier_info.get("barriers"):
@@ -5115,7 +5840,7 @@ class FireCloudApp:
         lines += ["", "动态受光曲线：", dynamic.get("note", "未生成动态曲线。")]
         if peak:
             lines.append(f"相对亮度峰值：{peak['relative_brightness']:.1f}/100；原始亮度指数峰值：{peak['brightness']:.1f}；时间 {peak['datetime'].strftime('%H:%M:%S')}；太阳高度角 {peak['solar_altitude_deg']:.2f}°")
-        lines += ["", "评分说明：基础分沿用 apply_path_score_pair；旧版静态高云屏障扣分已停用，避免仅凭同高度云层相交就固定扣分。低云约束仍由独立规则处理；动态曲线逐分钟评估太阳高度、云层距离/高度及异层光路相交。", "高度分层：低层<2km，中层2–6km，高层≥6km。区间内云量百分比原样作用于该区间所有高度层，不把多层云量相加。", "重要限制：动态曲线是二维区间和球形地球几何下的原始受光指数估算；图中相对亮度将本次时间窗口的峰值归一化为100；云量百分比不等于不透明度，未建模真实三维云体、云光学厚度、云粒子散射及精确云层形态。曲线颜色为示意色，不是实际 RGB 预报；未填写的距离区间视为未提供观测，而非已确认晴空。评分是经验指数，不是经过校准的真实概率。"]
+        lines += ["", "评分说明：基础分沿用 apply_path_score_pair；旧版静态高云屏障扣分已停用，避免仅凭同高度云层相交就固定扣分。低云约束仍由独立规则处理；动态曲线逐分钟评估太阳高度、云层距离/高度及异层光路相交。", "高度分层：云层区间的高度均按海拔绝对高度 ASL（相对平均海平面）解释；低层<2km，中层2–6km，高层≥6km。观测点海拔单独记录，不将高度范围自动解释为离地高度。区间内云量百分比原样作用于该区间所有高度层，不把多层云量相加。", "重要限制：动态曲线是二维区间和球形地球几何下的原始受光指数估算；图中相对亮度将本次时间窗口的峰值归一化为100；云量百分比不等于不透明度，未建模真实三维云体、云光学厚度、云粒子散射及精确云层形态。曲线颜色为示意色，不是实际 RGB 预报；未填写的距离区间视为未提供观测，而非已确认晴空。评分是经验指数，不是经过校准的真实概率。"]
         return "\n".join(lines)
 
     # ---------------- 案例保存、加载与现场验证 ----------------
@@ -5439,7 +6164,7 @@ class FireCloudApp:
             gap_start=b.get('clear_gap_start_km'); gap_end=b.get('clear_gap_end_km')
             gap=(f"约 {gap_start}–{gap_end} km" if gap_start is not None and gap_end is not None else "未识别到可判读的晴空间隔（不代表一定没有）")
             lines.append(f"云隙/挡光：{gap}；远端云层能否被实际照亮，还受云体厚度、云顶高度和三维云缘影响。")
-            lines.append(f"云底与理论照明：本地推算云底 {km(g0.get('cloud_base_km'))}；理论照明距离 {km(g0.get('reach_km'))}。云底来自模式剖面推算，不是实测。")
+            lines.append(f"云底与理论照明：本地推算云底绝对海拔 {km(g0.get('cloud_base_km'))}；理论照明距离 {km(g0.get('reach_km'))}。云底来自模式剖面推算，不是实测。")
             lines.append(f"空气透明度：AOD {'缺测' if aod is None else f'{aod:.3f}'}；沿线模式能见度均值 {'缺测' if mean_vis is None else f'{mean_vis:.1f} km'}。低能见度或较高 AOD 可能削弱远处霞光与色彩饱和度。")
             color_note=next((x for x in reasons if any(t in x for t in ("色彩","AOD","饱和","透明度"))), None)
             lines.append("色彩饱和度潜力："+(color_note if color_note else "当前数据不能精确预测真实颜色；主要取决于空气透明度、云层厚度与受光角度。"))
@@ -5504,12 +6229,14 @@ class FireCloudApp:
         ws.append(["字段", "值"])
         metadata = [
             ("地点", place), ("日期", event_date.isoformat()), ("类型", direction_cn),
-            ("纬度", lat), ("经度", lon), ("时区 UTC偏移", 8),
+            ("纬度", lat), ("经度", lon),
+            ("海拔_m", (parse_float(self.vars["elevation"].get(), "海拔") if self.vars.get("elevation") and self.vars["elevation"].get().strip() else 0.0)),
+            ("时区 UTC偏移", 8),
             ("事件时刻", result.get("event_dt").strftime("%Y-%m-%d %H:%M:%S") if isinstance(result.get("event_dt"), datetime) else ""),
             ("太阳方位角_deg", result.get("azimuth")),
             ("AOD", aod), ("能见度_km", visibility_km),
             ("来源模式", "单次单模式自动天气采样"),
-            ("高度映射说明", "低云 0~2000m；中云 2000~6000m；高云 6000~12000m。为曲线对照使用的近似层，不是实测云底/云顶。"),
+            ("高度映射说明", "云高度范围按海拔绝对高度 ASL：低云 0~2000m；中云 2000~6000m；高云 6000~12000m。为曲线对照使用的近似层，不是实测云底/云顶。"),
             ("距离分段说明", "区间边界按相邻沿线采样距离的中点生成，与单次模式构造动态曲线输入的规则一致。"),
             ("对照说明", "本工作簿可直接用于实况模拟。曲线仍可能因太阳事件时间、输入高度近似及实况模式其他处理不同而出现差异；请同时查看‘单次模式曲线’工作表。"),
         ]
@@ -5593,6 +6320,8 @@ class FireCloudApp:
                 "saved_at": datetime.now().astimezone().isoformat(),
                 "place": self.vars["place"].get(), "date": self.vars["date"].get(),
                 "latitude": self.vars["lat"].get(), "longitude": self.vars["lon"].get(),
+                "elevation_m": (parse_float(self.vars["elevation"].get(), "海拔")
+                                if self.vars.get("elevation") and self.vars["elevation"].get().strip() else 0.0),
                 "weather_model": model_label, "model_code": self._case_model_code(),
                 "cloud_base_mode": self.vars["cloud_base_mode"].get(),
                 "aod_inputs": {k: self.vars[k].get() for k in ("morning_aod", "evening_aod")},
@@ -5628,8 +6357,9 @@ class FireCloudApp:
                         ("本地低云量", s0.get("cloud_cover_low"), "低层云覆盖情况；是否遮挡还取决于云底、方位和实际云形", "天气模式预报"),
                         ("本地中云量", s0.get("cloud_cover_mid"), "中层云量，可能参与受光", "天气模式预报"),
                         ("本地高云量", s0.get("cloud_cover_high"), "高层云量，可能参与受光但不直接代表色彩饱和度", "天气模式预报"),
-                        ("本地估算云底高度_km", near_geo.get("cloud_base_km"), "气压层云量/RH启发式估算，不是实测", "模式推算"),
-                        ("本地有效云底_km", near_geo.get("effective_base_km"), "结合气溶胶等效高度后的几何估算", "模式推算"),
+                        ("本地估算云底绝对海拔_km_ASL", near_geo.get("cloud_base_asl_km", near_geo.get("cloud_base_km")), "气压层离地云底估算值加观测点海拔，不是实测", "模式推算"),
+                        ("本地估算云底离地高度_km_AGL", near_geo.get("cloud_base_agl_km"), "绝对云底海拔减去观测点海拔", "派生值"),
+                        ("本地有效云底绝对海拔_km_ASL", near_geo.get("effective_base_km"), "绝对云底海拔减气溶胶等效高度后的几何估算", "模式推算"),
                         ("本地理论照明距离_km", near_geo.get("reach_km"), "几何理论距离，不代表该距离内一定有云", "公式估算"),
                         ("火烧云范围_km", b.get("fire_cloud_range_km"), "沿太阳方向离散采样得到的中高云连续范围", "路径采样估算"),
                         ("云边距_km", b.get("cloud_edge_distance_km"), "离散采样推算的云边界距离", "路径采样估算"),
@@ -5673,9 +6403,11 @@ class FireCloudApp:
         try:
             with open(state_path, "r", encoding="utf-8") as f:
                 state = json.load(f)
-            # 只恢复已保存的显示状态，不触发网络请求或重算评分。
+            # 只恢复已保存的显示状态，不触发网络请求或重算评分。旧案例缺少海拔字段时回到 0 m，避免沿用上一个地点。
+            if "elevation" in self.vars and state.get("elevation_m") in (None, ""):
+                self.vars["elevation"].set("0")
             for key, state_key in (("place", "place"), ("date", "date"), ("lat", "latitude"), ("lon", "longitude"),
-                                   ("weather_model", "weather_model"), ("cloud_base_mode", "cloud_base_mode")):
+                                   ("elevation", "elevation_m"), ("weather_model", "weather_model"), ("cloud_base_mode", "cloud_base_mode")):
                 if state.get(state_key) is not None and key in self.vars:
                     self.vars[key].set(str(state[state_key]))
             for key, value in state.get("aod_inputs", {}).items():
@@ -5837,20 +6569,6 @@ class FireCloudApp:
         except OSError as exc:
             messagebox.showerror("保存失败", str(exc))
 
-
-
-# Web deployment shim: the forecast engine uses these only to report completion/errors.
-class _WebMessageBox:
-    last_error = None
-    last_info = None
-    @classmethod
-    def showerror(cls, title, message):
-        cls.last_error = (str(title), str(message))
-    @classmethod
-    def showinfo(cls, title, message):
-        cls.last_info = (str(title), str(message))
-
-messagebox = _WebMessageBox
 
 if __name__ == "__main__":
     app = FireCloudApp()

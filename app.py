@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Streamlit web wrapper for the v1.4.49 fire-cloud forecast engine."""
+"""Streamlit web wrapper for the v1.4.63 fire-cloud forecast engine."""
 from __future__ import annotations
 
 import os
@@ -11,7 +11,7 @@ import streamlit as st
 
 import engine
 
-st.set_page_config(page_title="火烧云预报工具 v1.4.49", page_icon="🌇", layout="wide")
+st.set_page_config(page_title="火烧云预报工具 v1.4.63", page_icon="🌇", layout="wide")
 
 # Community-hosted apps may have a public URL. Configure APP_PASSWORD in Streamlit
 # secrets or the environment to keep the interface restricted to the owner.
@@ -55,6 +55,14 @@ class WebForecastEngine(engine.FireCloudApp):
         self.direction_results = {}
         self.last_report = ""
         self.last_fetch_time = None
+        self.aod_manual_override = False
+        self._setting_aod_programmatically = False
+        self.web_aod_value = None
+        self.web_aod_valid_time = None
+        self.aod_path_values = []
+        self.cloud_path_samples = []
+        self.cloud_path_result = None
+        self.fetch_in_progress = False
         self.morning_summary = _DummyLabel()
         self.evening_summary = _DummyLabel()
         self.morning_score_label = _DummyLabel()
@@ -179,11 +187,13 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
     return img
 
 st.title("🌇 火烧云预报工具")
-st.caption("网页迁移版 · 计算核心基于 v1.4.49 · 经验评分并非经历史观测校准的统计概率")
+st.caption("网页迁移版 v1.4.63 · 绝对云底海拔与案例海拔保存修正 · 地名联想/Excel 坐标与海拔 · 经验评分并非经历史观测校准的统计概率")
 
 with st.expander("使用说明与重要限制", expanded=False):
     st.markdown("""
     - 本页面复用原脚本中的天气采样、云层剖面、CAMS AOD、低云遮挡、评分与动态亮度曲线计算方法。
+    - 地点海拔用于将气压层高度（海拔基准）换算为相对观测地面的高度；本地剖面未显示地面以上 0–3 km 低云证据时，不让本地低云覆盖率单独触发低云硬上限。
+    - Excel 海拔是近似城市中心地形高程，山峰/垭口/景区机位请按实际拍摄点手动校正。
     - 当前版本默认按 UTC+8 计算地点的日出日落；跨时区地点需要手动核对时区，不能直接把本工具当作全球时区自动识别服务。
     - Open-Meteo 或 CAMS 数据不可用、限流时，查询可能失败；请稍后再试。
     - 评分是模式云况的经验指标，不等于真实火烧云发生概率；动态曲线是相对亮度指数，不是实测辐射亮度。
@@ -192,10 +202,42 @@ with st.expander("使用说明与重要限制", expanded=False):
 
 with st.sidebar:
     st.header("预报设置")
-    place = st.text_input("地点名称", "合肥")
+    place_query = st.text_input("地点名称（输入前几个字联想）", "合肥", key="place_query")
+    # 地名联想只读取仓库同目录 Excel，不访问地理编码网络服务。
+    import pandas as pd
+    _place_df = pd.DataFrame()
+    _xlsx_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "china_city_coordinates.xlsx")
+    try:
+        _place_df = pd.read_excel(_xlsx_path, sheet_name="地名坐标表")
+    except Exception:
+        pass
+    def _norm_place(v):
+        v = str(v or "").strip().replace(" ", "").replace("　", "")
+        for suffix in ("市", "地区", "自治州", "自治县", "盟"):
+            if v.endswith(suffix): v = v[:-len(suffix)]; break
+        return v.casefold()
+    _matches = []
+    if not _place_df.empty and "城市名称" in _place_df.columns:
+        _q = _norm_place(place_query)
+        if _q:
+            _names = [str(x) for x in _place_df["城市名称"].dropna().tolist()]
+            _matches = [n for n in _names if _norm_place(n).startswith(_q) or _q in _norm_place(n)][:30]
+    if _matches:
+        _default = _matches.index(place_query) if place_query in _matches else 0
+        place = st.selectbox("匹配地点（选择后自动读取坐标/海拔）", _matches, index=_default, key="place_match")
+        _selected_rows = _place_df[_place_df["城市名称"].astype(str) == place]
+        _selected = _selected_rows.iloc[0] if not _selected_rows.empty else None
+    else:
+        place = place_query.strip() or "未命名地点"
+        _selected = None
+        if place_query.strip(): st.caption("Excel 中暂无匹配项；可在本地 Excel 增加该地点，或手动输入坐标和海拔。")
+    _default_lat = float(_selected["纬度"]) if _selected is not None and pd.notna(_selected.get("纬度")) else 31.8047
+    _default_lon = float(_selected["经度"]) if _selected is not None and pd.notna(_selected.get("经度")) else 117.2214
+    _default_elev = float(_selected["海拔（m）"]) if _selected is not None and pd.notna(_selected.get("海拔（m）")) else 0.0
     forecast_date = st.date_input("预报日期", value=date.today())
-    lat = st.number_input("纬度", min_value=-90.0, max_value=90.0, value=31.8047, format="%.4f")
-    lon = st.number_input("经度", min_value=-180.0, max_value=180.0, value=117.2214, format="%.4f")
+    lat = st.number_input("纬度", min_value=-90.0, max_value=90.0, value=_default_lat, format="%.4f")
+    lon = st.number_input("经度", min_value=-180.0, max_value=180.0, value=_default_lon, format="%.4f")
+    elevation = st.number_input("海拔（m，Excel 为近似城市中心值，可手动修改）", min_value=-500.0, max_value=9000.0, value=_default_elev, step=10.0)
     model_label = st.selectbox("天气预报模式", ["ECMWF IFS 0.25°", "GFS Global"])
     cloud_base_mode = st.selectbox("云底来源", ["自动剖面推算", "手动指定"])
     st.caption("默认时区为 UTC+8。当前网页版本不自动识别任意地点的时区。")
@@ -216,6 +258,7 @@ if run:
         "date": forecast_date.isoformat(),
         "lat": f"{lat:.6f}",
         "lon": f"{lon:.6f}",
+        "elevation": f"{elevation:.0f}",
         "weather_model": model_label,
         "cloud_base_mode": cloud_base_mode,
         "morning_cloud_base_km": f"{morning_cloud_base:.2f}",
@@ -235,7 +278,7 @@ if run:
         st.session_state["fire_cloud_last_report"] = runner.last_report
         st.session_state["fire_cloud_last_meta"] = {
             "place": place, "date": forecast_date.isoformat(), "model": model_label,
-            "lat": lat, "lon": lon, "fetched_at": runner.last_fetch_time,
+            "lat": lat, "lon": lon, "elevation": elevation, "fetched_at": runner.last_fetch_time,
         }
         st.success("查询完成。")
 
