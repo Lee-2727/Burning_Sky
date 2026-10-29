@@ -522,7 +522,7 @@ if results:
                 st.markdown(f'<div style="height:34px;border-radius:8px;background:{hex_color};border:1px solid #888"></div>', unsafe_allow_html=True)
             rainbow = result.get("rainbow", {})
             if rainbow:
-                st.caption(f"彩虹机会：{rainbow.get('label', '暂不可估')}；这是经验指数，不是统计概率。")
+                st.caption(f"彩虹机会：{rainbow.get('label', '暂不可估')}；")
             curve = result.get("dynamic_light_curve", {})
             points = curve.get("samples", []) if isinstance(curve, dict) else []
             st.subheader("云色时序")
