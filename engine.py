@@ -2442,17 +2442,17 @@ class FireCloudApp(tk.Tk):
                     area_coords_by_center.append(neighborhood)
                     cross_offsets_by_center.append(offsets)
                 query_coords = [pt for group in area_coords_by_center for pt in group]
-                # 独立的本地烧云规模采样：中心点 + 20 km / 40 km 两个环上的 8 方位点。
-                # 这组采样只用于最终“小小烧/微烧/...”标签，不参与原有 15 km 路径采样及评分。
+                # 独立的本地烧云规模采样：中心点 + 20–200 km、每 20 km 一环的 8 方位点。
+                # 这组采样只用于最终“小小烧/微烧/...”标签，不参与原有路径采样及评分。
                 local_scale_coords = []
-                for radius_km in (20.0, 40.0):
+                for radius_km in range(20, 201, 20):
                     for bearing_deg in range(0, 360, 45):
                         local_scale_coords.append(destination_point(data["lat"], data["lon"], bearing_deg, radius_km))
                 path_location_count = len(query_coords)
                 query_coords.extend(local_scale_coords)
-                self._set_main_progress(base_progress + 22, f"{direction_name}：请求沿线天气与本地 40 km 规模采样（{len(query_coords)} 个空间点）……")
+                self._set_main_progress(base_progress + 22, f"{direction_name}：请求沿线天气与本地 200 km 规模采样（{len(query_coords)} 个空间点）……")
                 raw_locations = self._fetch_weather_locations(query_coords, model_id)
-                # 以中心点和 16 个本地环点计算 0–40 km 的独立云量均值。
+                # 以中心点和 80 个本地环点计算 0–200 km 的独立云量均值。
                 local_scale_records = []
                 for loc in ([raw_locations[0]] if raw_locations else []) + raw_locations[path_location_count:]:
                     hourly = loc.get("hourly", {})
@@ -2476,7 +2476,7 @@ class FireCloudApp(tk.Tk):
                     "low": _local_scale_avg("cloud_cover_low"),
                     "mid": _local_scale_avg("cloud_cover_mid"),
                     "high": _local_scale_avg("cloud_cover_high"),
-                    "radius_km": 40, "sample_count": len(local_scale_records),
+                    "radius_km": 200, "sample_count": len(local_scale_records),
                 }
                 self._set_main_progress(base_progress + 34, f"{direction_name}：整理沿线云量与天气数据……")
                 cloud_keys = ("cloud_cover", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high",
@@ -2667,7 +2667,7 @@ class FireCloudApp(tk.Tk):
                     # 可染色云量占比无法估算时按 0 计，不再因此阻断烧云规模判读。
                     tintable_ratio = 0
                     tintable_text = "0%估算（数据不足，按0计）"
-                # 烧云规模单独使用本地 40 km 采样；不改动路径算法的 15 km 采样与概率评分。
+                # 烧云规模单独使用本地 200 km 采样；不改动路径算法的 15 km 采样与概率评分。
                 local_mid_scale = local_scale_clouds.get("mid")
                 local_high_scale = local_scale_clouds.get("high")
                 local_low_scale = local_scale_clouds.get("low")
