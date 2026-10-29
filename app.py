@@ -13,7 +13,7 @@ import streamlit as st
 
 import engine
 
-st.set_page_config(page_title="火烧云预报工具 v1.4.66", page_icon="🌇", layout="wide")
+st.set_page_config(page_title="Burning Sky V1.4", page_icon="🌇", layout="wide")
 
 # Community-hosted apps may have a public URL. Configure APP_PASSWORD in Streamlit
 # secrets or the environment to keep the interface restricted to the owner.
@@ -26,7 +26,7 @@ APP_PASSWORD = APP_PASSWORD or os.environ.get("APP_PASSWORD", "")
 
 if APP_PASSWORD:
     if st.session_state.get("authenticated") is not True:
-        st.title("🌇 火烧云预报工具")
+        st.title("🌇 Burning Sky V1.4")
         password = st.text_input("访问密码", type="password")
         if st.button("进入", type="primary"):
             if password == APP_PASSWORD:
@@ -188,19 +188,8 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
     d.text((left, 525), "Relative brightness (window peak = 100)", font=small, fill=(71, 85, 105))
     return img
 
-st.title("🌇 火烧云预报工具")
-st.caption("网页迁移版 v1.4.66 · 绝对云底海拔与案例海拔保存修正 · 地名联想/Excel 坐标与海拔 · 经验评分并非经历史观测校准的统计概率")
-
-with st.expander("使用说明与重要限制", expanded=False):
-    st.markdown("""
-    - 本页面复用原脚本中的天气采样、云层剖面、CAMS AOD、低云遮挡、评分与动态亮度曲线计算方法。
-    - 地点海拔用于将气压层高度（海拔基准）换算为相对观测地面的高度；本地剖面未显示地面以上 0–3 km 低云证据时，不让本地低云覆盖率单独触发低云硬上限。
-    - Excel 海拔是近似城市中心地形高程，山峰/垭口/景区机位请按实际拍摄点手动校正。
-    - 当前版本默认按 UTC+8 计算地点的日出日落；跨时区地点需要手动核对时区，不能直接把本工具当作全球时区自动识别服务。
-    - Open-Meteo 或 CAMS 数据不可用、限流时，查询可能失败；请稍后再试。
-    - 评分是模式云况的经验指标，不等于真实火烧云发生概率；动态曲线是相对亮度指数，不是实测辐射亮度。
-    - 免费云端服务可能休眠。首次打开或长时间未访问后，启动可能较慢。
-    """)
+st.title("🌇 Burning Sky V1.4")
+st.markdown("选择地点、日期和天气模式，然后点击朝霞、晚霞或查询/更新按钮。")
 
 with st.sidebar:
     st.header("预报设置")
@@ -360,7 +349,12 @@ if run:
 def _styled_cloud_summary(summary):
     """Display-only styling: emphasize mid/high cloud percentages without changing values."""
     import html
-    text = html.escape(str(summary or ""))
+    clean_summary = str(summary or "")
+    clean_summary = clean_summary.replace("云底的剖面离地高度 + 地点海拔（绝对高度）", "绝对高度")
+    clean_summary = clean_summary.replace("云底的剖面离地高度+地点海拔（绝对高度）", "绝对高度")
+    clean_summary = clean_summary.replace("（所有有效距离段加权；色相为示意估算）", "")
+    clean_summary = clean_summary.replace("(所有有效距离段加权；色相为示意估算)", "")
+    text = html.escape(clean_summary)
     text = re.sub(r"(?<!\S)(中|高)\s*(\d+(?:\.\d+)?%)",
                   r'<span style="color:#c62828;font-weight:800;">\1 \2</span>', text)
     return text.replace("\\n", "<br>")
@@ -445,11 +439,14 @@ def _burn_label(inferred, summary):
     return label, burn_index
 
 def _path_sampling_table(details):
-    """Extract only the along-path sampling rows from the legacy detailed report."""
-    columns = [
+    """Extract along-path samples while omitting unneeded technical columns from the web UI."""
+    source_columns = [
         "距离", "中心坐标", "总云/低云/中云/高云", "能见度", "风速",
         "云底绝对海拔", "有效云底绝对海拔", "理论深入距离", "几何筛选",
     ]
+    # Keep only the fields useful for a quick visual review in the web page.
+    display_indices = [0, 2, 3, 4, 8]
+    display_columns = [source_columns[i] for i in display_indices]
     rows = []
     in_table = False
     for line in str(details or "").splitlines():
@@ -464,11 +461,11 @@ def _path_sampling_table(details):
                 break
             continue
         parts = [part.strip() for part in stripped.split("|")]
-        if len(parts) == len(columns) and parts[0].endswith("km"):
-            rows.append(parts)
+        if len(parts) == len(source_columns) and parts[0].endswith("km"):
+            rows.append([parts[i] for i in display_indices])
         elif rows:
             break
-    return pd.DataFrame(rows, columns=columns)
+    return pd.DataFrame(rows, columns=display_columns)
 
 
 results = st.session_state.get("fire_cloud_last_results")
@@ -522,7 +519,7 @@ if results:
                 st.markdown(f'<div style="height:34px;border-radius:8px;background:{hex_color};border:1px solid #888"></div>', unsafe_allow_html=True)
             rainbow = result.get("rainbow", {})
             if rainbow:
-                st.caption(f"彩虹机会：{rainbow.get('label', '暂不可估')}；")
+                st.caption(f"彩虹机会：{rainbow.get('label', '暂不可估')}")
             curve = result.get("dynamic_light_curve", {})
             points = curve.get("samples", []) if isinstance(curve, dict) else []
             st.subheader("云色时序")
@@ -541,10 +538,6 @@ if results:
                     st.dataframe(path_table, use_container_width=True, hide_index=True)
                 else:
                     st.info("当前结果没有可显示的路径采样数据。")
-    report = st.session_state.get("fire_cloud_last_report", "")
-    #if report:
-    #    st.download_button("下载完整分析报告（TXT）", report.encode("utf-8-sig"), file_name=f"火烧云分析_{meta.get('date','report')}.txt", mime="text/plain")
 else:
     st.info("请在左侧设置地点、日期和模式，然后点击查询。")
 
-#st.caption("网页版本初始迁移中：案例库/Excel 实况模拟/全国地图等原有 Tkinter 独立窗口功能尚未迁入本页面；预测核心查询优先。")
