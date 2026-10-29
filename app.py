@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import math
 from datetime import date
 from types import SimpleNamespace
 
@@ -12,7 +13,7 @@ import streamlit as st
 
 import engine
 
-st.set_page_config(page_title="火烧云预报工具 v1.4.65", page_icon="🌇", layout="wide")
+st.set_page_config(page_title="火烧云预报工具 v1.4.66", page_icon="🌇", layout="wide")
 
 # Community-hosted apps may have a public URL. Configure APP_PASSWORD in Streamlit
 # secrets or the environment to keep the interface restricted to the owner.
@@ -188,7 +189,7 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
     return img
 
 st.title("🌇 火烧云预报工具")
-st.caption("网页迁移版 v1.4.65 · 绝对云底海拔与案例海拔保存修正 · 地名联想/Excel 坐标与海拔 · 经验评分并非经历史观测校准的统计概率")
+st.caption("网页迁移版 v1.4.66 · 绝对云底海拔与案例海拔保存修正 · 地名联想/Excel 坐标与海拔 · 经验评分并非经历史观测校准的统计概率")
 
 with st.expander("使用说明与重要限制", expanded=False):
     st.markdown("""
@@ -327,19 +328,25 @@ def _color_label(value):
     return "世纪"
 
 def _burn_label(inferred, summary):
-    """Local 0–40 km scale estimate: (max(mid, high) - low) × tintable ratio."""
+    """Local 0–40 km scale estimate; missing tintable ratio is treated as zero."""
     local = inferred.get("local_scale_clouds") or {}
     mid, high, low = local.get("mid"), local.get("high"), local.get("low")
-    if not all(isinstance(v, (int, float)) for v in (mid, high, low)):
+    if not all(isinstance(v, (int, float)) and math.isfinite(float(v)) for v in (mid, high, low)):
         return "暂不可判定", None
+
+    # If the tintable-cloud ratio cannot be obtained, use 0 rather than blocking the judgment.
     ratio = inferred.get("tintable_ratio")
-    if not isinstance(ratio, (int, float)):
+    if not isinstance(ratio, (int, float)) or not math.isfinite(float(ratio)):
         match = re.search(r"可染色云量占比\s+(?:约\s*)?(\d+(?:\.\d+)?)%", str(summary or ""))
-        if not match:
-            return "暂不可判定", None
-        ratio = float(match.group(1))
-    burn_index = max(0.0, max(float(mid), float(high)) - float(low)) * float(ratio) / 100.0
-    if burn_index < 10:
+        ratio = float(match.group(1)) if match else 0.0
+
+    local_cloud_sum = float(low) + float(mid) + float(high)
+    burn_index = max(0.0, max(float(mid), float(high)) - float(low)) * max(0.0, min(100.0, float(ratio))) / 100.0
+    if local_cloud_sum < 10:
+        label = "光板天"
+    elif burn_index <= 0:
+        label = "几乎不烧"
+    elif burn_index < 10:
         label = "小小烧"
     elif burn_index < 30:
         label = "微烧"
@@ -409,7 +416,7 @@ if results:
             color_hex = color_palette.get(color_class, "#4b5563")
             st.markdown(
                 f'<div style="font-size:24px;font-weight:800;line-height:1.5;margin:6px 0 2px 0;">'
-                f'{regular_label} <span style="color:{color_hex};">{color_class}</span> {burn_text}</div>'
+                f'{regular_label} <span style="color:{color_hex};">{color_class}</span>的{burn_text}</div>'
                 f'<div style="font-size:11px;font-weight:400;color:#858585;line-height:1.5;margin:0 0 12px 0;">'
                 f'常规概率：&lt;45% 小概率，45%–75% 有概率，&gt;75% 高概率；'
                 f'色彩评分：&lt;30 平平无奇，30–&lt;50 普通，50–&lt;70 绚烂，70–&lt;90 史诗，≥90 世纪；'

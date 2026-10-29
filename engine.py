@@ -2664,16 +2664,24 @@ class FireCloudApp(tk.Tk):
                     tintable_ratio = 0
                     tintable_text = "0%估算（本地无云）"
                 else:
-                    tintable_text = "暂不可估"
+                    # 可染色云量占比无法估算时按 0 计，不再因此阻断烧云规模判读。
+                    tintable_ratio = 0
+                    tintable_text = "0%估算（数据不足，按0计）"
                 # 烧云规模单独使用本地 40 km 采样；不改动路径算法的 15 km 采样与概率评分。
                 local_mid_scale = local_scale_clouds.get("mid")
                 local_high_scale = local_scale_clouds.get("high")
                 local_low_scale = local_scale_clouds.get("low")
                 burn_scale_index = None
                 burn_scale_label = "暂不可判定"
-                if all(isinstance(v, (int, float)) for v in (local_mid_scale, local_high_scale, local_low_scale, tintable_ratio)):
-                    burn_scale_index = max(0.0, max(float(local_mid_scale), float(local_high_scale)) - float(local_low_scale)) * float(tintable_ratio) / 100.0
-                    if burn_scale_index < 10:
+                if all(isinstance(v, (int, float)) and math.isfinite(float(v)) for v in (local_mid_scale, local_high_scale, local_low_scale)):
+                    local_scale_cloud_sum = float(local_low_scale) + float(local_mid_scale) + float(local_high_scale)
+                    ratio_for_scale = float(tintable_ratio) if isinstance(tintable_ratio, (int, float)) and math.isfinite(float(tintable_ratio)) else 0.0
+                    burn_scale_index = max(0.0, max(float(local_mid_scale), float(local_high_scale)) - float(local_low_scale)) * max(0.0, min(100.0, ratio_for_scale)) / 100.0
+                    if local_scale_cloud_sum < 10:
+                        burn_scale_label = "光板天"
+                    elif burn_scale_index <= 0:
+                        burn_scale_label = "几乎不烧"
+                    elif burn_scale_index < 10:
                         burn_scale_label = "小小烧"
                     elif burn_scale_index < 30:
                         burn_scale_label = "微烧"
