@@ -277,8 +277,72 @@ if run:
     }
     runner = WebForecastEngine(values)
     _direction_text = "朝霞与晚霞" if query_direction == "all" else ("朝霞" if query_direction == "morning" else "晚霞")
-    with st.spinner(f"正在获取天气、云层剖面与 CAMS AOD，并计算{_direction_text}……这可能需要几分钟。"):
+    # Custom lightweight loading animation: a cloud above a pulsing orange-red circle.
+    # It is mounted before the blocking forecast call and cleared as soon as it returns.
+    loading = st.empty()
+    loading.markdown(
+        """
+        <style>
+        .bs-loading-wrap {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 10px 2px 14px;
+            color: var(--text-color);
+            font-size: 0.95rem;
+        }
+        .bs-loading-mark {
+            width: 58px;
+            min-width: 58px;
+            height: 58px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1px;
+        }
+        .bs-loading-cloud {
+            width: 42px;
+            height: 29px;
+            fill: #e9eef3;
+            stroke: #778899;
+            stroke-width: 1.3;
+        }
+        .bs-loading-pulse {
+            width: 17px;
+            height: 7px;
+            margin-top: -1px;
+            border-radius: 50%;
+            background: #f06435;
+            box-shadow: 0 0 8px rgba(240, 100, 53, .35);
+            animation: bs-pulse 1.05s ease-in-out infinite;
+            transform-origin: center;
+        }
+        @keyframes bs-pulse {
+            0%, 100% { transform: scale(0.72); opacity: .48; }
+            50% { transform: scale(1.65); opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .bs-loading-pulse { animation: none; }
+        }
+        </style>
+        <div class="bs-loading-wrap">
+          <div class="bs-loading-mark" aria-hidden="true">
+            <svg class="bs-loading-cloud" viewBox="0 0 64 42" role="img">
+              <path d="M16 33C7 33 4 27 4 21s5-11 12-11c2 0 4 .4 5.8 1.4C25 3 33 1 40 5c5 3 7 8 7 13 7-.5 13 4 13 10 0 3-2 5-5 5H16z"/>
+            </svg>
+            <div class="bs-loading-pulse"></div>
+          </div>
+          <div>正在获取天气、云层剖面并计算{_direction_text}……这可能需要几分钟。</div>
+        </div>
+        """.replace("{_direction_text}", _direction_text),
+        unsafe_allow_html=True,
+    )
+    try:
         runner._fetch_weather_task("both" if query_direction == "all" else query_direction)
+    finally:
+        # Remove the animation after success or failure; no animation remains idle.
+        loading.empty()
     if engine.messagebox.last_error:
         st.error(f"{engine.messagebox.last_error[0]}：{engine.messagebox.last_error[1]}")
     elif not runner.direction_results:
