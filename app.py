@@ -12,7 +12,7 @@ import streamlit as st
 
 import engine
 
-st.set_page_config(page_title="火烧云预报工具 v1.4.64", page_icon="🌇", layout="wide")
+st.set_page_config(page_title="火烧云预报工具 v1.4.65", page_icon="🌇", layout="wide")
 
 # Community-hosted apps may have a public URL. Configure APP_PASSWORD in Streamlit
 # secrets or the environment to keep the interface restricted to the owner.
@@ -188,7 +188,7 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
     return img
 
 st.title("🌇 火烧云预报工具")
-st.caption("网页迁移版 v1.4.64 · 绝对云底海拔与案例海拔保存修正 · 地名联想/Excel 坐标与海拔 · 经验评分并非经历史观测校准的统计概率")
+st.caption("网页迁移版 v1.4.65 · 绝对云底海拔与案例海拔保存修正 · 地名联想/Excel 坐标与海拔 · 经验评分并非经历史观测校准的统计概率")
 
 with st.expander("使用说明与重要限制", expanded=False):
     st.markdown("""
@@ -327,15 +327,18 @@ def _color_label(value):
     return "世纪"
 
 def _burn_label(inferred, summary):
-    """Heuristic burn-size class = (mid + high cloud cover) × tintable-cloud ratio."""
-    mid, high = inferred.get("mid"), inferred.get("high")
-    if not isinstance(mid, (int, float)) or not isinstance(high, (int, float)):
+    """Local 0–40 km scale estimate: (max(mid, high) - low) × tintable ratio."""
+    local = inferred.get("local_scale_clouds") or {}
+    mid, high, low = local.get("mid"), local.get("high"), local.get("low")
+    if not all(isinstance(v, (int, float)) for v in (mid, high, low)):
         return "暂不可判定", None
-    match = re.search(r"可染色云量占比\s+(?:约\s*)?(\d+(?:\.\d+)?)%", str(summary or ""))
-    if not match:
-        return "暂不可判定", None
-    tintable_ratio = float(match.group(1))
-    burn_index = max(0.0, (float(mid) + float(high)) * tintable_ratio / 100.0)
+    ratio = inferred.get("tintable_ratio")
+    if not isinstance(ratio, (int, float)):
+        match = re.search(r"可染色云量占比\s+(?:约\s*)?(\d+(?:\.\d+)?)%", str(summary or ""))
+        if not match:
+            return "暂不可判定", None
+        ratio = float(match.group(1))
+    burn_index = max(0.0, max(float(mid), float(high)) - float(low)) * float(ratio) / 100.0
     if burn_index < 10:
         label = "小小烧"
     elif burn_index < 30:
@@ -401,16 +404,17 @@ if results:
             burn_label, burn_index = _burn_label(inferred, result.get("summary", ""))
             regular_label = _probability_label(regular_score)
             color_class = _color_label(color_score)
-            burn_text = f"{burn_label}（估算指数 {burn_index:.1f}）" if burn_index is not None else burn_label
+            burn_text = burn_label
+            color_palette = {"平平无奇": "#e2c76a", "普通": "#c99b24", "绚烂": "#e67e22", "史诗": "#d62828", "世纪": "#9d174d"}
+            color_hex = color_palette.get(color_class, "#4b5563")
             st.markdown(
-                f'<div style="font-size:18px;font-weight:800;line-height:1.75;margin:6px 0 12px 0;">'
-                f'当前判读：常规概率为「{regular_label}」 · 色彩表现为「{color_class}」 · 烧云规模为「{burn_text}」'
-                f'<br><span style="font-size:15px;">判读标准：常规概率 &lt;45% 小概率，45%–75% 有概率，&gt;75% 高概率；'
-                f'色彩 &lt;30 平平无奇，30–50 普通，50–70 绚烂，70–90 史诗，&gt;90 世纪；'
-                f'烧云规模按（中云量+高云量）×可染色云量占比估算：&lt;10% 小小烧，10%–&lt;30% 微烧，'
-                f'30%–&lt;50% 小烧，50%–&lt;70% 中烧，≥70% 大烧。</span></div>',
-                unsafe_allow_html=True,
-            )
+                f'<div style="font-size:24px;font-weight:800;line-height:1.5;margin:6px 0 2px 0;">'
+                f'{regular_label} <span style="color:{color_hex};">{color_class}</span> {burn_text}</div>'
+                f'<div style="font-size:11px;font-weight:400;color:#858585;line-height:1.5;margin:0 0 12px 0;">'
+                f'常规概率：&lt;45% 小概率，45%–75% 有概率，&gt;75% 高概率；'
+                f'色彩评分：&lt;30 平平无奇，30–&lt;50 普通，50–&lt;70 绚烂，70–&lt;90 史诗，≥90 世纪；'
+                f'烧云规模：指数&lt;10 小小烧，10–&lt;30 微烧，30–&lt;50 小烧，50–&lt;70 中烧，≥70 大烧；采用本地 40 km 采样，公式为 max(中云,高云)−低云，再乘可染色云量占比。'
+                f'</div>', unsafe_allow_html=True)
             rgb = inferred.get("peak_color_rgb") or inferred.get("color_rgb")
             if isinstance(rgb, (tuple, list)) and len(rgb) >= 3:
                 hex_color = "#%02x%02x%02x" % tuple(max(0, min(255, int(v))) for v in rgb[:3])

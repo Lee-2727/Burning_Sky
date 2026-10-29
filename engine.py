@@ -2442,8 +2442,42 @@ class FireCloudApp(tk.Tk):
                     area_coords_by_center.append(neighborhood)
                     cross_offsets_by_center.append(offsets)
                 query_coords = [pt for group in area_coords_by_center for pt in group]
-                self._set_main_progress(base_progress + 22, f"{direction_name}：请求沿线天气数据（{len(query_coords)} 个空间点）……")
+                # 独立的本地烧云规模采样：中心点 + 20 km / 40 km 两个环上的 8 方位点。
+                # 这组采样只用于最终“小小烧/微烧/...”标签，不参与原有 15 km 路径采样及评分。
+                local_scale_coords = []
+                for radius_km in (20.0, 40.0):
+                    for bearing_deg in range(0, 360, 45):
+                        local_scale_coords.append(destination_point(data["lat"], data["lon"], bearing_deg, radius_km))
+                path_location_count = len(query_coords)
+                query_coords.extend(local_scale_coords)
+                self._set_main_progress(base_progress + 22, f"{direction_name}：请求沿线天气与本地 40 km 规模采样（{len(query_coords)} 个空间点）……")
                 raw_locations = self._fetch_weather_locations(query_coords, model_id)
+                # 以中心点和 16 个本地环点计算 0–40 km 的独立云量均值。
+                local_scale_records = []
+                for loc in ([raw_locations[0]] if raw_locations else []) + raw_locations[path_location_count:]:
+                    hourly = loc.get("hourly", {})
+                    times = hourly.get("time", [])
+                    if not times:
+                        continue
+                    idx = min(range(len(times)), key=lambda i: abs((datetime.fromisoformat(times[i]) - event_utc).total_seconds()))
+                    if abs((datetime.fromisoformat(times[idx]) - event_utc).total_seconds()) > 5400:
+                        continue
+                    rec = {}
+                    for key in ("cloud_cover", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high"):
+                        series = hourly.get(key, [])
+                        val = series[idx] if idx < len(series) else None
+                        rec[key] = val if isinstance(val, (int, float)) and math.isfinite(val) else None
+                    local_scale_records.append(rec)
+                def _local_scale_avg(key):
+                    vals = [r[key] for r in local_scale_records if r.get(key) is not None]
+                    return sum(vals) / len(vals) if vals else None
+                local_scale_clouds = {
+                    "total": _local_scale_avg("cloud_cover"),
+                    "low": _local_scale_avg("cloud_cover_low"),
+                    "mid": _local_scale_avg("cloud_cover_mid"),
+                    "high": _local_scale_avg("cloud_cover_high"),
+                    "radius_km": 40, "sample_count": len(local_scale_records),
+                }
                 self._set_main_progress(base_progress + 34, f"{direction_name}：整理沿线云量与天气数据……")
                 cloud_keys = ("cloud_cover", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high",
                               "visibility", "wind_speed_10m", "precipitation_probability", "precipitation", "wind_gusts_10m")
@@ -2611,6 +2645,7 @@ class FireCloudApp(tk.Tk):
                 gap_count = len(all_gaps)
                 total_gap_size = sum(float(g.get("size_km", 0) or 0) for g in all_gaps)
                 local_cloud_extent = boundaries.get("fire_cloud_range_km")
+                tintable_ratio = None
                 if isinstance(local_total, (int, float)) and local_total > 0 and target_cloud is not None:
                     base_ratio = max(0.0, min(1.0, target_cloud / local_total))
                     if isinstance(gap_start, (int, float)):
@@ -2626,9 +2661,32 @@ class FireCloudApp(tk.Tk):
                     tintable_ratio = max(0, min(100, round(base_ratio * gap_factor * 100)))
                     tintable_text = f"约 {tintable_ratio}%估算"
                 elif isinstance(local_total, (int, float)) and local_total <= 0:
+                    tintable_ratio = 0
                     tintable_text = "0%估算（本地无云）"
                 else:
                     tintable_text = "暂不可估"
+                # 烧云规模单独使用本地 40 km 采样；不改动路径算法的 15 km 采样与概率评分。
+                local_mid_scale = local_scale_clouds.get("mid")
+                local_high_scale = local_scale_clouds.get("high")
+                local_low_scale = local_scale_clouds.get("low")
+                burn_scale_index = None
+                burn_scale_label = "暂不可判定"
+                if all(isinstance(v, (int, float)) for v in (local_mid_scale, local_high_scale, local_low_scale, tintable_ratio)):
+                    burn_scale_index = max(0.0, max(float(local_mid_scale), float(local_high_scale)) - float(local_low_scale)) * float(tintable_ratio) / 100.0
+                    if burn_scale_index < 10:
+                        burn_scale_label = "小小烧"
+                    elif burn_scale_index < 30:
+                        burn_scale_label = "微烧"
+                    elif burn_scale_index < 50:
+                        burn_scale_label = "小烧"
+                    elif burn_scale_index < 70:
+                        burn_scale_label = "中烧"
+                    else:
+                        burn_scale_label = "大烧"
+                inferred["local_scale_clouds"] = local_scale_clouds
+                inferred["burn_scale_index"] = burn_scale_index
+                inferred["burn_scale_label"] = burn_scale_label
+                inferred["tintable_ratio"] = tintable_ratio
                 summary = (
                     f"{model_time_text}\n"
                     f"{direction_name} · {data['place']} · {data['date'].isoformat()}　{event_dt.strftime('%H:%M')} / 方位 {azimuth:.0f}°\n"
@@ -2727,7 +2785,7 @@ class FireCloudApp(tk.Tk):
                                           "distances": distances, "max_reach": max_reach, "aod": effective_aod,
                                           "rainbow": rainbow_result, "dynamic_light_curve": dynamic_curve,
                                           "origin": (data["lat"], data["lon"]), "azimuth": azimuth, "event_dt": event_dt,
-                                          "boundaries": boundaries,
+                                          "boundaries": boundaries, "local_scale_clouds": local_scale_clouds,
                                           # 保存本次实际请求返回的原始天气响应，供案例复盘；不额外发起请求。
                                           "raw_weather": raw_locations}
 
