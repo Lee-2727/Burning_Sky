@@ -333,7 +333,7 @@ if run:
             </svg>
             <div class="bs-loading-pulse"></div>
           </div>
-          <div>正在获取天气、云层剖面并计算{_direction_text}……这可能需要几分钟。</div>
+          <div>正在获取数据并计算……这可能需要几分钟。</div>
         </div>
         """.replace("{_direction_text}", _direction_text),
         unsafe_allow_html=True,
@@ -542,8 +542,8 @@ if results:
                 else:
                     st.info("当前结果没有可显示的路径采样数据。")
     report = st.session_state.get("fire_cloud_last_report", "")
-    if report:
-        st.download_button("下载完整分析报告（TXT）", report.encode("utf-8-sig"), file_name=f"火烧云分析_{meta.get('date','report')}.txt", mime="text/plain")
+    #if report:
+    #    st.download_button("下载完整分析报告（TXT）", report.encode("utf-8-sig"), file_name=f"火烧云分析_{meta.get('date','report')}.txt", mime="text/plain")
 else:
     st.info("请在左侧设置地点、日期和模式，然后点击查询。")
 
