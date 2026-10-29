@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import date
 from types import SimpleNamespace
 
@@ -296,7 +297,7 @@ def _styled_cloud_summary(summary):
     import html
     text = html.escape(str(summary or ""))
     text = re.sub(r"(?<!\S)(中|高)\s*(\d+(?:\.\d+)?%)",
-                  r'<span style="color:#c62828;font-weight:800;">\\1 \\2</span>', text)
+                  r'<span style="color:#c62828;font-weight:800;">\1 \2</span>', text)
     return text.replace("\\n", "<br>")
 
 def _probability_label(value):
@@ -321,7 +322,7 @@ def _color_label(value):
         return "普通"
     if value < 70:
         return "绚烂"
-    if value <= 90:
+    if value < 90:
         return "史诗"
     return "世纪"
 
@@ -346,6 +347,33 @@ def _burn_label(inferred, summary):
     else:
         label = "大烧"
     return label, burn_index
+
+def _path_sampling_table(details):
+    """Extract only the along-path sampling rows from the legacy detailed report."""
+    columns = [
+        "距离", "中心坐标", "总云/低云/中云/高云", "能见度", "风速",
+        "云底绝对海拔", "有效云底绝对海拔", "理论深入距离", "几何筛选",
+    ]
+    rows = []
+    in_table = False
+    for line in str(details or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("距离 | 中心坐标 | 总云/低云/中云/高云"):
+            in_table = True
+            continue
+        if not in_table:
+            continue
+        if not stripped or " | " not in stripped:
+            if rows:
+                break
+            continue
+        parts = [part.strip() for part in stripped.split("|")]
+        if len(parts) == len(columns) and parts[0].endswith("km"):
+            rows.append(parts)
+        elif rows:
+            break
+    return pd.DataFrame(rows, columns=columns)
+
 
 results = st.session_state.get("fire_cloud_last_results")
 meta = st.session_state.get("fire_cloud_last_meta", {})
@@ -393,6 +421,7 @@ if results:
                 st.caption(f"彩虹机会：{rainbow.get('label', '暂不可估')}；这是经验指数，不是统计概率。")
             curve = result.get("dynamic_light_curve", {})
             points = curve.get("samples", []) if isinstance(curve, dict) else []
+            st.subheader("云色时序")
             st.markdown("**动态亮度—色彩曲线（曲线颜色与下方色带均使用模型逐分钟估算 RGB）**")
             st.image(_draw_dynamic_color_curve(points, curve.get("peak"), key), use_container_width=True)
             if points:
@@ -403,10 +432,11 @@ if results:
             else:
                 st.caption(curve.get("note", "当前没有可参与动态受光估算的云层；已保留空白坐标框，不会伪造色彩曲线。"))
             with st.expander(f"{title}详细采样与分析报告"):
-                st.text(result.get("details", "暂无详细报告"))
-                samples = result.get("samples", [])
-                if samples:
-                    st.dataframe(pd.DataFrame(samples), use_container_width=True, hide_index=True)
+                path_table = _path_sampling_table(result.get("details", ""))
+                if not path_table.empty:
+                    st.dataframe(path_table, use_container_width=True, hide_index=True)
+                else:
+                    st.info("当前结果没有可显示的路径采样数据。")
     report = st.session_state.get("fire_cloud_last_report", "")
     if report:
         st.download_button("下载完整分析报告（TXT）", report.encode("utf-8-sig"), file_name=f"火烧云分析_{meta.get('date','report')}.txt", mime="text/plain")
