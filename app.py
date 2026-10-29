@@ -13,7 +13,7 @@ import streamlit as st
 
 import engine
 
-st.set_page_config(page_title="火烧云预报工具 v1.4.66", page_icon="🌇", layout="wide")
+st.set_page_config(page_title="Burning Sky V1.4", page_icon="🌇", layout="wide")
 
 # Community-hosted apps may have a public URL. Configure APP_PASSWORD in Streamlit
 # secrets or the environment to keep the interface restricted to the owner.
@@ -26,7 +26,7 @@ APP_PASSWORD = APP_PASSWORD or os.environ.get("APP_PASSWORD", "")
 
 if APP_PASSWORD:
     if st.session_state.get("authenticated") is not True:
-        st.title("🌇 火烧云预报工具")
+        st.title("🌇 Burning Sky V1.4")
         password = st.text_input("访问密码", type="password")
         if st.button("进入", type="primary"):
             if password == APP_PASSWORD:
@@ -188,16 +188,12 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
     d.text((left, 525), "Relative brightness (window peak = 100)", font=small, fill=(71, 85, 105))
     return img
 
-st.title("🌇 火烧云预报工具")
-st.caption("网页迁移版 v1.4.66 · 绝对云底海拔与案例海拔保存修正 · 地名联想/Excel 坐标与海拔 · 经验评分并非经历史观测校准的统计概率")
+st.title("🌇 Burning Sky V1.4")
 
 with st.expander("使用说明与重要限制", expanded=False):
     st.markdown("""
-    - 本页面复用原脚本中的天气采样、云层剖面、CAMS AOD、低云遮挡、评分与动态亮度曲线计算方法。
-    - 地点海拔用于将气压层高度（海拔基准）换算为相对观测地面的高度；本地剖面未显示地面以上 0–3 km 低云证据时，不让本地低云覆盖率单独触发低云硬上限。
-    - Excel 海拔是近似城市中心地形高程，山峰/垭口/景区机位请按实际拍摄点手动校正。
     - 当前版本默认按 UTC+8 计算地点的日出日落；跨时区地点需要手动核对时区，不能直接把本工具当作全球时区自动识别服务。
-    - Open-Meteo 或 CAMS 数据不可用、限流时，查询可能失败；请稍后再试。
+    - 天气数据不可用或限流时，查询可能失败；请稍后再试。
     - 评分是模式云况的经验指标，不等于真实火烧云发生概率；动态曲线是相对亮度指数，不是实测辐射亮度。
     - 免费云端服务可能休眠。首次打开或长时间未访问后，启动可能较慢。
     """)
@@ -277,8 +273,33 @@ if run:
     }
     runner = WebForecastEngine(values)
     _direction_text = "朝霞与晚霞" if query_direction == "all" else ("朝霞" if query_direction == "morning" else "晚霞")
-    with st.spinner(f"正在获取天气、云层剖面与 CAMS AOD，并计算{_direction_text}……这可能需要几分钟。"):
+    # Replace Streamlit's default running animation with a pulsing circle in the upper-right.
+    _busy_indicator = st.empty()
+    _busy_indicator.markdown(
+        """
+        <style>
+        div[data-testid="stStatusWidget"] { visibility: hidden !important; }
+        @keyframes burningSkyPulse {
+            0%   { transform: scale(0.72); opacity: 0.42; box-shadow: 0 0 0 0 rgba(230, 80, 45, 0.45); }
+            50%  { transform: scale(1.08); opacity: 1; box-shadow: 0 0 0 9px rgba(230, 80, 45, 0.05); }
+            100% { transform: scale(0.72); opacity: 0.42; box-shadow: 0 0 0 0 rgba(230, 80, 45, 0); }
+        }
+        .burning-sky-running-dot {
+            position: fixed; top: 1.05rem; right: 4.8rem; z-index: 100000;
+            width: 13px; height: 13px; border-radius: 50%;
+            background: #e65336; border: 1px solid rgba(255,255,255,.85);
+            animation: burningSkyPulse 1.05s ease-in-out infinite;
+            pointer-events: none;
+        }
+        </style>
+        <div class="burning-sky-running-dot"></div>
+        """,
+        unsafe_allow_html=True,
+    )
+    try:
         runner._fetch_weather_task("both" if query_direction == "all" else query_direction)
+    finally:
+        _busy_indicator.empty()
     if engine.messagebox.last_error:
         st.error(f"{engine.messagebox.last_error[0]}：{engine.messagebox.last_error[1]}")
     elif not runner.direction_results:
