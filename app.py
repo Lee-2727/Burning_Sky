@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Streamlit web wrapper for the v1.4.63 fire-cloud forecast engine."""
+"""Streamlit web client for the shared Burning Sky v1.4.67 engine."""
 from __future__ import annotations
 
 import os
@@ -189,8 +189,6 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
     return img
 
 st.title("🌇 Burning Sky V1.4")
-st.markdown("选择地点、日期和天气模式，然后点击朝霞、晚霞或查询/更新按钮。")
-
 with st.sidebar:
     st.header("预报设置")
     place_query = st.text_input("地点名称（输入前几个字联想）", "合肥", key="place_query")
@@ -266,72 +264,8 @@ if run:
     }
     runner = WebForecastEngine(values)
     _direction_text = "朝霞与晚霞" if query_direction == "all" else ("朝霞" if query_direction == "morning" else "晚霞")
-    # Custom lightweight loading animation: a cloud above a pulsing orange-red circle.
-    # It is mounted before the blocking forecast call and cleared as soon as it returns.
-    loading = st.empty()
-    loading.markdown(
-        """
-        <style>
-        .bs-loading-wrap {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            padding: 10px 2px 14px;
-            color: var(--text-color);
-            font-size: 0.95rem;
-        }
-        .bs-loading-mark {
-            width: 58px;
-            min-width: 58px;
-            height: 58px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 1px;
-        }
-        .bs-loading-cloud {
-            width: 42px;
-            height: 29px;
-            fill: #e9eef3;
-            stroke: #778899;
-            stroke-width: 1.3;
-        }
-        .bs-loading-pulse {
-            width: 17px;
-            height: 7px;
-            margin-top: -1px;
-            border-radius: 50%;
-            background: #f06435;
-            box-shadow: 0 0 8px rgba(240, 100, 53, .35);
-            animation: bs-pulse 1.05s ease-in-out infinite;
-            transform-origin: center;
-        }
-        @keyframes bs-pulse {
-            0%, 100% { transform: scale(0.72); opacity: .48; }
-            50% { transform: scale(1.65); opacity: 1; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-            .bs-loading-pulse { animation: none; }
-        }
-        </style>
-        <div class="bs-loading-wrap">
-          <div class="bs-loading-mark" aria-hidden="true">
-            <svg class="bs-loading-cloud" viewBox="0 0 64 42" role="img">
-              <path d="M16 33C7 33 4 27 4 21s5-11 12-11c2 0 4 .4 5.8 1.4C25 3 33 1 40 5c5 3 7 8 7 13 7-.5 13 4 13 10 0 3-2 5-5 5H16z"/>
-            </svg>
-            <div class="bs-loading-pulse"></div>
-          </div>
-          <div>正在获取数据并计算……这可能需要几分钟。</div>
-        </div>
-        """.replace("{_direction_text}", _direction_text),
-        unsafe_allow_html=True,
-    )
-    try:
+    with st.spinner(f"正在获取天气、云层剖面与 CAMS AOD，并计算{_direction_text}……这可能需要几分钟。"):
         runner._fetch_weather_task("both" if query_direction == "all" else query_direction)
-    finally:
-        # Remove the animation after success or failure; no animation remains idle.
-        loading.empty()
     if engine.messagebox.last_error:
         st.error(f"{engine.messagebox.last_error[0]}：{engine.messagebox.last_error[1]}")
     elif not runner.direction_results:
@@ -349,12 +283,7 @@ if run:
 def _styled_cloud_summary(summary):
     """Display-only styling: emphasize mid/high cloud percentages without changing values."""
     import html
-    clean_summary = str(summary or "")
-    clean_summary = clean_summary.replace("云底的剖面离地高度 + 地点海拔（绝对高度）", "绝对高度")
-    clean_summary = clean_summary.replace("云底的剖面离地高度+地点海拔（绝对高度）", "绝对高度")
-    clean_summary = clean_summary.replace("（所有有效距离段加权；色相为示意估算）", "")
-    clean_summary = clean_summary.replace("(所有有效距离段加权；色相为示意估算)", "")
-    text = html.escape(clean_summary)
+    text = html.escape(str(summary or ""))
     text = re.sub(r"(?<!\S)(中|高)\s*(\d+(?:\.\d+)?%)",
                   r'<span style="color:#c62828;font-weight:800;">\1 \2</span>', text)
     return text.replace("\\n", "<br>")
@@ -384,28 +313,6 @@ def _color_label(value):
     if value < 90:
         return "史诗"
     return "世纪"
-
-def _aod_adjective(value):
-    """Return the requested air-transparency adjective for a numeric AOD value."""
-    try:
-        value = float(value)
-    except (TypeError, ValueError):
-        return ""
-    if not math.isfinite(value) or value < 0:
-        return ""
-    if value < 0.1:
-        return "超级水晶"
-    if value < 0.2:
-        return "水晶"
-    if value < 0.3:
-        return ""
-    if value < 0.4:
-        return "小污"
-    if value < 0.6:
-        return "污"
-    if value < 0.8:
-        return "大污"
-    return "沙尘级"
 
 def _burn_label(inferred, summary):
     """Local 0–200 km scale estimate; missing tintable ratio is treated as zero."""
@@ -439,14 +346,11 @@ def _burn_label(inferred, summary):
     return label, burn_index
 
 def _path_sampling_table(details):
-    """Extract along-path samples while omitting unneeded technical columns from the web UI."""
-    source_columns = [
+    """Extract only the along-path sampling rows from the legacy detailed report."""
+    columns = [
         "距离", "中心坐标", "总云/低云/中云/高云", "能见度", "风速",
         "云底绝对海拔", "有效云底绝对海拔", "理论深入距离", "几何筛选",
     ]
-    # Keep only the fields useful for a quick visual review in the web page.
-    display_indices = [0, 2, 3, 4, 8]
-    display_columns = [source_columns[i] for i in display_indices]
     rows = []
     in_table = False
     for line in str(details or "").splitlines():
@@ -461,11 +365,11 @@ def _path_sampling_table(details):
                 break
             continue
         parts = [part.strip() for part in stripped.split("|")]
-        if len(parts) == len(source_columns) and parts[0].endswith("km"):
-            rows.append([parts[i] for i in display_indices])
+        if len(parts) == len(columns) and parts[0].endswith("km"):
+            rows.append(parts)
         elif rows:
             break
-    return pd.DataFrame(rows, columns=display_columns)
+    return pd.DataFrame(rows, columns=columns)
 
 
 results = st.session_state.get("fire_cloud_last_results")
@@ -494,14 +398,7 @@ if results:
             burn_label, burn_index = _burn_label(inferred, result.get("summary", ""))
             regular_label = _probability_label(regular_score)
             color_class = _color_label(color_score)
-            # Prefer the actual AOD carried by the result; use the summary text as fallback.
-            aod_value = inferred.get("aod", result.get("aod"))
-            if aod_value is None:
-                aod_match = re.search(r"\bAOD\s*[:：]?\s*(\d+(?:\.\d+)?)", str(result.get("summary", "")), re.IGNORECASE)
-                if aod_match:
-                    aod_value = float(aod_match.group(1))
-            aod_adjective = _aod_adjective(aod_value)
-            burn_text = f"{aod_adjective}{burn_label}"
+            burn_text = burn_label
             color_palette = {"平平无奇": "#e2c76a", "普通": "#c99b24", "绚烂": "#e67e22", "史诗": "#d62828", "世纪": "#9d174d"}
             color_hex = color_palette.get(color_class, "#4b5563")
             st.markdown(
@@ -519,7 +416,7 @@ if results:
                 st.markdown(f'<div style="height:34px;border-radius:8px;background:{hex_color};border:1px solid #888"></div>', unsafe_allow_html=True)
             rainbow = result.get("rainbow", {})
             if rainbow:
-                st.caption(f"彩虹机会：{rainbow.get('label', '暂不可估')}")
+                st.caption(f"彩虹机会：{rainbow.get('label', '暂不可估')}；这是经验指数，不是统计概率。")
             curve = result.get("dynamic_light_curve", {})
             points = curve.get("samples", []) if isinstance(curve, dict) else []
             st.subheader("云色时序")
