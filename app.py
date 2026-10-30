@@ -345,7 +345,7 @@ if st.session_state.get("show_multi_day_overview"):
                         else:
                             color = "#A12A83"  # 紫红色
                         return f"color: {color}; font-weight: 700;"
-                    _styled = _df.style.applymap(_fire_score_style, subset=["火烧云评分（不考虑色彩）"])
+                    _styled = _df.style.map(_fire_score_style, subset=["火烧云评分（不考虑色彩）"])
                     st.dataframe(_styled, use_container_width=True, hide_index=True)
     st.stop()
 
