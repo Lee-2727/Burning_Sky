@@ -227,7 +227,9 @@ with st.sidebar:
     lat = st.number_input("纬度", min_value=-90.0, max_value=90.0, value=_default_lat, format="%.4f")
     lon = st.number_input("经度", min_value=-180.0, max_value=180.0, value=_default_lon, format="%.4f")
     elevation = st.number_input("海拔（m，Excel 为近似城市中心值，可手动修改）", min_value=-500.0, max_value=9000.0, value=_default_elev, step=10.0)
-    model_label = st.selectbox("天气预报模式", ["ECMWF IFS 0.25°", "GFS Global"])
+    model_options = [item["label"] for item in engine.WEATHER_MODEL_CATALOG]
+    model_label = st.selectbox("天气预报模式", model_options, index=0)
+    st.caption("JMA MSM 已暂时停用；ECMWF (AI) 的部分云层分层由湿度场推算；CMA GRAPES 公共数据服务可能拥堵。接口不可用时会显示错误，不会静默切换模式。")
     cloud_base_mode = st.selectbox("云底来源", ["自动剖面推算", "手动指定"])
     st.caption("默认时区为 UTC+8。当前网页版本不自动识别任意地点的时区。")
     st.divider()
@@ -243,8 +245,44 @@ with st.sidebar:
     with evening_col:
         run_evening = st.button("查询晚霞", use_container_width=True)
     run_all = st.button("查询 / 更新朝霞与晚霞", type="primary", use_container_width=True)
+    if st.button("未来多日概览", use_container_width=True, key="open_multi_day_overview"):
+        st.session_state["show_multi_day_overview"] = True
+        st.rerun()
     run = run_morning or run_evening or run_all
     query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
+
+if st.session_state.get("show_multi_day_overview"):
+    st.title("未来多日概览")
+    if st.button("← 返回单次预报", key="back_to_single_forecast"):
+        st.session_state["show_multi_day_overview"] = False
+        st.rerun()
+    _overview_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "overview.json")
+    _overview = None
+    try:
+        import json as _json
+        with open(_overview_path, "r", encoding="utf-8") as _f:
+            _overview = _json.load(_f)
+    except Exception:
+        pass
+    if not _overview or not _overview.get("days"):
+        st.info("尚无已保存的概览数据。后台首次更新完成后，这里会显示合肥未来三天的朝霞与晚霞结果。")
+    else:
+        st.caption(f"固定地点：合肥（31.8047, 117.2214） · 最近更新：{_overview.get('updated_at', '未知')} · 数据可能不是最新一轮模式预报。")
+        _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global", "CMA GRAPES Global", "ECMWF (AI)"]
+        _model_short = {"ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON", "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)"}
+        for _direction, _direction_title in (("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")):
+            st.subheader(_direction_title)
+            _date_cols = st.columns(3)
+            for _col, _day in zip(_date_cols, _overview.get("days", [])):
+                with _col:
+                    st.markdown(f"**{_day.get('date', '日期未知')}**")
+                    _records = _day.get(_direction, {})
+                    _rows = []
+                    for _model in _model_order:
+                        _v = _records.get(_model, {})
+                        _rows.append({"模式": _model_short[_model], "常规概率": (f"{_v['probability']:.0f}%" if isinstance(_v.get("probability"), (int, float)) else "—"), "色彩分": (f"{_v['color_score']:.0f}" if isinstance(_v.get("color_score"), (int, float)) else "—"), "霞云规模": (f"{_v['burn_scale']:.1f}" if isinstance(_v.get("burn_scale"), (int, float)) else "—")})
+                    st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+    st.stop()
 
 if run:
     engine.messagebox.last_error = None

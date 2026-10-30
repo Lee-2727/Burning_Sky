@@ -62,8 +62,36 @@ The regression tests compare representative algorithm outputs against values
 captured from the original v1.4.67 source, and compile/import checks cover both
 client entry points.
 
-## Next providers (not yet activated)
+## 多天气模式接入（本次更新）
 
-After this architecture build is validated, add separate adapters for ICON Global,
-JMA MSM, ECMWF AIFS, and CMA GRAPES. These adapters must normalize input data only;
-they must not contain or alter forecast scoring logic.
+主预测界面的天气模式选择为以下五项，顺序固定：
+
+1. ECMWF IFS 0.25°（默认）
+2. GFS Global
+3. ICON Global（Open-Meteo model id: `icon_global`）
+4. CMA GRAPES Global（`cma_grapes_global`，约 10 天；Open-Meteo 公共数据服务可能拥堵）
+5. ECMWF (AI)（`ecmwf_aifs025_single`，约 15 天；原生 6 小时数据由 API 插值为逐小时序列，部分云层分层由湿度场推算）
+
+JMA MSM 已从可选模式目录注释停用，待后续确认数据服务可用性后再考虑恢复。
+
+各模式均通过 Open-Meteo Generic Forecast API 的 `models` 参数明确指定，不使用 Best Match，不会在失败时静默切换到其他模式。各模式按自身预报时效请求数据。
+
+桌面 GUI 和 Streamlit 网页版共用 `engine.WEATHER_MODEL_CATALOG`，保证选项和模型 ID 一致。核心评分算法未修改。
+
+官方参考：
+- Open-Meteo 通用 API 模型列表：https://open-meteo.com/en/docs
+- ICON：https://open-meteo.com/en/docs/dwd-api
+- JMA：https://open-meteo.com/en/docs/jma-api
+- ECMWF IFS / AIFS：https://open-meteo.com/en/docs/ecmwf-api
+- CMA GRAPES：https://open-meteo.com/en/docs/cma-api
+
+## 未来多日概览（合肥固定地点）
+
+- 网页左侧查询区底部新增「未来多日概览」入口，展示未来三个自然日的朝霞/晚霞。
+- 每个方向按 ECMWF、GFS、ICON、CMA、ECMWF (AI) 排列，展示常规概率、色彩分和霞云规模指数。
+- 霞云规模指数沿用 V1.4.67 的本地 200 km 采样算法：`max(0, max(中云, 高云) - 低云) × 可染色云量占比 / 100`。它是规模指数，不是发生概率。
+- 后台更新脚本：`python scripts/update_overview.py`。脚本复用完整预测引擎，固定坐标 31.8047, 117.2214，保存到 `data/overview.json`。
+- `.github/workflows/update-overview.yml` 配置北京时间每日 00、04、08、12、16、20 点运行（GitHub Actions cron 使用 UTC）；也支持手动触发。任务完成后提交快照，Streamlit Cloud 随仓库更新重新部署。
+- GitHub 仓库需要允许 Actions 使用 `GITHUB_TOKEN` 写入 Contents。GitHub Actions 的定时任务属于 best-effort，可能因平台排队略有延迟；网页展示快照更新时间。
+- JMA MSM 已从可选目录停用；旧 AIFS 显示名称仍保留内部兼容映射，新显示名为 `ECMWF (AI)`。
+- 后台预计算会执行 5 个模式 × 3 天的完整朝晚霞计算，耗时和接口请求量明显高于单次查询。接口失败的模式/日期会留空，不会用其他模式结果冒充。

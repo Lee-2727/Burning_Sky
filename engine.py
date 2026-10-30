@@ -85,6 +85,34 @@ from burning_sky.algorithm import _cloud_height_color
 
 APP_TITLE = "火烧云预报工具 v1.4.67（本地200公里烧云规模评估）"
 
+# Open-Meteo 单模式目录。前两项保持 ECMWF / GFS 的既有顺序与默认值。
+# JMA MSM 已实测不可用，暂时注释停用；保留配置说明便于后续恢复。
+WEATHER_MODEL_CATALOG = [
+    {"label": "ECMWF IFS 0.25°", "id": "ecmwf_ifs025", "forecast_days": 16,
+     "pressure_levels": [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50]},
+    {"label": "GFS Global", "id": "ncep_gfs_global", "forecast_days": 16,
+     "pressure_levels": [1000, 975, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 350, 300, 250, 200]},
+    {"label": "ICON Global", "id": "icon_global", "forecast_days": 8,
+     "pressure_levels": [1000, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50]},
+    # {"label": "JMA MSM", "id": "jma_msm", "forecast_days": 4,
+    #  "pressure_levels": [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100]},
+    {"label": "ECMWF (AI)", "id": "ecmwf_aifs025_single", "forecast_days": 15,
+     "pressure_levels": [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50]},
+    {"label": "CMA GRAPES Global", "id": "cma_grapes_global", "forecast_days": 10,
+     "pressure_levels": [1000, 975, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 350, 300, 275, 250, 225, 200, 175, 150, 125, 100, 70, 50, 30]},
+]
+WEATHER_MODEL_BY_LABEL = {item["label"]: item for item in WEATHER_MODEL_CATALOG}
+WEATHER_MODEL_BY_ID = {item["id"]: item for item in WEATHER_MODEL_CATALOG}
+# 兼容旧版案例/配置中保存的 AIFS 标签。
+WEATHER_MODEL_BY_LABEL["ECMWF AIFS 0.25° Single"] = WEATHER_MODEL_BY_ID["ecmwf_aifs025_single"]
+WEATHER_MODEL_LABELS = [item["label"] for item in WEATHER_MODEL_CATALOG]
+
+def _weather_model_config(model_id):
+    return WEATHER_MODEL_BY_ID.get(model_id, WEATHER_MODEL_BY_ID["ecmwf_ifs025"])
+
+def _weather_model_id_from_label(label):
+    return WEATHER_MODEL_BY_LABEL.get(str(label), WEATHER_MODEL_BY_ID["ecmwf_ifs025"])["id"]
+
 # 全国天气数据内存缓存：避免用户反复绘图时重复请求相同模型和坐标。
 _NATIONAL_WEATHER_CACHE = {}
 _NATIONAL_CACHE_TTL_SECONDS = 3600
@@ -106,6 +134,14 @@ def _metadata_candidates(model_id):
         candidates.extend(["gfs_seamless", "ncep_gfs025", "ncep_gfs_global"])
     elif model_id == "ecmwf_ifs025":
         candidates.extend(["ecmwf_ifs", "ecmwf_ifs025_seamless", "ecmwf_ifs025"])
+    elif model_id == "ecmwf_aifs025_single":
+        candidates.extend(["ecmwf_aifs025_single", "ecmwf_aifs"])
+    elif model_id == "icon_global":
+        candidates.extend(["icon_global", "icon"])
+    elif model_id == "jma_msm":
+        candidates.extend(["jma_msm", "jma"])
+    elif model_id == "cma_grapes_global":
+        candidates.extend(["cma_grapes_global", "cma"])
     return list(dict.fromkeys(candidates))
 
 
@@ -505,9 +541,10 @@ class FireCloudApp(tk.Tk):
         ttk.Label(row, text="天气预报模式", style="Card.TLabel").pack(anchor="w")
         ttk.Combobox(
             row, textvariable=self.vars["weather_model"],
-            values=["ECMWF IFS 0.25°", "GFS Global"],
+            values=WEATHER_MODEL_LABELS,
             state="readonly"
         ).pack(fill="x", pady=(2, 0))
+        ttk.Label(row, text="JMA MSM 已暂时停用；ECMWF (AI) 的部分云层分层由湿度场推算；CMA GRAPES 公共数据服务可能出现拥堵，接口不可用时会明确提示，不会自动替换成其他模式。", style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(3, 0))
 
         btns = ttk.Frame(left, style="Card.TFrame")
         btns.pack(fill="x", pady=(8, 0))
@@ -588,7 +625,7 @@ class FireCloudApp(tk.Tk):
         self.morning_rainbow_label = tk.Label(morning_score_frame, text="彩虹：—", font=("Microsoft YaHei UI", 8),
                                               fg="#7c5a9e", bg="#ffffff", wraplength=116, justify="center")
         self.morning_rainbow_label.pack(fill="x", pady=(7, 3))
-        self._set_text(self.morning_summary, "朝霞：尚未查询。选择日期与 ECMWF/GFS 模式后点击对应的‘查询朝霞’或‘查询晚霞’。")
+        self._set_text(self.morning_summary, "朝霞：尚未查询。选择日期与天气预报模式后点击对应的‘查询朝霞’或‘查询晚霞’。")
         self.morning_params_frame = ttk.Frame(right, style="Card.TFrame")
         self.morning_params_frame.pack(fill="x", pady=(0, 6))
         self._add_var("morning_aod", "")
@@ -736,7 +773,7 @@ class FireCloudApp(tk.Tk):
         try:
             data = self._read_inputs()
             model_label = self.vars["weather_model"].get()
-            model_id = "ecmwf_ifs025" if model_label.startswith("ECMWF") else "ncep_gfs_global"
+            model_id = _weather_model_id_from_label(model_label)
             cloud_base_mode = self.vars["cloud_base_mode"].get()
 
             fetched_at = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
@@ -1333,7 +1370,7 @@ class FireCloudApp(tk.Tk):
                 "latitude": ",".join(f"{x[0]:.5f}" for x in batch),
                 "longitude": ",".join(f"{x[1]:.5f}" for x in batch),
                 "hourly": "cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation_probability,precipitation,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
-                "models": model_id, "timezone": "UTC", "forecast_days": 16, "past_hours": 36,
+                "models": model_id, "timezone": "UTC", "forecast_days": _weather_model_config(model_id)["forecast_days"], "past_hours": 36,
                 "wind_speed_unit": "ms", "timeformat": "iso8601",
             }
             url = "https://api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(params)
@@ -1897,9 +1934,7 @@ class FireCloudApp(tk.Tk):
                     batch_path_coords.extend(all_coords)
 
                 def local_profile_for_event(hourly, idx, elevation, model_id):
-                    levels = ([1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50]
-                              if model_id == "ecmwf_ifs025" else
-                              [1000, 975, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 350, 300, 250, 200])
+                    levels = _weather_model_config(model_id)["pressure_levels"]
                     approx = {1000:110,975:320,950:500,925:800,900:1000,850:1500,800:1900,750:2500,
                               700:3000,650:3600,600:4200,550:4900,500:5600,450:6300,400:7200,
                               350:8100,300:9200,250:10400,200:11800,150:13500,100:15800,50:19300}
@@ -2593,7 +2628,7 @@ class FireCloudApp(tk.Tk):
         """按需弹窗显示某一方向的详细云况，不在主界面常驻展开。"""
         result = getattr(self, "direction_results", {}).get(direction_key)
         if not result:
-            messagebox.showinfo("尚无数据", "请先选择 ECMWF/GFS 模式并查询朝霞与晚霞。")
+            messagebox.showinfo("尚无数据", "请先选择天气预报模式并查询朝霞与晚霞。")
             return
         title = "朝霞采样点具体云况" if direction_key == "morning" else "晚霞采样点具体云况"
         win = tk.Toplevel(self)
@@ -2643,10 +2678,7 @@ class FireCloudApp(tk.Tk):
     @staticmethod
     def _fetch_cloud_base_profiles(coords, distances, sunset_utc, model_id, local_ground_elevation_m=None):
         """读取沿日落方向中心采样点的气压层云量/RH/位势高度，推算最低可能云底。"""
-        if model_id == "ecmwf_ifs025":
-            levels = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50]
-        else:
-            levels = [1000, 975, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 350, 300, 250, 200]
+        levels = _weather_model_config(model_id)["pressure_levels"]
         variables = []
         for level in levels:
             variables.extend([
@@ -2660,7 +2692,7 @@ class FireCloudApp(tk.Tk):
             "hourly": ",".join(variables),
             "models": model_id,
             "timezone": "UTC",
-            "forecast_days": 16,
+            "forecast_days": _weather_model_config(model_id)["forecast_days"],
             "past_hours": 36,
             "timeformat": "iso8601",
         }
@@ -2796,6 +2828,14 @@ class FireCloudApp(tk.Tk):
             candidate_ids.extend(["gfs_seamless", "ncep_gfs025"])
         elif model_id == "ecmwf_ifs025":
             candidate_ids.extend(["ecmwf_ifs", "ecmwf_ifs025_seamless"])
+        elif model_id == "ecmwf_aifs025_single":
+            candidate_ids.extend(["ecmwf_aifs"])
+        elif model_id == "icon_global":
+            candidate_ids.extend(["icon"])
+        elif model_id == "jma_msm":
+            candidate_ids.extend(["jma"])
+        elif model_id == "cma_grapes_global":
+            candidate_ids.extend(["cma"])
 
         payload = None
         last_error = None
@@ -3346,7 +3386,7 @@ class FireCloudApp(tk.Tk):
 
     def calculate(self):
         """兼容旧版内部调用；v0.5 的主流程只使用自动云况预报。"""
-        messagebox.showinfo("提示", "请选择 ECMWF/GFS 模式，然后点击对应的‘查询朝霞’或‘查询晚霞’。")
+        messagebox.showinfo("提示", "请选择天气预报模式，然后点击对应的‘查询朝霞’或‘查询晚霞’。")
 
     @staticmethod
     def _set_judgment_text(widget, regular_score, color_score, burn_label):
@@ -4387,7 +4427,9 @@ class FireCloudApp(tk.Tk):
     # ---------------- 案例保存、加载与现场验证 ----------------
     def _case_model_code(self):
         label = self.vars.get("weather_model").get() if self.vars.get("weather_model") else "ECMWF IFS 0.25°"
-        return "EC" if label.startswith("ECMWF") else "GFS"
+        return {"ecmwf_ifs025": "EC", "ncep_gfs_global": "GFS", "icon_global": "ICON",
+                "jma_msm": "JMA_MSM", "ecmwf_aifs025_single": "AIFS", "cma_grapes_global": "CMA_GRAPES"}.get(
+                    _weather_model_id_from_label(label), "EC")
 
     def _case_folder_for_current(self):
         """案例目录按日期、当前填写的地名和天气模式唯一标识。"""
