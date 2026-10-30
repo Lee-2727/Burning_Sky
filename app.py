@@ -213,7 +213,24 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
     return img
 
 st.title("🌇 Burning Sky V1.4")
+# 仅为“未来多日概览”入口设置低饱和蓝色，不影响其他按钮。
+st.markdown("""<style>
+.st-key-open_multi_day_overview button {
+    background: #718EAA !important;
+    color: #FFFFFF !important;
+    border: 1px solid #718EAA !important;
+    font-weight: 600 !important;
+}
+.st-key-open_multi_day_overview button:hover {
+    background: #627F9B !important;
+    border-color: #627F9B !important;
+    color: #FFFFFF !important;
+}
+</style>""", unsafe_allow_html=True)
 with st.sidebar:
+    if st.button("未来多日概览", use_container_width=True, key="open_multi_day_overview"):
+        st.session_state["show_multi_day_overview"] = True
+        st.rerun()
     st.header("预报设置")
     place_query = st.text_input("地点名称（输入前几个字联想）", "合肥", key="place_query")
     # 地名联想只读取仓库同目录 Excel，不访问地理编码网络服务。
@@ -269,9 +286,6 @@ with st.sidebar:
     with evening_col:
         run_evening = st.button("查询晚霞", use_container_width=True)
     run_all = st.button("查询 / 更新朝霞与晚霞", type="primary", use_container_width=True)
-    if st.button("未来多日概览", use_container_width=True, key="open_multi_day_overview"):
-        st.session_state["show_multi_day_overview"] = True
-        st.rerun()
     run = run_morning or run_evening or run_all
     query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
 
@@ -304,8 +318,35 @@ if st.session_state.get("show_multi_day_overview"):
                     _rows = []
                     for _model in _model_order:
                         _v = _records.get(_model, {})
-                        _rows.append({"模式": _model_short[_model], "常规概率": (f"{_v['probability']:.0f}%" if isinstance(_v.get("probability"), (int, float)) else "—"), "色彩分": (f"{_v['color_score']:.0f}" if isinstance(_v.get("color_score"), (int, float)) else "—"), "霞云规模": (f"{_v['burn_scale']:.1f}" if isinstance(_v.get("burn_scale"), (int, float)) else "—")})
-                    st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+                        _prob = _v.get("probability")
+                        _scale = _v.get("burn_scale")
+                        _fire_score = (_prob / 100.0 * _scale) if isinstance(_prob, (int, float)) and isinstance(_scale, (int, float)) else None
+                        _rows.append({
+                            "模式": _model_short[_model],
+                            "常规概率": (f"{_prob:.0f}%" if isinstance(_prob, (int, float)) else "—"),
+                            "色彩分": (f"{_v['color_score']:.0f}" if isinstance(_v.get("color_score"), (int, float)) else "—"),
+                            "霞云规模": (f"{_scale:.1f}" if isinstance(_scale, (int, float)) else "—"),
+                            "火烧云评分（不考虑色彩）": (f"{_fire_score:.1f}" if _fire_score is not None else "—"),
+                        })
+                    _df = pd.DataFrame(_rows)
+                    def _fire_score_style(value):
+                        try:
+                            score = float(value)
+                        except (TypeError, ValueError):
+                            return ""
+                        if score < 20:
+                            color = "#D6B84C"  # 淡黄
+                        elif score < 40:
+                            color = "#C99A16"  # 金色
+                        elif score < 60:
+                            color = "#E47724"  # 橘色
+                        elif score < 80:
+                            color = "#D83A32"  # 红色
+                        else:
+                            color = "#A12A83"  # 紫红色
+                        return f"color: {color}; font-weight: 700;"
+                    _styled = _df.style.applymap(_fire_score_style, subset=["火烧云评分（不考虑色彩）"])
+                    st.dataframe(_styled, use_container_width=True, hide_index=True)
     st.stop()
 
 if run:

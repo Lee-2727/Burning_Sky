@@ -17,6 +17,7 @@ TZ = ZoneInfo("Asia/Shanghai")
 LAT, LON, ELEVATION_M = 31.8047, 117.2214, 30.0
 PLACE = "合肥"
 OUTPUT = ROOT / "data" / "overview.json"
+HISTORY_DIR = ROOT / "data" / "overview_history"
 
 
 class _Value:
@@ -96,10 +97,16 @@ def _record(result):
             return value if value == value and abs(value) != float("inf") else None
         except (TypeError, ValueError):
             return None
+    probability = numeric(inferred.get("regular_score", inferred.get("score")))
+    burn_scale = numeric(inferred.get("burn_scale_index"))
+    # 常规概率以百分数存储；乘以规模时换算为 0–1 概率，评分仍保持 0–100 的直观范围。
+    fire_score = (probability / 100.0 * burn_scale
+                  if probability is not None and burn_scale is not None else None)
     return {
-        "probability": numeric(inferred.get("regular_score", inferred.get("score"))),
+        "probability": probability,
         "color_score": numeric(inferred.get("color_score")),
-        "burn_scale": numeric(inferred.get("burn_scale_index")),
+        "burn_scale": burn_scale,
+        "fire_score_no_color": fire_score,
         "burn_scale_label": inferred.get("burn_scale_label", "暂不可判定"),
         "event_time": ((result or {}).get("event_dt").isoformat()
                        if hasattr((result or {}).get("event_dt"), "isoformat") else None),
@@ -152,6 +159,21 @@ def main():
         engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    # 当前概览始终覆盖；按北京时间自然日另存一份历史快照，同一天多次更新互相覆盖。
+    # 仅保留今天和昨天，删除前天及更早的历史文件。
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    history_file = HISTORY_DIR / f"{now.date().isoformat()}.json"
+    history_tmp = history_file.with_suffix(".json.tmp")
+    history_tmp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    history_tmp.replace(history_file)
+    cutoff_date = now.date() - timedelta(days=1)
+    for old_file in HISTORY_DIR.glob("????-??-??.json"):
+        try:
+            file_date = datetime.strptime(old_file.stem, "%Y-%m-%d").date()
+            if file_date < cutoff_date:
+                old_file.unlink()
+        except ValueError:
+            continue
     temp = OUTPUT.with_suffix(".json.tmp")
     temp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
     temp.replace(OUTPUT)

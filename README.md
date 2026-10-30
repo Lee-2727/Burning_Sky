@@ -87,10 +87,10 @@ JMA MSM 已从可选模式目录注释停用，待后续确认数据服务可用
 
 ## 未来多日概览（合肥固定地点）
 
-- 网页左侧查询区底部新增「未来多日概览」入口，展示未来三个自然日的朝霞/晚霞。
+- 网页左侧最顶部新增低饱和蓝色「未来多日概览」入口，展示未来三个自然日的朝霞/晚霞。
 - 每个方向按 ECMWF、GFS、ICON、CMA、ECMWF (AI) 排列，展示常规概率、色彩分和霞云规模指数。
 - 霞云规模指数沿用 V1.4.67 的本地 200 km 采样算法：`max(0, max(中云, 高云) - 低云) × 可染色云量占比 / 100`。它是规模指数，不是发生概率。
-- 后台更新脚本：`python scripts/update_overview.py`。脚本复用完整预测引擎，固定坐标 31.8047, 117.2214，保存到 `data/overview.json`。
+- 后台更新脚本：`python scripts/update_overview.py`。脚本复用完整预测引擎，固定坐标 31.8047, 117.2214，覆盖最新快照 `data/overview.json`，并按北京时间日期保存 `data/overview_history/YYYY-MM-DD.json`。同一自然日内多次运行覆盖当天历史文件；仅保留今天和昨天，自动删除前天及更早的历史文件。概览新增不考虑色彩的火烧云评分：`常规概率 / 100 × 霞云规模`，显示范围为 0–100，并以淡黄、金色、橘色、红色、紫红色递增着色。
 - `.github/workflows/update-overview.yml` 配置北京时间每日 00、04、08、12、16、20 点运行（GitHub Actions cron 使用 UTC）；也支持手动触发。任务完成后提交快照，Streamlit Cloud 随仓库更新重新部署。
 - GitHub 仓库需要允许 Actions 使用 `GITHUB_TOKEN` 写入 Contents。GitHub Actions 的定时任务属于 best-effort，可能因平台排队略有延迟；网页展示快照更新时间。
 - JMA MSM 已从可选目录停用；旧 AIFS 显示名称仍保留内部兼容映射，新显示名为 `ECMWF (AI)`。

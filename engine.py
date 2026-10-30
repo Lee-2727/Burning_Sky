@@ -96,10 +96,10 @@ WEATHER_MODEL_CATALOG = [
      "pressure_levels": [1000, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50]},
     # {"label": "JMA MSM", "id": "jma_msm", "forecast_days": 4,
     #  "pressure_levels": [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100]},
-    {"label": "ECMWF (AI)", "id": "ecmwf_aifs025_single", "forecast_days": 15,
-     "pressure_levels": [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50]},
     {"label": "CMA GRAPES Global", "id": "cma_grapes_global", "forecast_days": 10,
      "pressure_levels": [1000, 975, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 350, 300, 275, 250, 225, 200, 175, 150, 125, 100, 70, 50, 30]},
+    {"label": "ECMWF (AI)", "id": "ecmwf_aifs025_single", "forecast_days": 15,
+     "pressure_levels": [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50]},
 ]
 WEATHER_MODEL_BY_LABEL = {item["label"]: item for item in WEATHER_MODEL_CATALOG}
 WEATHER_MODEL_BY_ID = {item["id"]: item for item in WEATHER_MODEL_CATALOG}
