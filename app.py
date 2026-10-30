@@ -16,7 +16,13 @@ import streamlit as st
 # Load the sibling engine.py by absolute path. A plain `import engine` can
 # resolve an unrelated installed module (or a stale module cached by Streamlit)
 # on hosted deployments, leaving WEATHER_MODEL_CATALOG unavailable.
-_ENGINE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine.py")
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+_ENGINE_PATH = os.path.join(_APP_DIR, "engine.py")
+# engine.py imports the sibling `burning_sky` package. Streamlit Cloud may
+# execute app.py without adding the repository root to sys.path, so explicitly
+# put the directory containing both engine.py and the package at the front.
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
 _ENGINE_SPEC = importlib.util.spec_from_file_location("_burning_sky_runtime_engine", _ENGINE_PATH)
 if _ENGINE_SPEC is None or _ENGINE_SPEC.loader is None:
     raise ImportError(f"无法加载同目录的 engine.py：{_ENGINE_PATH}")

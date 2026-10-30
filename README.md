@@ -95,3 +95,7 @@ JMA MSM 已从可选模式目录注释停用，待后续确认数据服务可用
 - GitHub 仓库需要允许 Actions 使用 `GITHUB_TOKEN` 写入 Contents。GitHub Actions 的定时任务属于 best-effort，可能因平台排队略有延迟；网页展示快照更新时间。
 - JMA MSM 已从可选目录停用；旧 AIFS 显示名称仍保留内部兼容映射，新显示名为 `ECMWF (AI)`。
 - 后台预计算会执行 5 个模式 × 3 天的完整朝晚霞计算，耗时和接口请求量明显高于单次查询。接口失败的模式/日期会留空，不会用其他模式结果冒充。
+
+### Streamlit Cloud 引擎导入修复
+
+网页版启动时会先将 `app.py` 所在的项目根目录加入 `sys.path`，再按绝对路径加载同目录 `engine.py`。这是因为 `engine.py` 还需要导入同目录下的 `burning_sky` Python 包；仅使用 `spec_from_file_location()` 加载引擎文件并不能保证该包可被 Python 找到。
