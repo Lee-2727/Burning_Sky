@@ -92,6 +92,11 @@ class WebForecastEngine(engine.FireCloudApp):
         self.evening_upper_label = _DummyLabel()
         self.morning_color_score_label = _DummyLabel()
         self.evening_color_score_label = _DummyLabel()
+        # The shared forecast method updates these Tk judgment widgets after
+        # calculating results. The web client has no Tk UI, so provide harmless
+        # placeholders to keep the shared calculation path compatible.
+        self.morning_judgment_label = _DummyLabel()
+        self.evening_judgment_label = _DummyLabel()
         self.morning_rainbow_label = _DummyLabel()
         self.evening_rainbow_label = _DummyLabel()
         self.morning_aod_status_var = _Var("")
