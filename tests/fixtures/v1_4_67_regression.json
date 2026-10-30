@@ -1,0 +1,52 @@
+{
+  "path_input": [
+    {
+      "distance_km": 0,
+      "cloud_cover": 40,
+      "cloud_cover_low": 15,
+      "cloud_cover_mid": 65,
+      "cloud_cover_high": 50,
+      "visibility_m": 12000,
+      "wind_ms": 3,
+      "precipitation_probability": 0,
+      "precipitation": 0
+    }
+  ],
+  "path_aod": 0.25,
+  "path_expected": {
+    "score": 84,
+    "color_score": 70,
+    "color_rgb": [
+      208,
+      85,
+      111
+    ],
+    "color_pos": 0.78,
+    "low": 15.0,
+    "mid": 65.0,
+    "high": 50.0,
+    "total": 40.0
+  },
+  "manual_input": {
+    "lat": 31.8047,
+    "lon": 117.2214,
+    "utc_offset": 8,
+    "cloud_base": 2500,
+    "cloud_top": 5000,
+    "edge_distance": 120,
+    "aerosol_height": 500,
+    "aod": 0.25,
+    "wind": 3,
+    "sunset_speed": 18,
+    "date": "2026-10-30",
+    "cloud_type": "高积云",
+    "cloud_amount": "充足",
+    "obstruction": "中等"
+  },
+  "manual_expected": {
+    "score": 56,
+    "sunset_azimuth": 254.1868784506708,
+    "geometry_duration_min": 5.0,
+    "effective_base": 2000
+  }
+}

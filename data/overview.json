@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "place": "合肥",
+  "latitude": 31.8047,
+  "longitude": 117.2214,
+  "elevation_m": 30.0,
+  "timezone": "Asia/Shanghai",
+  "updated_at": null,
+  "days": [],
+  "model_errors": {}
+}
