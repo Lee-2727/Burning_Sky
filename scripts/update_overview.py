@@ -149,18 +149,36 @@ def _write_json_atomic(path, payload):
 
 
 def _publish_model_batch(model_label, status):
-    """Publish each completed model batch immediately from GitHub Actions."""
+    """Publish status/results safely; never fail on an absent optional history folder."""
     if os.environ.get("GITHUB_ACTIONS", "").lower() != "true":
         return
     branch = os.environ.get("GITHUB_REF_NAME", "main")
     try:
         subprocess.run(["git", "config", "user.name", "github-actions[bot]"], cwd=ROOT, check=True)
         subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=ROOT, check=True)
-        subprocess.run(["git", "add", "-f", "data/overview.json", "data/overview_*.json", "data/overview_status.json", "data/overview_history/"], cwd=ROOT, check=True)
+
+        # Build an explicit list of paths that actually exist. The previous
+        # implementation always staged data/overview_history/, which is not
+        # present in a clean checkout and made `git add` fail before status
+        # could ever be pushed. Also avoid shell-style wildcard arguments to
+        # subprocess; expand city snapshots in Python instead.
+        data_dir = ROOT / "data"
+        publish_paths = [data_dir / "overview.json", data_dir / "overview_status.json"]
+        publish_paths.extend(sorted(data_dir.glob("overview_*.json")))
+        history_dir = data_dir / "overview_history"
+        if history_dir.is_dir():
+            publish_paths.extend(p for p in history_dir.rglob("*") if p.is_file())
+        existing = [str(p.relative_to(ROOT)) for p in publish_paths if p.is_file()]
+        if existing:
+            subprocess.run(["git", "add", "-f", "--", *existing], cwd=ROOT, check=True)
+
         changed = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT).returncode != 0
         if changed:
             subprocess.run(["git", "commit", "-m", f"chore: publish {model_label} overview batch"], cwd=ROOT, check=True)
-            subprocess.run(["git", "push", "origin", f"HEAD:{branch}"], cwd=ROOT, check=True)
+        # Always try pushing HEAD, even when there are no newly staged files:
+        # a previous push may have failed after its local commit succeeded.
+        subprocess.run(["git", "push", "origin", f"HEAD:{branch}"], cwd=ROOT, check=True)
+        print(f"Published status/results to {branch}: {model_label}", flush=True)
     except Exception as exc:
         print(f"WARNING: incremental publish failed for {model_label}: {exc}", flush=True)
         status["publish_error"] = str(exc)[:800]
@@ -192,13 +210,17 @@ def main():
             "days": [{"date": d.isoformat(), "morning": {}, "evening": {}} for d in dates], "model_errors": {},
         }
 
+    print("Updater version: model-major-batch-v2", flush=True)
+    print("Update strategy: finish all configured cities for one model, then switch models", flush=True)
+    print("Configured city order: " + " → ".join(cities), flush=True)
     status = {
         "schema_version": 1, "state": "running", "started_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
-        "updated_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"), "current_model": None,
-        "model_index": 0, "model_total": len(models), "completed_models": [],
+        "updated_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"), "current_model": models[0]["label"],
+        "model_index": 1, "model_total": len(models), "completed_models": [],
         "cities": cities, "city_progress": 0, "next_update": "每日 00:30、03:00、06:00、09:00、12:00、15:00、18:00、21:00（北京时间）",
     }
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+    _publish_model_batch("run-start", status)
     old_info, old_error = engine.messagebox.showinfo, engine.messagebox.showerror
     engine.messagebox.showinfo = lambda *a, **k: None
     engine.messagebox.showerror = lambda title, message, **kwargs: setattr(engine.messagebox, "last_error", (str(title), str(message)))
@@ -208,7 +230,6 @@ def main():
             status.update(state="running", current_model=label, model_index=model_index,
                          city_progress=0, updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
             _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-            _publish_model_batch(f"start-{label}", status)
             print(f"\n===== MODEL BATCH {model_index}/{len(models)}: {label} =====", flush=True)
             task_count = len(cities) * len(dates)
             task_index = 0
@@ -246,20 +267,25 @@ def main():
                         "cities": {city: snapshots[city] for city in cities}}
             _write_json_atomic(ROOT / "data" / "overview.json", aggregate)
             status["completed_models"].append(label)
-            status.update(current_model=None, state="between_models", city_progress=task_count,
-                         updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
+            if model_index < len(models):
+                # Publish the next model as current in the same commit that
+                # publishes this model's results. This avoids a separate
+                # start commit for every model while keeping the page current.
+                next_label = models[model_index]["label"]
+                status.update(current_model=next_label, state="running", model_index=model_index + 1,
+                              city_progress=0, updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
+            else:
+                status.update(current_model=None, state="completed",
+                              completed_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
+                              updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
             _write_json_atomic(ROOT / "data" / "overview_status.json", status)
             _publish_model_batch(label, status)
             if model_index < len(models):
-                print(f"Model batch complete; waiting {REQUEST_INTERVAL_SECONDS}s before next model.", flush=True)
+                print(f"Model batch complete; next model: {next_label}; waiting {REQUEST_INTERVAL_SECONDS}s.", flush=True)
                 time.sleep(REQUEST_INTERVAL_SECONDS)
     finally:
         engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
 
-    status.update(state="completed", current_model=None, completed_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
-                  updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
-    _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-    _publish_model_batch("all-models-complete", status)
     print(f"Completed model-major update for {len(cities)} cities and {len(models)} models.", flush=True)
 
 
