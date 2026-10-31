@@ -10,8 +10,8 @@ class ModelCatalogTests(unittest.TestCase):
                 "ECMWF IFS 0.25°",
                 "GFS Global",
                 "ICON Global",
-                "ECMWF (AI)",
                 "CMA GRAPES Global",
+                "ECMWF (AI)",
             ],
         )
 

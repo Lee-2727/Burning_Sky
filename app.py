@@ -289,6 +289,11 @@ with st.sidebar:
     run = run_morning or run_evening or run_all
     query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
 
+# 在多日概览页面点击左侧任一查询按钮时，优先执行单次查询。
+# 清除概览页面状态，避免 st.stop() 截断查询流程，也避免下次 rerun 又跳回概览。
+if run and st.session_state.get("show_multi_day_overview"):
+    st.session_state["show_multi_day_overview"] = False
+
 if st.session_state.get("show_multi_day_overview"):
     st.title("未来多日概览")
     if st.button("← 返回单次预报", key="back_to_single_forecast"):
@@ -345,7 +350,7 @@ if st.session_state.get("show_multi_day_overview"):
                         else:
                             color = "#A12A83"  # 紫红色
                         return f"color: {color}; font-weight: 700;"
-                    _styled = _df.style.map(_fire_score_style, subset=["火烧云评分（不考虑色彩）"])
+                    _styled = _df.style.applymap(_fire_score_style, subset=["火烧云评分（不考虑色彩）"])
                     st.dataframe(_styled, use_container_width=True, hide_index=True)
     st.stop()
 
