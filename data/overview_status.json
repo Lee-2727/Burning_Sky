@@ -4,9 +4,9 @@
   "direction": "morning",
   "direction_title": "朝霞",
   "started_at": "2026-11-01 04:24:14 CST",
-  "updated_at": "2026-11-01 04:36:53 CST",
-  "current_model": "CMA GRAPES Global",
-  "model_index": 4,
+  "updated_at": "2026-11-01 04:36:54 CST",
+  "current_model": "ECMWF (AI)",
+  "model_index": 5,
   "model_total": 5,
   "completed_models": [
     "ECMWF IFS 0.25°",
