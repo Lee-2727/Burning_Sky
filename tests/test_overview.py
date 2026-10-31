@@ -8,7 +8,7 @@ import update_overview
 class OverviewTests(unittest.TestCase):
     def test_default_location_and_model_set(self):
         self.assertEqual((update_overview.LAT, update_overview.LON), (31.8206, 117.2272))
-        self.assertEqual([c[0] for c in update_overview.load_city_config()], ["合肥", "芜湖", "南京", "武汉", "上海", "深圳"])
+        self.assertEqual([c[0] for c in update_overview.load_city_config()], ["合肥", "深圳"])
         self.assertEqual(len(update_overview.engine.WEATHER_MODEL_CATALOG), 5)
         self.assertNotIn("JMA MSM", update_overview.engine.WEATHER_MODEL_LABELS)
 

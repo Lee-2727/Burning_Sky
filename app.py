@@ -313,25 +313,30 @@ if st.session_state.get("show_multi_day_overview"):
             _model_total = _update_status.get("model_total", 5)
             _model_index = _update_status.get("model_index", 0)
             _current_model = _update_status.get("current_model")
+            _active_direction = _update_status.get("direction_title", "朝霞/晚霞")
+            _task_progress = _update_status.get("task_progress", 0)
+            _task_total = _update_status.get("task_total", 30)
             if _state == "running":
-                st.info(f"🔄 多模概览后台正在更新：第 {_model_index}/{_model_total} 个模式 · {_current_model or '准备中'}。已完成：{', '.join(_completed_models) if _completed_models else '暂无'}。状态更新时间：{_update_status.get('updated_at', '未知')}。")
+                st.info(f"🔄 后台正在更新：{_active_direction} · 第 {_model_index}/{_model_total} 个模式 · {_current_model or '准备中'} · 总进度 {_task_progress}/{_task_total}。已完成模式：{', '.join(_completed_models) if _completed_models else '暂无'}。状态更新时间：{_update_status.get('updated_at', '未知')}。网页预报仍显示上一次完整发布的数据。")
             elif _state == "between_models":
                 st.info(f"⏳ 多模概览正在准备下一个模式。已完成 {_model_index}/{_model_total} 个模式：{', '.join(_completed_models)}。状态更新时间：{_update_status.get('updated_at', '未知')}。")
             elif _state == "completed":
-                st.success(f"✅ 多模概览本轮更新已完成。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
+                st.success(f"✅ {_active_direction}本轮五模式三日数据已完整发布。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
+            elif _state == "failed":
+                st.error(f"❌ {_active_direction}本轮更新失败（{_update_status.get('failure_count', 0)} 项）。已保留上一次完整发布的数据。原因：{_update_status.get('message', '请查看 GitHub Actions 日志')}。")
             else:
                 st.caption(f"多模概览后台状态：{_state} · 状态更新时间：{_update_status.get('updated_at', '未知')} · 下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
         except Exception:
-            st.caption("后台更新状态尚未发布；等待下一轮 GitHub Actions 更新任务启动。计划时刻：北京时间 00:30、03:00、06:00、09:00、12:00、15:00、18:00、21:00。")
+            st.caption("后台更新状态尚未发布；等待 GitHub Actions 启动。计划时刻：北京时间每日 00:00/04:00/20:00 更新朝霞，08:00/12:00/16:00 更新晚霞。")
         _city_cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overview_cities.txt")
         _overview_cities = []
         try:
             with open(_city_cfg, "r", encoding="utf-8-sig") as _cf:
                 _overview_cities = [line.split(",")[0].strip() for line in _cf if line.strip() and not line.lstrip().startswith("#")]
         except Exception:
-            _overview_cities = ["合肥", "芜湖", "南京", "武汉", "上海", "深圳"]
+            _overview_cities = ["合肥", "深圳"]
         if not _overview_cities:
-            _overview_cities = ["合肥", "芜湖", "南京", "武汉", "上海", "深圳"]
+            _overview_cities = ["合肥", "深圳"]
         _overview_city = st.selectbox("概览城市", _overview_cities, index=0, key="overview_city_select")
         _overview_path = os.path.join(_data_dir, f"overview_{_overview_city}.json")
         _overview = None
@@ -355,11 +360,13 @@ if st.session_state.get("show_multi_day_overview"):
         if not _overview or not _overview.get("days"):
             st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、五种天气模式的朝霞与晚霞结果。")
         else:
-            st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 最近更新：{_overview.get('updated_at', '未知')} · 预报范围：包含今天的未来三日 · 五模式。")
+            st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 预报范围：包含今天的未来三日 · 五模式。")
             _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global", "CMA GRAPES Global", "ECMWF (AI)"]
             _model_short = {"ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON", "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)"}
+            _direction_times = _overview.get("direction_updated_at", {})
             for _direction, _direction_title in (("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")):
-                st.subheader(_direction_title)
+                _direction_update_time = _direction_times.get(_direction, "尚未更新")
+                st.subheader(f"{_direction_title}　·　更新时次：{_direction_update_time}")
                 _date_cols = st.columns(3)
                 for _col, _day in zip(_date_cols, _overview.get("days", [])):
                     with _col:
