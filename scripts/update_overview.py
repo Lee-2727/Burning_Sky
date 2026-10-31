@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -22,7 +23,9 @@ CITY_CONFIG = {
     "上海": (31.2304, 121.4737, 10.0),
 }
 PLACE = os.environ.get("BURNING_SKY_CITY", "合肥")
-if PLACE not in CITY_CONFIG:
+# Debug phase: only Hefei and Shenzhen are scheduled.
+DEBUG_CITIES = {"合肥", "深圳"}
+if PLACE not in DEBUG_CITIES:
     raise SystemExit(f"Unsupported city: {PLACE}")
 LAT, LON, ELEVATION_M = CITY_CONFIG[PLACE]
 OUTPUT = ROOT / "data" / f"overview_{PLACE}.json"
@@ -124,9 +127,12 @@ def _record(result):
 
 def main():
     now = datetime.now(TZ)
-    # GUI 和网页均以北京时间为默认时区；保留未来三个自然日（含今天）。
-    dates = [now.date() + timedelta(days=i) for i in range(3)]
-    models = [item for item in engine.WEATHER_MODEL_CATALOG]
+    # Debug phase: forecast tomorrow only, using ECMWF IFS + GFS Global.
+    dates = [now.date() + timedelta(days=1)]
+    wanted_model_ids = {"ecmwf_ifs025", "ncep_gfs_global"}
+    models = [item for item in engine.WEATHER_MODEL_CATALOG if item.get("id") in wanted_model_ids]
+    if len(models) != 2:
+        raise SystemExit("Debug model configuration error: ECMWF/GFS not found.")
     snapshot = {
         "schema_version": 1,
         "place": PLACE,
@@ -152,6 +158,10 @@ def main():
                 engine.messagebox.last_error = None
                 print(f"[{datetime.now(TZ):%H:%M:%S}] {day} {label}: starting", flush=True)
                 runner._fetch_weather_task("both")
+                # Open-Meteo minute-level throttling: pause between model requests.
+                if model is not models[-1]:
+                    print("Rate-limit safeguard: sleeping 75 seconds before next model.", flush=True)
+                    time.sleep(75)
                 if engine.messagebox.last_error:
                     error = engine.messagebox.last_error[1]
                     snapshot["model_errors"].setdefault(label, []).append({"date": day.isoformat(), "error": error[:1200]})
@@ -164,6 +174,9 @@ def main():
                     }
                 print(f"[{datetime.now(TZ):%H:%M:%S}] {day} {label}: finished", flush=True)
             snapshot["days"].append(day_entry)
+        if PLACE == "合肥":
+            print("Rate-limit safeguard: sleeping 75 seconds before Shenzhen.", flush=True)
+            time.sleep(75)
     finally:
         engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
 
@@ -190,7 +203,7 @@ def main():
         1 for day in snapshot["days"] for direction in ("morning", "evening")
         for value in day[direction].values() if value.get("probability") is not None
     )
-    print(f"Saved {OUTPUT}; successful direction/model records: {success_count}/{len(dates)*len(models)*2}", flush=True)
+    print(f"Saved {OUTPUT}; date={dates[0].isoformat()} (tomorrow only); models=ECMWF+GFS; successful direction/model records: {success_count}/{len(dates)*len(models)*2}", flush=True)
     # 部分模式暂时不可用时仍保存其他模式；仅当全部结果为空时让 workflow 标红。
     if success_count == 0:
         raise SystemExit("所有模式均未生成有效结果；已写入错误快照。")

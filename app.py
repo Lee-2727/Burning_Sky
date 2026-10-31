@@ -300,7 +300,7 @@ if st.session_state.get("show_multi_day_overview"):
         st.session_state["show_multi_day_overview"] = False
         st.rerun()
     _data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-    _overview_city = st.selectbox("概览城市", ["合肥", "深圳", "南京", "武汉", "上海"], index=0, key="overview_city_select")
+    _overview_city = st.selectbox("概览城市", ["合肥", "深圳"], index=0, key="overview_city_select")
     _overview_path = os.path.join(_data_dir, f"overview_{_overview_city}.json")
     _overview = None
     try:
@@ -316,9 +316,9 @@ if st.session_state.get("show_multi_day_overview"):
             except Exception:
                 pass
     if not _overview or not _overview.get("days"):
-        st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示该城市未来三天的朝霞与晚霞结果。")
+        st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示该城市明天的 ECMWF 与 GFS 朝霞、晚霞结果（调试阶段）。")
     else:
-        st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 最近更新：{_overview.get('updated_at', '未知')} · 数据可能不是最新一轮模式预报。")
+        st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 最近更新：{_overview.get('updated_at', '未知')} · 调试阶段：明天预报，ECMWF/GFS 双模式。")
         _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global", "CMA GRAPES Global", "ECMWF (AI)"]
         _model_short = {"ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON", "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)"}
         for _direction, _direction_title in (("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")):
