@@ -194,9 +194,18 @@ def main():
                 old_file.unlink()
         except ValueError:
             continue
+    serialized = json.dumps(snapshot, ensure_ascii=False, indent=2)
     temp = OUTPUT.with_suffix(".json.tmp")
-    temp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.write_text(serialized, encoding="utf-8")
     temp.replace(OUTPUT)
+    # Backward-compatible alias: older Streamlit deployments may still read
+    # data/overview.json for Hefei instead of the city-specific snapshot.
+    if PLACE == "合肥":
+        legacy_output = ROOT / "data" / "overview.json"
+        legacy_temp = legacy_output.with_suffix(".json.tmp")
+        legacy_temp.write_text(serialized, encoding="utf-8")
+        legacy_temp.replace(legacy_output)
+        print(f"Saved compatibility snapshot {legacy_output}", flush=True)
     success_count = sum(
         1 for day in snapshot["days"] for direction in ("morning", "evening")
         for value in day[direction].values() if value.get("probability") is not None
