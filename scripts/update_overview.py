@@ -198,14 +198,6 @@ def main():
     temp = OUTPUT.with_suffix(".json.tmp")
     temp.write_text(serialized, encoding="utf-8")
     temp.replace(OUTPUT)
-    # Backward-compatible alias: older Streamlit deployments may still read
-    # data/overview.json for Hefei instead of the city-specific snapshot.
-    if PLACE == "合肥":
-        legacy_output = ROOT / "data" / "overview.json"
-        legacy_temp = legacy_output.with_suffix(".json.tmp")
-        legacy_temp.write_text(serialized, encoding="utf-8")
-        legacy_temp.replace(legacy_output)
-        print(f"Saved compatibility snapshot {legacy_output}", flush=True)
     success_count = sum(
         1 for day in snapshot["days"] for direction in ("morning", "evening")
         for value in day[direction].values() if value.get("probability") is not None
@@ -233,3 +225,23 @@ if __name__ == "__main__":
             env["BURNING_SKY_CITY"] = city
             subprocess.run([sys.executable, "-u", str(Path(__file__).resolve())],
                            cwd=str(ROOT), env=env, check=True)
+        # Publish a single aggregate snapshot as well. This is the file present
+        # in older Streamlit deployments and contains both cities explicitly.
+        aggregate = {
+            "schema_version": 1,
+            "updated_at": datetime.now(TZ).isoformat(timespec="seconds"),
+            "cities": {},
+        }
+        for city in ("合肥", "深圳"):
+            city_file = ROOT / "data" / f"overview_{city}.json"
+            if not city_file.is_file():
+                raise SystemExit(f"Missing city snapshot after update: {city_file}")
+            city_data = json.loads(city_file.read_text(encoding="utf-8"))
+            if not city_data.get("days"):
+                raise SystemExit(f"City snapshot has no forecast days: {city_file}")
+            aggregate["cities"][city] = city_data
+        legacy_output = ROOT / "data" / "overview.json"
+        legacy_temp = legacy_output.with_suffix(".json.tmp")
+        legacy_temp.write_text(json.dumps(aggregate, ensure_ascii=False, indent=2), encoding="utf-8")
+        legacy_temp.replace(legacy_output)
+        print(f"Saved aggregate snapshot {legacy_output}; cities=合肥,深圳", flush=True)

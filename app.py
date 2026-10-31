@@ -308,13 +308,18 @@ if st.session_state.get("show_multi_day_overview"):
         with open(_overview_path, "r", encoding="utf-8") as _f:
             _overview = _json.load(_f)
     except Exception:
-        # 兼容旧版仓库中仅有 overview.json 的合肥快照
-        if _overview_city == "合肥":
-            try:
-                with open(os.path.join(_data_dir, "overview.json"), "r", encoding="utf-8") as _f:
-                    _overview = _json.load(_f)
-            except Exception:
-                pass
+        # Compatibility: deployments may only contain the aggregate overview.json.
+        # Prefer the selected city's entry; support the old single-city Hefei format.
+        try:
+            with open(os.path.join(_data_dir, "overview.json"), "r", encoding="utf-8") as _f:
+                _legacy = _json.load(_f)
+            _cities = _legacy.get("cities", {}) if isinstance(_legacy, dict) else {}
+            if isinstance(_cities, dict) and _overview_city in _cities:
+                _overview = _cities[_overview_city]
+            elif _overview_city == "合肥" and isinstance(_legacy, dict) and _legacy.get("days"):
+                _overview = _legacy
+        except Exception:
+            pass
     if not _overview or not _overview.get("days"):
         st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示该城市明天的 ECMWF 与 GFS 朝霞、晚霞结果（调试阶段）。")
     else:
