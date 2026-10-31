@@ -16,22 +16,45 @@ sys.path.insert(0, str(ROOT))
 import engine  # noqa: E402
 
 TZ = ZoneInfo("Asia/Shanghai")
-CITY_CONFIG = {
-    "合肥": (31.8047, 117.2214, 30.0),
-    "深圳": (22.5431, 114.0579, 20.0),
-    "南京": (32.0603, 118.7969, 20.0),
-    "武汉": (30.5928, 114.3055, 25.0),
-    "上海": (31.2304, 121.4737, 10.0),
-}
+CITY_CONFIG_FILE = ROOT / "overview_cities.txt"
+
+# One model run per city/date. A 60-second gap between model runs is deliberately
+# conservative for the public Open-Meteo endpoints, while still reducing the
+# previous 75-second debug cadence. Cities are processed sequentially.
+REQUEST_INTERVAL_SECONDS = 60
+
+def load_city_config():
+    cities = []
+    if not CITY_CONFIG_FILE.is_file():
+        raise SystemExit(f"Missing city config: {CITY_CONFIG_FILE}")
+    for line_no, raw in enumerate(CITY_CONFIG_FILE.read_text(encoding="utf-8-sig").splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = [x.strip() for x in line.split(",")]
+        if len(parts) != 4:
+            raise SystemExit(f"{CITY_CONFIG_FILE.name}:{line_no}: expected name,lat,lon,elevation")
+        name = parts[0]
+        try:
+            lat, lon, elev = map(float, parts[1:])
+        except ValueError:
+            raise SystemExit(f"{CITY_CONFIG_FILE.name}:{line_no}: coordinates/elevation must be numeric")
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180 and -500 <= elev <= 9000):
+            raise SystemExit(f"{CITY_CONFIG_FILE.name}:{line_no}: coordinate/elevation out of range")
+        if any(c[0] == name for c in cities):
+            raise SystemExit(f"{CITY_CONFIG_FILE.name}:{line_no}: duplicate city {name}")
+        cities.append((name, lat, lon, elev))
+    if not cities:
+        raise SystemExit("City config contains no enabled cities")
+    return cities
+
+CITY_CONFIG = {name: (lat, lon, elev) for name, lat, lon, elev in load_city_config()}
 PLACE = os.environ.get("BURNING_SKY_CITY", "合肥")
-# Debug phase: only Hefei and Shenzhen are scheduled.
-DEBUG_CITIES = {"合肥", "深圳"}
-if PLACE not in DEBUG_CITIES:
-    raise SystemExit(f"Unsupported city: {PLACE}")
+if PLACE not in CITY_CONFIG:
+    raise SystemExit(f"Unsupported city: {PLACE}; check overview_cities.txt")
 LAT, LON, ELEVATION_M = CITY_CONFIG[PLACE]
 OUTPUT = ROOT / "data" / f"overview_{PLACE}.json"
 HISTORY_DIR = ROOT / "data" / "overview_history" / PLACE
-
 
 class _Value:
     def __init__(self, value=""):
@@ -128,59 +151,54 @@ def _record(result):
 
 def main():
     now = datetime.now(TZ)
-    # Debug phase: forecast tomorrow only, using ECMWF IFS + GFS Global.
-    dates = [now.date() + timedelta(days=1)]
-    wanted_model_ids = {"ecmwf_ifs025", "ncep_gfs_global"}
-    models = [item for item in engine.WEATHER_MODEL_CATALOG if item.get("id") in wanted_model_ids]
-    if len(models) != 2:
-        raise SystemExit("Debug model configuration error: ECMWF/GFS not found.")
+    # Three forecast dates including today: today, tomorrow, and the day after.
+    dates = [now.date() + timedelta(days=i) for i in range(3)]
+    models = list(engine.WEATHER_MODEL_CATALOG)
+    if len(models) != 5:
+        raise SystemExit(f"Expected five enabled models, found {len(models)}")
     snapshot = {
-        "schema_version": 1,
-        "place": PLACE,
-        "latitude": LAT,
-        "longitude": LON,
-        "elevation_m": ELEVATION_M,
-        "timezone": "Asia/Shanghai",
-        "updated_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
-        "days": [],
-        "model_errors": {},
+        "schema_version": 1, "place": PLACE, "latitude": LAT, "longitude": LON,
+        "elevation_m": ELEVATION_M, "timezone": "Asia/Shanghai",
+        "updated_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"), "days": [], "model_errors": {},
     }
-
-    # 屏蔽 Tk 消息框：定时任务在无桌面环境运行，错误写入快照/日志。
     old_info, old_error = engine.messagebox.showinfo, engine.messagebox.showerror
     engine.messagebox.showinfo = lambda *a, **k: None
     engine.messagebox.showerror = lambda title, message, **kwargs: setattr(engine.messagebox, "last_error", (str(title), str(message)))
     try:
+        request_index = 0
+        total_requests = len(dates) * len(models)
         for day in dates:
             day_entry = {"date": day.isoformat(), "morning": {}, "evening": {}}
             for model in models:
                 label = model["label"]
+                if request_index:
+                    print(f"Rate-limit safeguard: sleeping {REQUEST_INTERVAL_SECONDS}s before next model request ({request_index+1}/{total_requests}).", flush=True)
+                    time.sleep(REQUEST_INTERVAL_SECONDS)
                 runner = _new_runner(day, label)
                 engine.messagebox.last_error = None
-                print(f"[{datetime.now(TZ):%H:%M:%S}] {day} {label}: starting", flush=True)
-                runner._fetch_weather_task("both")
-                # Open-Meteo minute-level throttling: pause between model requests.
-                if model is not models[-1]:
-                    print("Rate-limit safeguard: sleeping 75 seconds before next model.", flush=True)
-                    time.sleep(75)
+                print(f"[{datetime.now(TZ):%H:%M:%S}] {PLACE} {day} {label}: starting", flush=True)
+                try:
+                    runner._fetch_weather_task("both")
+                except Exception as exc:
+                    engine.messagebox.last_error = ("Forecast error", str(exc))
                 if engine.messagebox.last_error:
-                    error = engine.messagebox.last_error[1]
+                    error = str(engine.messagebox.last_error[1])
                     snapshot["model_errors"].setdefault(label, []).append({"date": day.isoformat(), "error": error[:1200]})
-                    print(f"ERROR {day} {label}: {error}", flush=True)
+                    print(f"ERROR {PLACE} {day} {label}: {error[:1200]}", flush=True)
                 for direction in ("morning", "evening"):
                     result = runner.direction_results.get(direction)
                     day_entry[direction][label] = _record(result) if result else {
                         "probability": None, "color_score": None, "burn_scale": None,
-                        "burn_scale_label": "暂不可判定", "error": (engine.messagebox.last_error or [None, "无结果"])[1][:1200],
+                        "burn_scale_label": "暂不可判定",
+                        "error": str((engine.messagebox.last_error or [None, "无结果"])[1])[:1200],
                     }
-                print(f"[{datetime.now(TZ):%H:%M:%S}] {day} {label}: finished", flush=True)
+                print(f"[{datetime.now(TZ):%H:%M:%S}] {PLACE} {day} {label}: finished", flush=True)
+                request_index += 1
             snapshot["days"].append(day_entry)
     finally:
         engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    # 当前概览始终覆盖；按北京时间自然日另存一份历史快照，同一天多次更新互相覆盖。
-    # 仅保留今天和昨天，删除前天及更早的历史文件。
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
     history_file = HISTORY_DIR / f"{now.date().isoformat()}.json"
     history_tmp = history_file.with_suffix(".json.tmp")
@@ -189,59 +207,46 @@ def main():
     cutoff_date = now.date() - timedelta(days=1)
     for old_file in HISTORY_DIR.glob("????-??-??.json"):
         try:
-            file_date = datetime.strptime(old_file.stem, "%Y-%m-%d").date()
-            if file_date < cutoff_date:
+            if datetime.strptime(old_file.stem, "%Y-%m-%d").date() < cutoff_date:
                 old_file.unlink()
         except ValueError:
             continue
-    serialized = json.dumps(snapshot, ensure_ascii=False, indent=2)
     temp = OUTPUT.with_suffix(".json.tmp")
-    temp.write_text(serialized, encoding="utf-8")
+    temp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
     temp.replace(OUTPUT)
-    success_count = sum(
-        1 for day in snapshot["days"] for direction in ("morning", "evening")
-        for value in day[direction].values() if value.get("probability") is not None
-    )
-    print(f"Saved {OUTPUT}; date={dates[0].isoformat()} (tomorrow only); models=ECMWF+GFS; successful direction/model records: {success_count}/{len(dates)*len(models)*2}", flush=True)
-    # 部分模式暂时不可用时仍保存其他模式；仅当全部结果为空时让 workflow 标红。
+    success_count = sum(1 for day in snapshot["days"] for direction in ("morning", "evening")
+                       for value in day[direction].values() if value.get("probability") is not None)
+    expected = len(dates) * len(models) * 2
+    print(f"Saved {OUTPUT}; dates={dates[0].isoformat()}..{dates[-1].isoformat()} (3 days incl. today); models=5; successful direction/model records: {success_count}/{expected}", flush=True)
     if success_count == 0:
-        raise SystemExit("所有模式均未生成有效结果；已写入错误快照。")
+        raise SystemExit("All models returned no valid results; error snapshot saved.")
 
 
 if __name__ == "__main__":
-    # If launched without an explicit city (as in older/simple workflows),
-    # orchestrate both debug cities in a single run: Hefei first, Shenzhen second.
-    # Explicit BURNING_SKY_CITY remains supported for workflow matrix/loop runs.
     requested_city = os.environ.get("BURNING_SKY_CITY", "").strip()
     if requested_city:
         main()
     else:
-        for index, city in enumerate(("合肥", "深圳")):
+        cities = load_city_config()
+        print("Configured city order: " + " → ".join(c[0] for c in cities), flush=True)
+        aggregate = {"schema_version": 1, "updated_at": datetime.now(TZ).isoformat(timespec="seconds"), "cities": {}}
+        for index, (city, _lat, _lon, _elev) in enumerate(cities):
             if index:
-                print("Rate-limit safeguard: sleeping 75 seconds before Shenzhen.", flush=True)
-                time.sleep(75)
-            print(f"===== Updating {city} =====", flush=True)
+                print(f"Rate-limit safeguard: sleeping {REQUEST_INTERVAL_SECONDS}s before next city.", flush=True)
+                time.sleep(REQUEST_INTERVAL_SECONDS)
+            print(f"\n===== Updating city {index+1}/{len(cities)}: {city} =====", flush=True)
             env = os.environ.copy()
             env["BURNING_SKY_CITY"] = city
-            subprocess.run([sys.executable, "-u", str(Path(__file__).resolve())],
-                           cwd=str(ROOT), env=env, check=True)
-        # Publish a single aggregate snapshot as well. This is the file present
-        # in older Streamlit deployments and contains both cities explicitly.
-        aggregate = {
-            "schema_version": 1,
-            "updated_at": datetime.now(TZ).isoformat(timespec="seconds"),
-            "cities": {},
-        }
-        for city in ("合肥", "深圳"):
+            subprocess.run([sys.executable, "-u", str(Path(__file__).resolve())], cwd=str(ROOT), env=env, check=True)
             city_file = ROOT / "data" / f"overview_{city}.json"
             if not city_file.is_file():
                 raise SystemExit(f"Missing city snapshot after update: {city_file}")
             city_data = json.loads(city_file.read_text(encoding="utf-8"))
-            if not city_data.get("days"):
-                raise SystemExit(f"City snapshot has no forecast days: {city_file}")
+            if len(city_data.get("days", [])) != 3:
+                raise SystemExit(f"City snapshot must contain 3 dates: {city_file}")
             aggregate["cities"][city] = city_data
         legacy_output = ROOT / "data" / "overview.json"
         legacy_temp = legacy_output.with_suffix(".json.tmp")
         legacy_temp.write_text(json.dumps(aggregate, ensure_ascii=False, indent=2), encoding="utf-8")
         legacy_temp.replace(legacy_output)
-        print(f"Saved aggregate snapshot {legacy_output}; cities=合肥,深圳", flush=True)
+        print(f"Saved aggregate snapshot {legacy_output}; cities={','.join(aggregate['cities'])}", flush=True)

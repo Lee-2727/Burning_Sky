@@ -32,7 +32,7 @@ _ENGINE_SPEC.loader.exec_module(engine)
 if not hasattr(engine, "WEATHER_MODEL_CATALOG"):
     raise ImportError(f"加载的引擎文件缺少 WEATHER_MODEL_CATALOG：{_ENGINE_PATH}")
 
-st.set_page_config(page_title="Burning Sky V1.4", page_icon="🌇", layout="wide")
+st.set_page_config(page_title="Burning Sky", page_icon="🌇", layout="wide")
 
 # Community-hosted apps may have a public URL. Configure APP_PASSWORD in Streamlit
 # secrets or the environment to keep the interface restricted to the owner.
@@ -45,7 +45,7 @@ APP_PASSWORD = APP_PASSWORD or os.environ.get("APP_PASSWORD", "")
 
 if APP_PASSWORD:
     if st.session_state.get("authenticated") is not True:
-        st.title("🌇 Burning Sky V1.4")
+        st.title("🌇 Burning Sky")
         password = st.text_input("访问密码", type="password")
         if st.button("进入", type="primary"):
             if password == APP_PASSWORD:
@@ -212,7 +212,7 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
     d.text((left, 525), "Relative brightness (window peak = 100)", font=small, fill=(71, 85, 105))
     return img
 
-st.title("🌇 Burning Sky V1.4")
+st.title("🌇 Burning Sky")
 # 仅为“未来多日概览”入口设置低饱和蓝色，不影响其他按钮。
 st.markdown("""<style>
 .st-key-open_multi_day_overview button {
@@ -300,7 +300,16 @@ if st.session_state.get("show_multi_day_overview"):
         st.session_state["show_multi_day_overview"] = False
         st.rerun()
     _data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-    _overview_city = st.selectbox("概览城市", ["合肥", "深圳"], index=0, key="overview_city_select")
+    _city_cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overview_cities.txt")
+    _overview_cities = []
+    try:
+        with open(_city_cfg, "r", encoding="utf-8-sig") as _cf:
+            _overview_cities = [line.split(",")[0].strip() for line in _cf if line.strip() and not line.lstrip().startswith("#")]
+    except Exception:
+        _overview_cities = ["合肥", "芜湖", "南京", "武汉", "上海", "深圳"]
+    if not _overview_cities:
+        _overview_cities = ["合肥", "芜湖", "南京", "武汉", "上海", "深圳"]
+    _overview_city = st.selectbox("概览城市", _overview_cities, index=0, key="overview_city_select")
     _overview_path = os.path.join(_data_dir, f"overview_{_overview_city}.json")
     _overview = None
     try:
@@ -321,9 +330,9 @@ if st.session_state.get("show_multi_day_overview"):
         except Exception:
             pass
     if not _overview or not _overview.get("days"):
-        st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示该城市明天的 ECMWF 与 GFS 朝霞、晚霞结果（调试阶段）。")
+        st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、五种天气模式的朝霞与晚霞结果。")
     else:
-        st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 最近更新：{_overview.get('updated_at', '未知')} · 调试阶段：明天预报，ECMWF/GFS 双模式。")
+        st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 最近更新：{_overview.get('updated_at', '未知')} · 预报范围：包含今天的未来三日 · 五模式。")
         _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global", "CMA GRAPES Global", "ECMWF (AI)"]
         _model_short = {"ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON", "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)"}
         for _direction, _direction_title in (("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")):

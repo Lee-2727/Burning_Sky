@@ -1,108 +1,11 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-31T23:08:10+08:00",
-  "cities": {
-    "合肥": {
-      "schema_version": 1,
-      "place": "合肥",
-      "latitude": 31.8047,
-      "longitude": 117.2214,
-      "elevation_m": 30.0,
-      "timezone": "Asia/Shanghai",
-      "updated_at": "2026-10-31 23:03:53 CST",
-      "days": [
-        {
-          "date": "2026-11-01",
-          "morning": {
-            "ECMWF IFS 0.25°": {
-              "probability": 20.0,
-              "color_score": 17.0,
-              "burn_scale": 3.5829629629629625,
-              "fire_score_no_color": 0.7165925925925926,
-              "burn_scale_label": "小小烧",
-              "event_time": "2026-11-01T06:27:03.420446"
-            },
-            "GFS Global": {
-              "probability": 18.0,
-              "color_score": 11.0,
-              "burn_scale": 0.0,
-              "fire_score_no_color": 0.0,
-              "burn_scale_label": "几乎不烧",
-              "event_time": "2026-11-01T06:27:03.420446"
-            }
-          },
-          "evening": {
-            "ECMWF IFS 0.25°": {
-              "probability": 35.0,
-              "color_score": 41.0,
-              "burn_scale": 48.90617283950617,
-              "fire_score_no_color": 17.117160493827157,
-              "burn_scale_label": "小烧",
-              "event_time": "2026-11-01T17:21:51.984021"
-            },
-            "GFS Global": {
-              "probability": 18.0,
-              "color_score": 16.0,
-              "burn_scale": 0.0,
-              "fire_score_no_color": 0.0,
-              "burn_scale_label": "几乎不烧",
-              "event_time": "2026-11-01T17:21:51.984021"
-            }
-          }
-        }
-      ],
-      "model_errors": {}
-    },
-    "深圳": {
-      "schema_version": 1,
-      "place": "深圳",
-      "latitude": 22.5431,
-      "longitude": 114.0579,
-      "elevation_m": 20.0,
-      "timezone": "Asia/Shanghai",
-      "updated_at": "2026-10-31 23:06:41 CST",
-      "days": [
-        {
-          "date": "2026-11-01",
-          "morning": {
-            "ECMWF IFS 0.25°": {
-              "probability": 29.0,
-              "color_score": 11.0,
-              "burn_scale": 0.0,
-              "fire_score_no_color": 0.0,
-              "burn_scale_label": "几乎不烧",
-              "event_time": "2026-11-01T06:27:56.452426"
-            },
-            "GFS Global": {
-              "probability": 17.0,
-              "color_score": 1.0,
-              "burn_scale": 0.0,
-              "fire_score_no_color": 0.0,
-              "burn_scale_label": "几乎不烧",
-              "event_time": "2026-11-01T06:27:56.452426"
-            }
-          },
-          "evening": {
-            "ECMWF IFS 0.25°": {
-              "probability": 29.0,
-              "color_score": 11.0,
-              "burn_scale": 0.0,
-              "fire_score_no_color": 0.0,
-              "burn_scale_label": "几乎不烧",
-              "event_time": "2026-11-01T17:46:24.648960"
-            },
-            "GFS Global": {
-              "probability": 20.0,
-              "color_score": 73.0,
-              "burn_scale": 1.8718518518518525,
-              "fire_score_no_color": 0.3743703703703705,
-              "burn_scale_label": "小小烧",
-              "event_time": "2026-11-01T17:46:24.648960"
-            }
-          }
-        }
-      ],
-      "model_errors": {}
-    }
-  }
+  "place": "合肥",
+  "latitude": 31.8047,
+  "longitude": 117.2214,
+  "elevation_m": 30.0,
+  "timezone": "Asia/Shanghai",
+  "updated_at": null,
+  "days": [],
+  "model_errors": {}
 }
