@@ -5,103 +5,16 @@
   "longitude": 117.2214,
   "elevation_m": 30.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": "2026-10-31 20:32:11 CST",
+  "updated_at": "2026-10-31 22:21:10 CST",
   "days": [
-    {
-      "date": "2026-10-31",
-      "morning": {
-        "ECMWF IFS 0.25°": {
-          "probability": 55.0,
-          "color_score": 10.0,
-          "burn_scale": 0.8800000000000001,
-          "fire_score_no_color": 0.4840000000000001,
-          "burn_scale_label": "光板天",
-          "event_time": "2026-10-31T06:26:14.451034"
-        },
-        "GFS Global": {
-          "probability": 67.0,
-          "color_score": 15.0,
-          "burn_scale": 0.0,
-          "fire_score_no_color": 0.0,
-          "burn_scale_label": "光板天",
-          "event_time": "2026-10-31T06:26:14.451034"
-        },
-        "ICON Global": {
-          "probability": 53.0,
-          "color_score": 18.0,
-          "burn_scale": 0.0,
-          "fire_score_no_color": 0.0,
-          "burn_scale_label": "几乎不烧",
-          "event_time": "2026-10-31T06:26:14.451034"
-        },
-        "CMA GRAPES Global": {
-          "probability": 55.0,
-          "color_score": 14.0,
-          "burn_scale": 0.0,
-          "fire_score_no_color": 0.0,
-          "burn_scale_label": "光板天",
-          "event_time": "2026-10-31T06:26:14.451034"
-        },
-        "ECMWF (AI)": {
-          "probability": 55.0,
-          "color_score": 10.0,
-          "burn_scale": 0.02666666666666665,
-          "fire_score_no_color": 0.01466666666666666,
-          "burn_scale_label": "光板天",
-          "event_time": "2026-10-31T06:26:14.451034"
-        }
-      },
-      "evening": {
-        "ECMWF IFS 0.25°": {
-          "probability": 39.0,
-          "color_score": 22.0,
-          "burn_scale": 4.378395061728394,
-          "fire_score_no_color": 1.707574074074074,
-          "burn_scale_label": "小小烧",
-          "event_time": "2026-10-31T17:22:45.080063"
-        },
-        "GFS Global": {
-          "probability": 20.0,
-          "color_score": 59.0,
-          "burn_scale": 6.4651851851851845,
-          "fire_score_no_color": 1.293037037037037,
-          "burn_scale_label": "小小烧",
-          "event_time": "2026-10-31T17:22:45.080063"
-        },
-        "ICON Global": {
-          "probability": 20.0,
-          "color_score": 51.0,
-          "burn_scale": 5.6,
-          "fire_score_no_color": 1.1199999999999999,
-          "burn_scale_label": "小小烧",
-          "event_time": "2026-10-31T17:22:45.080063"
-        },
-        "CMA GRAPES Global": {
-          "probability": 42.0,
-          "color_score": 0.0,
-          "burn_scale": 14.982098765432099,
-          "fire_score_no_color": 6.292481481481481,
-          "burn_scale_label": "微烧",
-          "event_time": "2026-10-31T17:22:45.080063"
-        },
-        "ECMWF (AI)": {
-          "probability": 48.0,
-          "color_score": 17.0,
-          "burn_scale": 2.755555555555556,
-          "fire_score_no_color": 1.3226666666666669,
-          "burn_scale_label": "小小烧",
-          "event_time": "2026-10-31T17:22:45.080063"
-        }
-      }
-    },
     {
       "date": "2026-11-01",
       "morning": {
         "ECMWF IFS 0.25°": {
           "probability": 20.0,
-          "color_score": 49.0,
-          "burn_scale": 3.814814814814814,
-          "fire_score_no_color": 0.7629629629629628,
+          "color_score": 17.0,
+          "burn_scale": 3.5829629629629625,
+          "fire_score_no_color": 0.7165925925925926,
           "burn_scale_label": "小小烧",
           "event_time": "2026-11-01T06:27:03.420446"
         },
@@ -112,38 +25,14 @@
           "fire_score_no_color": 0.0,
           "burn_scale_label": "几乎不烧",
           "event_time": "2026-11-01T06:27:03.420446"
-        },
-        "ICON Global": {
-          "probability": 20.0,
-          "color_score": 41.0,
-          "burn_scale": 3.5432098765432096,
-          "fire_score_no_color": 0.7086419753086419,
-          "burn_scale_label": "小小烧",
-          "event_time": "2026-11-01T06:27:03.420446"
-        },
-        "CMA GRAPES Global": {
-          "probability": 24.0,
-          "color_score": 18.0,
-          "burn_scale": 7.622716049382716,
-          "fire_score_no_color": 1.8294518518518519,
-          "burn_scale_label": "小小烧",
-          "event_time": "2026-11-01T06:27:03.420446"
-        },
-        "ECMWF (AI)": {
-          "probability": 20.0,
-          "color_score": 41.0,
-          "burn_scale": 3.9037037037037043,
-          "fire_score_no_color": 0.780740740740741,
-          "burn_scale_label": "小小烧",
-          "event_time": "2026-11-01T06:27:03.420446"
         }
       },
       "evening": {
         "ECMWF IFS 0.25°": {
-          "probability": 40.0,
-          "color_score": 47.0,
-          "burn_scale": 49.31432098765433,
-          "fire_score_no_color": 19.725728395061733,
+          "probability": 35.0,
+          "color_score": 41.0,
+          "burn_scale": 48.90617283950617,
+          "fire_score_no_color": 17.117160493827157,
           "burn_scale_label": "小烧",
           "event_time": "2026-11-01T17:21:51.984021"
         },
@@ -154,117 +43,6 @@
           "fire_score_no_color": 0.0,
           "burn_scale_label": "几乎不烧",
           "event_time": "2026-11-01T17:21:51.984021"
-        },
-        "ICON Global": {
-          "probability": 20.0,
-          "color_score": 39.0,
-          "burn_scale": 5.025925925925927,
-          "fire_score_no_color": 1.0051851851851854,
-          "burn_scale_label": "小小烧",
-          "event_time": "2026-11-01T17:21:51.984021"
-        },
-        "CMA GRAPES Global": {
-          "probability": 20.0,
-          "color_score": 67.0,
-          "burn_scale": 6.857901234567901,
-          "fire_score_no_color": 1.3715802469135803,
-          "burn_scale_label": "小小烧",
-          "event_time": "2026-11-01T17:21:51.984021"
-        },
-        "ECMWF (AI)": {
-          "probability": 20.0,
-          "color_score": 47.0,
-          "burn_scale": 18.854938271604937,
-          "fire_score_no_color": 3.7709876543209875,
-          "burn_scale_label": "微烧",
-          "event_time": "2026-11-01T17:21:51.984021"
-        }
-      }
-    },
-    {
-      "date": "2026-11-02",
-      "morning": {
-        "ECMWF IFS 0.25°": {
-          "probability": 51.0,
-          "color_score": 2.0,
-          "burn_scale": 0.0533333333333333,
-          "fire_score_no_color": 0.027199999999999985,
-          "burn_scale_label": "光板天",
-          "event_time": "2026-11-02T06:27:52.759114"
-        },
-        "GFS Global": {
-          "probability": 51.0,
-          "color_score": 6.0,
-          "burn_scale": 7.412716049382716,
-          "fire_score_no_color": 3.7804851851851855,
-          "burn_scale_label": "小小烧",
-          "event_time": "2026-11-02T06:27:52.759114"
-        },
-        "ICON Global": {
-          "probability": 41.0,
-          "color_score": 11.0,
-          "burn_scale": 0.0,
-          "fire_score_no_color": 0.0,
-          "burn_scale_label": "几乎不烧",
-          "event_time": "2026-11-02T06:27:52.759114"
-        },
-        "CMA GRAPES Global": {
-          "probability": 20.0,
-          "color_score": 60.0,
-          "burn_scale": 3.4930864197530864,
-          "fire_score_no_color": 0.6986172839506173,
-          "burn_scale_label": "小小烧",
-          "event_time": "2026-11-02T06:27:52.759114"
-        },
-        "ECMWF (AI)": {
-          "probability": 34.0,
-          "color_score": 20.0,
-          "burn_scale": 0.0,
-          "fire_score_no_color": 0.0,
-          "burn_scale_label": "几乎不烧",
-          "event_time": "2026-11-02T06:27:52.759114"
-        }
-      },
-      "evening": {
-        "ECMWF IFS 0.25°": {
-          "probability": 80.0,
-          "color_score": 72.0,
-          "burn_scale": 12.868641975308641,
-          "fire_score_no_color": 10.294913580246913,
-          "burn_scale_label": "微烧",
-          "event_time": "2026-11-02T17:21:00.152745"
-        },
-        "GFS Global": {
-          "probability": 83.0,
-          "color_score": 44.0,
-          "burn_scale": 23.655308641975306,
-          "fire_score_no_color": 19.633906172839502,
-          "burn_scale_label": "微烧",
-          "event_time": "2026-11-02T17:21:00.152745"
-        },
-        "ICON Global": {
-          "probability": 57.0,
-          "color_score": 36.0,
-          "burn_scale": 21.585802469135807,
-          "fire_score_no_color": 12.303907407407408,
-          "burn_scale_label": "微烧",
-          "event_time": "2026-11-02T17:21:00.152745"
-        },
-        "CMA GRAPES Global": {
-          "probability": 55.0,
-          "color_score": 14.0,
-          "burn_scale": 1.9876543209876543,
-          "fire_score_no_color": 1.09320987654321,
-          "burn_scale_label": "光板天",
-          "event_time": "2026-11-02T17:21:00.152745"
-        },
-        "ECMWF (AI)": {
-          "probability": 47.0,
-          "color_score": 31.0,
-          "burn_scale": 4.757037037037038,
-          "fire_score_no_color": 2.2358074074074077,
-          "burn_scale_label": "小小烧",
-          "event_time": "2026-11-02T17:21:00.152745"
         }
       }
     }
