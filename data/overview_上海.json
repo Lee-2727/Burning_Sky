@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "place": "上海",
+  "latitude": 31.2304,
+  "longitude": 121.4737,
+  "elevation_m": 4.0,
+  "timezone": "Asia/Shanghai",
+  "updated_at": "2026-11-01 01:13:19 CST",
+  "days": [
+    {
+      "date": "2026-11-01",
+      "morning": {
+        "ECMWF IFS 0.25°": {
+          "probability": 58.0,
+          "color_score": 11.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-01T06:09:14.816081"
+        }
+      },
+      "evening": {
+        "ECMWF IFS 0.25°": {
+          "probability": 11.0,
+          "color_score": 7.0,
+          "burn_scale": 1.7232098765432105,
+          "fire_score_no_color": 0.18955308641975316,
+          "burn_scale_label": "小小烧",
+          "event_time": "2026-11-01T17:05:39.998905"
+        }
+      }
+    },
+    {
+      "date": "2026-11-02",
+      "morning": {
+        "ECMWF IFS 0.25°": {
+          "probability": 20.0,
+          "color_score": 56.0,
+          "burn_scale": 3.705679012345678,
+          "fire_score_no_color": 0.7411358024691357,
+          "burn_scale_label": "小小烧",
+          "event_time": "2026-11-02T06:10:02.983019"
+        }
+      },
+      "evening": {
+        "ECMWF IFS 0.25°": {
+          "probability": 56.0,
+          "color_score": 12.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-02T17:04:49.308997"
+        }
+      }
+    },
+    {
+      "date": "2026-11-03",
+      "morning": {
+        "ECMWF IFS 0.25°": {
+          "probability": 20.0,
+          "color_score": 63.0,
+          "burn_scale": 10.61925925925926,
+          "fire_score_no_color": 2.1238518518518523,
+          "burn_scale_label": "微烧",
+          "event_time": "2026-11-03T06:10:51.519128"
+        }
+      },
+      "evening": {
+        "ECMWF IFS 0.25°": {
+          "probability": 20.0,
+          "color_score": 51.0,
+          "burn_scale": 37.49925925925926,
+          "fire_score_no_color": 7.499851851851853,
+          "burn_scale_label": "小烧",
+          "event_time": "2026-11-03T17:03:59.903090"
+        }
+      }
+    }
+  ],
+  "model_errors": {}
+}

@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "place": "深圳",
+  "latitude": 22.5431,
+  "longitude": 114.0579,
+  "elevation_m": 20.0,
+  "timezone": "Asia/Shanghai",
+  "updated_at": "2026-11-01 01:14:45 CST",
+  "days": [
+    {
+      "date": "2026-11-01",
+      "morning": {
+        "ECMWF IFS 0.25°": {
+          "probability": 29.0,
+          "color_score": 11.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-01T06:27:56.452426"
+        }
+      },
+      "evening": {
+        "ECMWF IFS 0.25°": {
+          "probability": 29.0,
+          "color_score": 11.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-01T17:46:24.648960"
+        }
+      }
+    },
+    {
+      "date": "2026-11-02",
+      "morning": {
+        "ECMWF IFS 0.25°": {
+          "probability": 49.0,
+          "color_score": 70.0,
+          "burn_scale": 12.7079012345679,
+          "fire_score_no_color": 6.226871604938271,
+          "burn_scale_label": "微烧",
+          "event_time": "2026-11-02T06:28:28.658857"
+        }
+      },
+      "evening": {
+        "ECMWF IFS 0.25°": {
+          "probability": 37.0,
+          "color_score": 7.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-02T17:45:49.872655"
+        }
+      }
+    },
+    {
+      "date": "2026-11-03",
+      "morning": {
+        "ECMWF IFS 0.25°": {
+          "probability": 39.0,
+          "color_score": 17.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-03T06:29:01.358521"
+        }
+      },
+      "evening": {
+        "ECMWF IFS 0.25°": {
+          "probability": 35.0,
+          "color_score": 9.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-03T17:45:16.240985"
+        }
+      }
+    }
+  ],
+  "model_errors": {}
+}
