@@ -299,18 +299,26 @@ if st.session_state.get("show_multi_day_overview"):
     if st.button("← 返回单次预报", key="back_to_single_forecast"):
         st.session_state["show_multi_day_overview"] = False
         st.rerun()
-    _overview_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "overview.json")
+    _data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+    _overview_city = st.selectbox("概览城市", ["合肥", "深圳", "南京", "武汉", "上海"], index=0, key="overview_city_select")
+    _overview_path = os.path.join(_data_dir, f"overview_{_overview_city}.json")
     _overview = None
     try:
         import json as _json
         with open(_overview_path, "r", encoding="utf-8") as _f:
             _overview = _json.load(_f)
     except Exception:
-        pass
+        # 兼容旧版仓库中仅有 overview.json 的合肥快照
+        if _overview_city == "合肥":
+            try:
+                with open(os.path.join(_data_dir, "overview.json"), "r", encoding="utf-8") as _f:
+                    _overview = _json.load(_f)
+            except Exception:
+                pass
     if not _overview or not _overview.get("days"):
-        st.info("尚无已保存的概览数据。后台首次更新完成后，这里会显示合肥未来三天的朝霞与晚霞结果。")
+        st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示该城市未来三天的朝霞与晚霞结果。")
     else:
-        st.caption(f"固定地点：合肥（31.8047, 117.2214） · 最近更新：{_overview.get('updated_at', '未知')} · 数据可能不是最新一轮模式预报。")
+        st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 最近更新：{_overview.get('updated_at', '未知')} · 数据可能不是最新一轮模式预报。")
         _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global", "CMA GRAPES Global", "ECMWF (AI)"]
         _model_short = {"ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON", "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)"}
         for _direction, _direction_title in (("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")):
@@ -350,7 +358,7 @@ if st.session_state.get("show_multi_day_overview"):
                         else:
                             color = "#A12A83"  # 紫红色
                         return f"color: {color}; font-weight: 700;"
-                    _styled = _df.style.applymap(_fire_score_style, subset=["火烧云评分（不考虑色彩）"])
+                    _styled = _df.style.map(_fire_score_style, subset=["火烧云评分（不考虑色彩）"])
                     st.dataframe(_styled, use_container_width=True, hide_index=True)
     st.stop()
 

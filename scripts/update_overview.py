@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""预计算并保存合肥未来三天朝霞/晚霞多模式概览。"""
+"""预计算并保存指定城市未来三天朝霞/晚霞多模式概览。"""
 from __future__ import annotations
 
 import json
@@ -14,10 +14,19 @@ sys.path.insert(0, str(ROOT))
 import engine  # noqa: E402
 
 TZ = ZoneInfo("Asia/Shanghai")
-LAT, LON, ELEVATION_M = 31.8047, 117.2214, 30.0
-PLACE = "合肥"
-OUTPUT = ROOT / "data" / "overview.json"
-HISTORY_DIR = ROOT / "data" / "overview_history"
+CITY_CONFIG = {
+    "合肥": (31.8047, 117.2214, 30.0),
+    "深圳": (22.5431, 114.0579, 20.0),
+    "南京": (32.0603, 118.7969, 20.0),
+    "武汉": (30.5928, 114.3055, 25.0),
+    "上海": (31.2304, 121.4737, 10.0),
+}
+PLACE = os.environ.get("BURNING_SKY_CITY", "合肥")
+if PLACE not in CITY_CONFIG:
+    raise SystemExit(f"Unsupported city: {PLACE}")
+LAT, LON, ELEVATION_M = CITY_CONFIG[PLACE]
+OUTPUT = ROOT / "data" / f"overview_{PLACE}.json"
+HISTORY_DIR = ROOT / "data" / "overview_history" / PLACE
 
 
 class _Value:
@@ -181,7 +190,7 @@ def main():
         1 for day in snapshot["days"] for direction in ("morning", "evening")
         for value in day[direction].values() if value.get("probability") is not None
     )
-    print(f"Saved {OUTPUT}; successful direction/model records: {success_count}/30", flush=True)
+    print(f"Saved {OUTPUT}; successful direction/model records: {success_count}/{len(dates)*len(models)*2}", flush=True)
     # 部分模式暂时不可用时仍保存其他模式；仅当全部结果为空时让 workflow 标红。
     if success_count == 0:
         raise SystemExit("所有模式均未生成有效结果；已写入错误快照。")
