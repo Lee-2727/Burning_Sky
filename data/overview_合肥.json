@@ -5,7 +5,7 @@
   "longitude": 117.2272,
   "elevation_m": 30.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": "2026-11-01 01:02:51 CST",
+  "updated_at": "2026-11-01 01:17:19 CST",
   "days": [
     {
       "date": "2026-11-01",
@@ -17,6 +17,14 @@
           "fire_score_no_color": 0.7300740740740741,
           "burn_scale_label": "小小烧",
           "event_time": "2026-11-01T06:27:03.350739"
+        },
+        "GFS Global": {
+          "probability": 18.0,
+          "color_score": 11.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-01T06:27:03.350739"
         }
       },
       "evening": {
@@ -26,6 +34,14 @@
           "burn_scale": 55.48271604938272,
           "fire_score_no_color": 19.41895061728395,
           "burn_scale_label": "中烧",
+          "event_time": "2026-11-01T17:21:49.255923"
+        },
+        "GFS Global": {
+          "probability": 18.0,
+          "color_score": 16.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
           "event_time": "2026-11-01T17:21:49.255923"
         }
       }
@@ -40,6 +56,14 @@
           "fire_score_no_color": 0.0,
           "burn_scale_label": "光板天",
           "event_time": "2026-11-02T06:27:52.721876"
+        },
+        "GFS Global": {
+          "probability": 51.0,
+          "color_score": 6.0,
+          "burn_scale": 7.292962962962963,
+          "fire_score_no_color": 3.719411111111111,
+          "burn_scale_label": "小小烧",
+          "event_time": "2026-11-02T06:27:52.721876"
         }
       },
       "evening": {
@@ -48,6 +72,14 @@
           "color_score": 18.0,
           "burn_scale": 20.182716049382716,
           "fire_score_no_color": 11.100493827160495,
+          "burn_scale_label": "微烧",
+          "event_time": "2026-11-02T17:20:57.392182"
+        },
+        "GFS Global": {
+          "probability": 83.0,
+          "color_score": 44.0,
+          "burn_scale": 22.763456790123456,
+          "fire_score_no_color": 18.89366913580247,
           "burn_scale_label": "微烧",
           "event_time": "2026-11-02T17:20:57.392182"
         }
@@ -63,6 +95,14 @@
           "fire_score_no_color": 2.7637037037037038,
           "burn_scale_label": "微烧",
           "event_time": "2026-11-03T06:28:42.449356"
+        },
+        "GFS Global": {
+          "probability": 12.0,
+          "color_score": 27.0,
+          "burn_scale": 4.662962962962962,
+          "fire_score_no_color": 0.5595555555555555,
+          "burn_scale_label": "小小烧",
+          "event_time": "2026-11-03T06:28:42.449356"
         }
       },
       "evening": {
@@ -72,6 +112,14 @@
           "burn_scale": 32.72888888888889,
           "fire_score_no_color": 6.545777777777778,
           "burn_scale_label": "小烧",
+          "event_time": "2026-11-03T17:20:06.817447"
+        },
+        "GFS Global": {
+          "probability": 12.0,
+          "color_score": 0.0,
+          "burn_scale": 0.746666666666664,
+          "fire_score_no_color": 0.08959999999999968,
+          "burn_scale_label": "小小烧",
           "event_time": "2026-11-03T17:20:06.817447"
         }
       }

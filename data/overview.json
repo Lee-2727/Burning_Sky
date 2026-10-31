@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-11-01T01:14:45+08:00",
+  "updated_at": "2026-11-01T01:23:23+08:00",
   "cities": {
     "合肥": {
       "schema_version": 1,
@@ -9,7 +9,7 @@
       "longitude": 117.2272,
       "elevation_m": 30.0,
       "timezone": "Asia/Shanghai",
-      "updated_at": "2026-11-01 01:02:51 CST",
+      "updated_at": "2026-11-01 01:17:19 CST",
       "days": [
         {
           "date": "2026-11-01",
@@ -21,6 +21,14 @@
               "fire_score_no_color": 0.7300740740740741,
               "burn_scale_label": "小小烧",
               "event_time": "2026-11-01T06:27:03.350739"
+            },
+            "GFS Global": {
+              "probability": 18.0,
+              "color_score": 11.0,
+              "burn_scale": 0.0,
+              "fire_score_no_color": 0.0,
+              "burn_scale_label": "几乎不烧",
+              "event_time": "2026-11-01T06:27:03.350739"
             }
           },
           "evening": {
@@ -30,6 +38,14 @@
               "burn_scale": 55.48271604938272,
               "fire_score_no_color": 19.41895061728395,
               "burn_scale_label": "中烧",
+              "event_time": "2026-11-01T17:21:49.255923"
+            },
+            "GFS Global": {
+              "probability": 18.0,
+              "color_score": 16.0,
+              "burn_scale": 0.0,
+              "fire_score_no_color": 0.0,
+              "burn_scale_label": "几乎不烧",
               "event_time": "2026-11-01T17:21:49.255923"
             }
           }
@@ -44,6 +60,14 @@
               "fire_score_no_color": 0.0,
               "burn_scale_label": "光板天",
               "event_time": "2026-11-02T06:27:52.721876"
+            },
+            "GFS Global": {
+              "probability": 51.0,
+              "color_score": 6.0,
+              "burn_scale": 7.292962962962963,
+              "fire_score_no_color": 3.719411111111111,
+              "burn_scale_label": "小小烧",
+              "event_time": "2026-11-02T06:27:52.721876"
             }
           },
           "evening": {
@@ -52,6 +76,14 @@
               "color_score": 18.0,
               "burn_scale": 20.182716049382716,
               "fire_score_no_color": 11.100493827160495,
+              "burn_scale_label": "微烧",
+              "event_time": "2026-11-02T17:20:57.392182"
+            },
+            "GFS Global": {
+              "probability": 83.0,
+              "color_score": 44.0,
+              "burn_scale": 22.763456790123456,
+              "fire_score_no_color": 18.89366913580247,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-02T17:20:57.392182"
             }
@@ -67,6 +99,14 @@
               "fire_score_no_color": 2.7637037037037038,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-03T06:28:42.449356"
+            },
+            "GFS Global": {
+              "probability": 12.0,
+              "color_score": 27.0,
+              "burn_scale": 4.662962962962962,
+              "fire_score_no_color": 0.5595555555555555,
+              "burn_scale_label": "小小烧",
+              "event_time": "2026-11-03T06:28:42.449356"
             }
           },
           "evening": {
@@ -76,6 +116,14 @@
               "burn_scale": 32.72888888888889,
               "fire_score_no_color": 6.545777777777778,
               "burn_scale_label": "小烧",
+              "event_time": "2026-11-03T17:20:06.817447"
+            },
+            "GFS Global": {
+              "probability": 12.0,
+              "color_score": 0.0,
+              "burn_scale": 0.746666666666664,
+              "fire_score_no_color": 0.08959999999999968,
+              "burn_scale_label": "小小烧",
               "event_time": "2026-11-03T17:20:06.817447"
             }
           }
@@ -90,7 +138,7 @@
       "longitude": 118.4331,
       "elevation_m": 15.0,
       "timezone": "Asia/Shanghai",
-      "updated_at": "2026-11-01 01:04:44 CST",
+      "updated_at": "2026-11-01 01:19:04 CST",
       "days": [
         {
           "date": "2026-11-01",
@@ -102,6 +150,14 @@
               "fire_score_no_color": 12.927841975308642,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-01T06:21:35.013310"
+            },
+            "GFS Global": {
+              "probability": 65.0,
+              "color_score": 67.0,
+              "burn_scale": 9.416296296296295,
+              "fire_score_no_color": 6.120592592592592,
+              "burn_scale_label": "小小烧",
+              "event_time": "2026-11-01T06:21:35.013310"
             }
           },
           "evening": {
@@ -111,6 +167,14 @@
               "burn_scale": 10.731481481481483,
               "fire_score_no_color": 2.146296296296297,
               "burn_scale_label": "微烧",
+              "event_time": "2026-11-01T17:17:39.161981"
+            },
+            "GFS Global": {
+              "probability": 18.0,
+              "color_score": 16.0,
+              "burn_scale": 0.0,
+              "fire_score_no_color": 0.0,
+              "burn_scale_label": "几乎不烧",
               "event_time": "2026-11-01T17:17:39.161981"
             }
           }
@@ -125,6 +189,14 @@
               "fire_score_no_color": 0.0,
               "burn_scale_label": "光板天",
               "event_time": "2026-11-02T06:22:23.432160"
+            },
+            "GFS Global": {
+              "probability": 45.0,
+              "color_score": 31.0,
+              "burn_scale": 19.795185185185183,
+              "fire_score_no_color": 8.907833333333333,
+              "burn_scale_label": "微烧",
+              "event_time": "2026-11-02T06:22:23.432160"
             }
           },
           "evening": {
@@ -134,6 +206,14 @@
               "burn_scale": 14.049382716049383,
               "fire_score_no_color": 7.586666666666667,
               "burn_scale_label": "微烧",
+              "event_time": "2026-11-02T17:16:48.237948"
+            },
+            "GFS Global": {
+              "probability": 54.0,
+              "color_score": 14.0,
+              "burn_scale": 1.5733333333333333,
+              "fire_score_no_color": 0.8496,
+              "burn_scale_label": "小小烧",
               "event_time": "2026-11-02T17:16:48.237948"
             }
           }
@@ -148,6 +228,13 @@
               "fire_score_no_color": 2.8129629629629633,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-03T06:23:12.212373"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -158,11 +245,25 @@
               "fire_score_no_color": 5.893481481481482,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-03T17:15:58.600064"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         }
       ],
-      "model_errors": {}
+      "model_errors": {
+        "GFS Global": [
+          {
+            "date": "2026-11-03",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          }
+        ]
+      }
     },
     "南京": {
       "schema_version": 1,
@@ -171,7 +272,7 @@
       "longitude": 118.7969,
       "elevation_m": 15.0,
       "timezone": "Asia/Shanghai",
-      "updated_at": "2026-11-01 01:07:45 CST",
+      "updated_at": "2026-11-01 01:20:11 CST",
       "days": [
         {
           "date": "2026-11-01",
@@ -183,6 +284,13 @@
               "fire_score_no_color": 7.450298765432098,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-01T06:21:06.408960"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -193,6 +301,13 @@
               "fire_score_no_color": 2.670370370370371,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-01T17:15:12.557276"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         },
@@ -206,6 +321,13 @@
               "fire_score_no_color": 0.0,
               "burn_scale_label": "光板天",
               "event_time": "2026-11-02T06:21:56.267298"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -216,6 +338,13 @@
               "fire_score_no_color": 19.806790123456793,
               "burn_scale_label": "小烧",
               "event_time": "2026-11-02T17:14:20.196549"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         },
@@ -229,6 +358,13 @@
               "fire_score_no_color": 2.8585185185185185,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-03T06:22:46.480370"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -239,11 +375,33 @@
               "fire_score_no_color": 6.892049382716049,
               "burn_scale_label": "小烧",
               "event_time": "2026-11-03T17:13:29.132631"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         }
       ],
-      "model_errors": {}
+      "model_errors": {
+        "GFS Global": [
+          {
+            "date": "2026-11-01",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          },
+          {
+            "date": "2026-11-02",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          },
+          {
+            "date": "2026-11-03",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          }
+        ]
+      }
     },
     "武汉": {
       "schema_version": 1,
@@ -252,7 +410,7 @@
       "longitude": 114.3055,
       "elevation_m": 23.0,
       "timezone": "Asia/Shanghai",
-      "updated_at": "2026-11-01 01:10:44 CST",
+      "updated_at": "2026-11-01 01:21:14 CST",
       "days": [
         {
           "date": "2026-11-01",
@@ -264,6 +422,13 @@
               "fire_score_no_color": 2.9801333333333333,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-01T06:37:04.074782"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -274,6 +439,13 @@
               "fire_score_no_color": 6.3736296296296295,
               "burn_scale_label": "小烧",
               "event_time": "2026-11-01T17:35:11.931185"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         },
@@ -287,6 +459,13 @@
               "fire_score_no_color": 1.0198222222222224,
               "burn_scale_label": "小小烧",
               "event_time": "2026-11-02T06:37:50.979845"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -297,6 +476,13 @@
               "fire_score_no_color": 2.1744444444444446,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-02T17:34:22.529899"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         },
@@ -310,6 +496,13 @@
               "fire_score_no_color": 6.62883950617284,
               "burn_scale_label": "小烧",
               "event_time": "2026-11-03T06:38:38.260650"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -320,11 +513,33 @@
               "fire_score_no_color": 0.3729999999999999,
               "burn_scale_label": "小小烧",
               "event_time": "2026-11-03T17:33:34.402574"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         }
       ],
-      "model_errors": {}
+      "model_errors": {
+        "GFS Global": [
+          {
+            "date": "2026-11-01",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          },
+          {
+            "date": "2026-11-02",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          },
+          {
+            "date": "2026-11-03",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          }
+        ]
+      }
     },
     "上海": {
       "schema_version": 1,
@@ -333,7 +548,7 @@
       "longitude": 121.4737,
       "elevation_m": 4.0,
       "timezone": "Asia/Shanghai",
-      "updated_at": "2026-11-01 01:13:19 CST",
+      "updated_at": "2026-11-01 01:22:19 CST",
       "days": [
         {
           "date": "2026-11-01",
@@ -345,6 +560,13 @@
               "fire_score_no_color": 0.0,
               "burn_scale_label": "几乎不烧",
               "event_time": "2026-11-01T06:09:14.816081"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -355,6 +577,13 @@
               "fire_score_no_color": 0.18955308641975316,
               "burn_scale_label": "小小烧",
               "event_time": "2026-11-01T17:05:39.998905"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         },
@@ -368,6 +597,13 @@
               "fire_score_no_color": 0.7411358024691357,
               "burn_scale_label": "小小烧",
               "event_time": "2026-11-02T06:10:02.983019"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -378,6 +614,13 @@
               "fire_score_no_color": 0.0,
               "burn_scale_label": "几乎不烧",
               "event_time": "2026-11-02T17:04:49.308997"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         },
@@ -391,6 +634,13 @@
               "fire_score_no_color": 2.1238518518518523,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-03T06:10:51.519128"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -401,11 +651,33 @@
               "fire_score_no_color": 7.499851851851853,
               "burn_scale_label": "小烧",
               "event_time": "2026-11-03T17:03:59.903090"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         }
       ],
-      "model_errors": {}
+      "model_errors": {
+        "GFS Global": [
+          {
+            "date": "2026-11-01",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          },
+          {
+            "date": "2026-11-02",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          },
+          {
+            "date": "2026-11-03",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          }
+        ]
+      }
     },
     "深圳": {
       "schema_version": 1,
@@ -414,7 +686,7 @@
       "longitude": 114.0579,
       "elevation_m": 20.0,
       "timezone": "Asia/Shanghai",
-      "updated_at": "2026-11-01 01:14:45 CST",
+      "updated_at": "2026-11-01 01:23:23 CST",
       "days": [
         {
           "date": "2026-11-01",
@@ -426,6 +698,13 @@
               "fire_score_no_color": 0.0,
               "burn_scale_label": "几乎不烧",
               "event_time": "2026-11-01T06:27:56.452426"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -436,6 +715,13 @@
               "fire_score_no_color": 0.0,
               "burn_scale_label": "几乎不烧",
               "event_time": "2026-11-01T17:46:24.648960"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         },
@@ -449,6 +735,13 @@
               "fire_score_no_color": 6.226871604938271,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-02T06:28:28.658857"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -459,6 +752,13 @@
               "fire_score_no_color": 0.0,
               "burn_scale_label": "几乎不烧",
               "event_time": "2026-11-02T17:45:49.872655"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         },
@@ -472,6 +772,13 @@
               "fire_score_no_color": 0.0,
               "burn_scale_label": "几乎不烧",
               "event_time": "2026-11-03T06:29:01.358521"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           },
           "evening": {
@@ -482,11 +789,33 @@
               "fire_score_no_color": 0.0,
               "burn_scale_label": "几乎不烧",
               "event_time": "2026-11-03T17:45:16.240985"
+            },
+            "GFS Global": {
+              "probability": null,
+              "color_score": null,
+              "burn_scale": null,
+              "burn_scale_label": "暂不可判定",
+              "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
             }
           }
         }
       ],
-      "model_errors": {}
+      "model_errors": {
+        "GFS Global": [
+          {
+            "date": "2026-11-01",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          },
+          {
+            "date": "2026-11-02",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          },
+          {
+            "date": "2026-11-03",
+            "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          }
+        ]
+      }
     }
   }
 }
