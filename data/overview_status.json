@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "state": "waiting",
+  "updated_at": "尚未运行",
+  "current_model": null,
+  "model_index": 0,
+  "model_total": 5,
+  "completed_models": [],
+  "cities": [
+    "合肥",
+    "芜湖",
+    "南京",
+    "武汉",
+    "上海",
+    "深圳"
+  ],
+  "city_progress": 0,
+  "next_update": "每日 00:30、03:00、06:00、09:00、12:00、15:00、18:00、21:00（北京时间）"
+}

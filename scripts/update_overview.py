@@ -18,10 +18,9 @@ import engine  # noqa: E402
 TZ = ZoneInfo("Asia/Shanghai")
 CITY_CONFIG_FILE = ROOT / "overview_cities.txt"
 
-# One model run per city/date. A 60-second gap between model runs is deliberately
-# conservative for the public Open-Meteo endpoints, while still reducing the
-# previous 75-second debug cadence. Cities are processed sequentially.
-REQUEST_INTERVAL_SECONDS = 60
+# Requests are processed conservatively within each model batch; each completed
+# model batch is published before the next model starts.
+REQUEST_INTERVAL_SECONDS = 20
 
 def load_city_config():
     cities = []
@@ -86,20 +85,14 @@ class _HeadlessForecast(engine.FireCloudApp):
         pass
 
 
-def _new_runner(day, model_label):
+def _new_runner(city, day, model_label):
+    lat, lon, elevation_m = CITY_CONFIG[city]
     runner = object.__new__(_HeadlessForecast)
     values = {
-        "place": PLACE,
-        "date": day.isoformat(),
-        "lat": f"{LAT:.6f}",
-        "lon": f"{LON:.6f}",
-        "elevation": f"{ELEVATION_M:.1f}",
-        "weather_model": model_label,
-        "cloud_base_mode": "自动剖面推算",
-        "morning_cloud_base_km": "2.0",
-        "evening_cloud_base_km": "2.0",
-        "morning_aod": "",
-        "evening_aod": "",
+        "place": city, "date": day.isoformat(), "lat": f"{lat:.6f}", "lon": f"{lon:.6f}",
+        "elevation": f"{elevation_m:.1f}", "weather_model": model_label,
+        "cloud_base_mode": "自动剖面推算", "morning_cloud_base_km": "2.0",
+        "evening_cloud_base_km": "2.0", "morning_aod": "", "evening_aod": "",
     }
     runner.vars = {k: _Value(v) for k, v in values.items()}
     runner.direction_results = {}
@@ -123,7 +116,6 @@ def _new_runner(day, model_label):
     runner.morning_aod_status_var = _Value("")
     runner.evening_aod_status_var = _Value("")
     return runner
-
 
 def _record(result):
     inferred = (result or {}).get("inferred", {})
@@ -149,104 +141,127 @@ def _record(result):
     }
 
 
+def _write_json_atomic(path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _publish_model_batch(model_label, status):
+    """Publish each completed model batch immediately from GitHub Actions."""
+    if os.environ.get("GITHUB_ACTIONS", "").lower() != "true":
+        return
+    branch = os.environ.get("GITHUB_REF_NAME", "main")
+    try:
+        subprocess.run(["git", "config", "user.name", "github-actions[bot]"], cwd=ROOT, check=True)
+        subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=ROOT, check=True)
+        subprocess.run(["git", "add", "-f", "data/overview.json", "data/overview_*.json", "data/overview_status.json", "data/overview_history/"], cwd=ROOT, check=True)
+        changed = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT).returncode != 0
+        if changed:
+            subprocess.run(["git", "commit", "-m", f"chore: publish {model_label} overview batch"], cwd=ROOT, check=True)
+            subprocess.run(["git", "push", "origin", f"HEAD:{branch}"], cwd=ROOT, check=True)
+    except Exception as exc:
+        print(f"WARNING: incremental publish failed for {model_label}: {exc}", flush=True)
+        status["publish_error"] = str(exc)[:800]
+        _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+
+
 def main():
     now = datetime.now(TZ)
-    # Three forecast dates including today: today, tomorrow, and the day after.
     dates = [now.date() + timedelta(days=i) for i in range(3)]
+    cities = list(CITY_CONFIG)
     models = list(engine.WEATHER_MODEL_CATALOG)
     if len(models) != 5:
         raise SystemExit(f"Expected five enabled models, found {len(models)}")
-    snapshot = {
-        "schema_version": 1, "place": PLACE, "latitude": LAT, "longitude": LON,
-        "elevation_m": ELEVATION_M, "timezone": "Asia/Shanghai",
-        "updated_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"), "days": [], "model_errors": {},
+
+    # Build per-city snapshots, preserving existing records until a model is refreshed.
+    snapshots = {}
+    for city, (lat, lon, elev) in CITY_CONFIG.items():
+        path = ROOT / "data" / f"overview_{city}.json"
+        try:
+            old = json.loads(path.read_text(encoding="utf-8"))
+            if [d.get("date") for d in old.get("days", [])] == [d.isoformat() for d in dates]:
+                snapshots[city] = old
+                continue
+        except Exception:
+            pass
+        snapshots[city] = {
+            "schema_version": 1, "place": city, "latitude": lat, "longitude": lon,
+            "elevation_m": elev, "timezone": "Asia/Shanghai", "updated_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            "days": [{"date": d.isoformat(), "morning": {}, "evening": {}} for d in dates], "model_errors": {},
+        }
+
+    status = {
+        "schema_version": 1, "state": "running", "started_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "updated_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"), "current_model": None,
+        "model_index": 0, "model_total": len(models), "completed_models": [],
+        "cities": cities, "city_progress": 0, "next_update": "每日 00:30、03:00、06:00、09:00、12:00、15:00、18:00、21:00（北京时间）",
     }
+    _write_json_atomic(ROOT / "data" / "overview_status.json", status)
     old_info, old_error = engine.messagebox.showinfo, engine.messagebox.showerror
     engine.messagebox.showinfo = lambda *a, **k: None
     engine.messagebox.showerror = lambda title, message, **kwargs: setattr(engine.messagebox, "last_error", (str(title), str(message)))
     try:
-        request_index = 0
-        total_requests = len(dates) * len(models)
-        for day in dates:
-            day_entry = {"date": day.isoformat(), "morning": {}, "evening": {}}
-            for model in models:
-                label = model["label"]
-                if request_index:
-                    print(f"Rate-limit safeguard: sleeping {REQUEST_INTERVAL_SECONDS}s before next model request ({request_index+1}/{total_requests}).", flush=True)
-                    time.sleep(REQUEST_INTERVAL_SECONDS)
-                runner = _new_runner(day, label)
-                engine.messagebox.last_error = None
-                print(f"[{datetime.now(TZ):%H:%M:%S}] {PLACE} {day} {label}: starting", flush=True)
-                try:
-                    runner._fetch_weather_task("both")
-                except Exception as exc:
-                    engine.messagebox.last_error = ("Forecast error", str(exc))
-                if engine.messagebox.last_error:
-                    error = str(engine.messagebox.last_error[1])
-                    snapshot["model_errors"].setdefault(label, []).append({"date": day.isoformat(), "error": error[:1200]})
-                    print(f"ERROR {PLACE} {day} {label}: {error[:1200]}", flush=True)
-                for direction in ("morning", "evening"):
-                    result = runner.direction_results.get(direction)
-                    day_entry[direction][label] = _record(result) if result else {
-                        "probability": None, "color_score": None, "burn_scale": None,
-                        "burn_scale_label": "暂不可判定",
-                        "error": str((engine.messagebox.last_error or [None, "无结果"])[1])[:1200],
-                    }
-                print(f"[{datetime.now(TZ):%H:%M:%S}] {PLACE} {day} {label}: finished", flush=True)
-                request_index += 1
-            snapshot["days"].append(day_entry)
+        for model_index, model in enumerate(models, 1):
+            label = model["label"]
+            status.update(state="running", current_model=label, model_index=model_index,
+                         city_progress=0, updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
+            _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+            _publish_model_batch(f"start-{label}", status)
+            print(f"\n===== MODEL BATCH {model_index}/{len(models)}: {label} =====", flush=True)
+            task_count = len(cities) * len(dates)
+            task_index = 0
+            for city in cities:
+                snapshot = snapshots[city]
+                for day_index, day in enumerate(dates):
+                    if task_index:
+                        time.sleep(REQUEST_INTERVAL_SECONDS)
+                    runner = _new_runner(city, day, label)
+                    engine.messagebox.last_error = None
+                    print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label}: starting", flush=True)
+                    try:
+                        runner._fetch_weather_task("both")
+                    except Exception as exc:
+                        engine.messagebox.last_error = ("Forecast error", str(exc))
+                    if engine.messagebox.last_error:
+                        snapshot["model_errors"].setdefault(label, []).append({"date": day.isoformat(), "error": str(engine.messagebox.last_error[1])[:1200]})
+                    day_entry = snapshot["days"][day_index]
+                    for direction in ("morning", "evening"):
+                        result = runner.direction_results.get(direction)
+                        day_entry[direction][label] = _record(result) if result else {
+                            "probability": None, "color_score": None, "burn_scale": None,
+                            "burn_scale_label": "暂不可判定",
+                            "error": str((engine.messagebox.last_error or [None, "无结果"])[1])[:1200],
+                        }
+                    snapshot["updated_at"] = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
+                    task_index += 1
+                    status.update(city_progress=task_index, updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
+                    print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label}: finished ({task_index}/{task_count})", flush=True)
+
+            # Commit this model's results into each city file and aggregate immediately.
+            for city, snapshot in snapshots.items():
+                _write_json_atomic(ROOT / "data" / f"overview_{city}.json", snapshot)
+            aggregate = {"schema_version": 1, "updated_at": datetime.now(TZ).isoformat(timespec="seconds"),
+                        "cities": {city: snapshots[city] for city in cities}}
+            _write_json_atomic(ROOT / "data" / "overview.json", aggregate)
+            status["completed_models"].append(label)
+            status.update(current_model=None, state="between_models", city_progress=task_count,
+                         updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
+            _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+            _publish_model_batch(label, status)
+            if model_index < len(models):
+                print(f"Model batch complete; waiting {REQUEST_INTERVAL_SECONDS}s before next model.", flush=True)
+                time.sleep(REQUEST_INTERVAL_SECONDS)
     finally:
         engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
 
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-    history_file = HISTORY_DIR / f"{now.date().isoformat()}.json"
-    history_tmp = history_file.with_suffix(".json.tmp")
-    history_tmp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
-    history_tmp.replace(history_file)
-    cutoff_date = now.date() - timedelta(days=1)
-    for old_file in HISTORY_DIR.glob("????-??-??.json"):
-        try:
-            if datetime.strptime(old_file.stem, "%Y-%m-%d").date() < cutoff_date:
-                old_file.unlink()
-        except ValueError:
-            continue
-    temp = OUTPUT.with_suffix(".json.tmp")
-    temp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp.replace(OUTPUT)
-    success_count = sum(1 for day in snapshot["days"] for direction in ("morning", "evening")
-                       for value in day[direction].values() if value.get("probability") is not None)
-    expected = len(dates) * len(models) * 2
-    print(f"Saved {OUTPUT}; dates={dates[0].isoformat()}..{dates[-1].isoformat()} (3 days incl. today); models=5; successful direction/model records: {success_count}/{expected}", flush=True)
-    if success_count == 0:
-        raise SystemExit("All models returned no valid results; error snapshot saved.")
+    status.update(state="completed", current_model=None, completed_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
+                  updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
+    _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+    _publish_model_batch("all-models-complete", status)
+    print(f"Completed model-major update for {len(cities)} cities and {len(models)} models.", flush=True)
 
 
 if __name__ == "__main__":
-    requested_city = os.environ.get("BURNING_SKY_CITY", "").strip()
-    if requested_city:
-        main()
-    else:
-        cities = load_city_config()
-        print("Configured city order: " + " → ".join(c[0] for c in cities), flush=True)
-        aggregate = {"schema_version": 1, "updated_at": datetime.now(TZ).isoformat(timespec="seconds"), "cities": {}}
-        for index, (city, _lat, _lon, _elev) in enumerate(cities):
-            if index:
-                print(f"Rate-limit safeguard: sleeping {REQUEST_INTERVAL_SECONDS}s before next city.", flush=True)
-                time.sleep(REQUEST_INTERVAL_SECONDS)
-            print(f"\n===== Updating city {index+1}/{len(cities)}: {city} =====", flush=True)
-            env = os.environ.copy()
-            env["BURNING_SKY_CITY"] = city
-            subprocess.run([sys.executable, "-u", str(Path(__file__).resolve())], cwd=str(ROOT), env=env, check=True)
-            city_file = ROOT / "data" / f"overview_{city}.json"
-            if not city_file.is_file():
-                raise SystemExit(f"Missing city snapshot after update: {city_file}")
-            city_data = json.loads(city_file.read_text(encoding="utf-8"))
-            if len(city_data.get("days", [])) != 3:
-                raise SystemExit(f"City snapshot must contain 3 dates: {city_file}")
-            aggregate["cities"][city] = city_data
-        legacy_output = ROOT / "data" / "overview.json"
-        legacy_temp = legacy_output.with_suffix(".json.tmp")
-        legacy_temp.write_text(json.dumps(aggregate, ensure_ascii=False, indent=2), encoding="utf-8")
-        legacy_temp.replace(legacy_output)
-        print(f"Saved aggregate snapshot {legacy_output}; cities={','.join(aggregate['cities'])}", flush=True)
+    main()

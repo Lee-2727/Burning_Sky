@@ -299,81 +299,105 @@ if st.session_state.get("show_multi_day_overview"):
     if st.button("← 返回单次预报", key="back_to_single_forecast"):
         st.session_state["show_multi_day_overview"] = False
         st.rerun()
-    _data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-    _city_cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overview_cities.txt")
-    _overview_cities = []
-    try:
-        with open(_city_cfg, "r", encoding="utf-8-sig") as _cf:
-            _overview_cities = [line.split(",")[0].strip() for line in _cf if line.strip() and not line.lstrip().startswith("#")]
-    except Exception:
-        _overview_cities = ["合肥", "芜湖", "南京", "武汉", "上海", "深圳"]
-    if not _overview_cities:
-        _overview_cities = ["合肥", "芜湖", "南京", "武汉", "上海", "深圳"]
-    _overview_city = st.selectbox("概览城市", _overview_cities, index=0, key="overview_city_select")
-    _overview_path = os.path.join(_data_dir, f"overview_{_overview_city}.json")
-    _overview = None
-    try:
-        import json as _json
-        with open(_overview_path, "r", encoding="utf-8") as _f:
-            _overview = _json.load(_f)
-    except Exception:
-        # Compatibility: deployments may only contain the aggregate overview.json.
-        # Prefer the selected city's entry; support the old single-city Hefei format.
+    @st.fragment(run_every="30s")
+    def _render_multi_day_overview():
+        _data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        # Background GitHub Actions status is published at model-batch boundaries.
+        _status_path = os.path.join(_data_dir, "overview_status.json")
         try:
-            with open(os.path.join(_data_dir, "overview.json"), "r", encoding="utf-8") as _f:
-                _legacy = _json.load(_f)
-            _cities = _legacy.get("cities", {}) if isinstance(_legacy, dict) else {}
-            if isinstance(_cities, dict) and _overview_city in _cities:
-                _overview = _cities[_overview_city]
-            elif _overview_city == "合肥" and isinstance(_legacy, dict) and _legacy.get("days"):
-                _overview = _legacy
+            import json as _status_json
+            with open(_status_path, "r", encoding="utf-8") as _sf:
+                _update_status = _status_json.load(_sf)
+            _state = _update_status.get("state", "unknown")
+            _completed_models = _update_status.get("completed_models", [])
+            _model_total = _update_status.get("model_total", 5)
+            _model_index = _update_status.get("model_index", 0)
+            _current_model = _update_status.get("current_model")
+            if _state == "running":
+                st.info(f"🔄 多模概览后台正在更新：第 {_model_index}/{_model_total} 个模式 · {_current_model or '准备中'}。已完成：{', '.join(_completed_models) if _completed_models else '暂无'}。状态更新时间：{_update_status.get('updated_at', '未知')}。")
+            elif _state == "between_models":
+                st.info(f"⏳ 多模概览正在准备下一个模式。已完成 {_model_index}/{_model_total} 个模式：{', '.join(_completed_models)}。状态更新时间：{_update_status.get('updated_at', '未知')}。")
+            elif _state == "completed":
+                st.success(f"✅ 多模概览本轮更新已完成。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
+            else:
+                st.caption(f"多模概览后台状态：{_state} · 状态更新时间：{_update_status.get('updated_at', '未知')} · 下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
         except Exception:
-            pass
-    if not _overview or not _overview.get("days"):
-        st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、五种天气模式的朝霞与晚霞结果。")
-    else:
-        st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 最近更新：{_overview.get('updated_at', '未知')} · 预报范围：包含今天的未来三日 · 五模式。")
-        _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global", "CMA GRAPES Global", "ECMWF (AI)"]
-        _model_short = {"ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON", "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)"}
-        for _direction, _direction_title in (("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")):
-            st.subheader(_direction_title)
-            _date_cols = st.columns(3)
-            for _col, _day in zip(_date_cols, _overview.get("days", [])):
-                with _col:
-                    st.markdown(f"**{_day.get('date', '日期未知')}**")
-                    _records = _day.get(_direction, {})
-                    _rows = []
-                    for _model in _model_order:
-                        _v = _records.get(_model, {})
-                        _prob = _v.get("probability")
-                        _scale = _v.get("burn_scale")
-                        _fire_score = (_prob / 100.0 * _scale) if isinstance(_prob, (int, float)) and isinstance(_scale, (int, float)) else None
-                        _rows.append({
-                            "模式": _model_short[_model],
-                            "常规概率": (f"{_prob:.0f}%" if isinstance(_prob, (int, float)) else "—"),
-                            "色彩分": (f"{_v['color_score']:.0f}" if isinstance(_v.get("color_score"), (int, float)) else "—"),
-                            "霞云规模": (f"{_scale:.1f}" if isinstance(_scale, (int, float)) else "—"),
-                            "火烧云评分（不考虑色彩）": (f"{_fire_score:.1f}" if _fire_score is not None else "—"),
-                        })
-                    _df = pd.DataFrame(_rows)
-                    def _fire_score_style(value):
-                        try:
-                            score = float(value)
-                        except (TypeError, ValueError):
-                            return ""
-                        if score < 20:
-                            color = "#D6B84C"  # 淡黄
-                        elif score < 40:
-                            color = "#C99A16"  # 金色
-                        elif score < 60:
-                            color = "#E47724"  # 橘色
-                        elif score < 80:
-                            color = "#D83A32"  # 红色
-                        else:
-                            color = "#A12A83"  # 紫红色
-                        return f"color: {color}; font-weight: 700;"
-                    _styled = _df.style.map(_fire_score_style, subset=["火烧云评分（不考虑色彩）"])
-                    st.dataframe(_styled, use_container_width=True, hide_index=True)
+            st.caption("后台更新状态尚未发布；等待下一轮 GitHub Actions 更新任务启动。计划时刻：北京时间 00:30、03:00、06:00、09:00、12:00、15:00、18:00、21:00。")
+        _city_cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overview_cities.txt")
+        _overview_cities = []
+        try:
+            with open(_city_cfg, "r", encoding="utf-8-sig") as _cf:
+                _overview_cities = [line.split(",")[0].strip() for line in _cf if line.strip() and not line.lstrip().startswith("#")]
+        except Exception:
+            _overview_cities = ["合肥", "芜湖", "南京", "武汉", "上海", "深圳"]
+        if not _overview_cities:
+            _overview_cities = ["合肥", "芜湖", "南京", "武汉", "上海", "深圳"]
+        _overview_city = st.selectbox("概览城市", _overview_cities, index=0, key="overview_city_select")
+        _overview_path = os.path.join(_data_dir, f"overview_{_overview_city}.json")
+        _overview = None
+        try:
+            import json as _json
+            with open(_overview_path, "r", encoding="utf-8") as _f:
+                _overview = _json.load(_f)
+        except Exception:
+            # Compatibility: deployments may only contain the aggregate overview.json.
+            # Prefer the selected city's entry; support the old single-city Hefei format.
+            try:
+                with open(os.path.join(_data_dir, "overview.json"), "r", encoding="utf-8") as _f:
+                    _legacy = _json.load(_f)
+                _cities = _legacy.get("cities", {}) if isinstance(_legacy, dict) else {}
+                if isinstance(_cities, dict) and _overview_city in _cities:
+                    _overview = _cities[_overview_city]
+                elif _overview_city == "合肥" and isinstance(_legacy, dict) and _legacy.get("days"):
+                    _overview = _legacy
+            except Exception:
+                pass
+        if not _overview or not _overview.get("days"):
+            st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、五种天气模式的朝霞与晚霞结果。")
+        else:
+            st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 最近更新：{_overview.get('updated_at', '未知')} · 预报范围：包含今天的未来三日 · 五模式。")
+            _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global", "CMA GRAPES Global", "ECMWF (AI)"]
+            _model_short = {"ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON", "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)"}
+            for _direction, _direction_title in (("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")):
+                st.subheader(_direction_title)
+                _date_cols = st.columns(3)
+                for _col, _day in zip(_date_cols, _overview.get("days", [])):
+                    with _col:
+                        st.markdown(f"**{_day.get('date', '日期未知')}**")
+                        _records = _day.get(_direction, {})
+                        _rows = []
+                        for _model in _model_order:
+                            _v = _records.get(_model, {})
+                            _prob = _v.get("probability")
+                            _scale = _v.get("burn_scale")
+                            _fire_score = (_prob / 100.0 * _scale) if isinstance(_prob, (int, float)) and isinstance(_scale, (int, float)) else None
+                            _rows.append({
+                                "模式": _model_short[_model],
+                                "常规概率": (f"{_prob:.0f}%" if isinstance(_prob, (int, float)) else "—"),
+                                "色彩分": (f"{_v['color_score']:.0f}" if isinstance(_v.get("color_score"), (int, float)) else "—"),
+                                "霞云规模": (f"{_scale:.1f}" if isinstance(_scale, (int, float)) else "—"),
+                                "火烧云评分（不考虑色彩）": (f"{_fire_score:.1f}" if _fire_score is not None else "—"),
+                            })
+                        _df = pd.DataFrame(_rows)
+                        def _fire_score_style(value):
+                            try:
+                                score = float(value)
+                            except (TypeError, ValueError):
+                                return ""
+                            if score < 20:
+                                color = "#D6B84C"  # 淡黄
+                            elif score < 40:
+                                color = "#C99A16"  # 金色
+                            elif score < 60:
+                                color = "#E47724"  # 橘色
+                            elif score < 80:
+                                color = "#D83A32"  # 红色
+                            else:
+                                color = "#A12A83"  # 紫红色
+                            return f"color: {color}; font-weight: 700;"
+                        _styled = _df.style.map(_fire_score_style, subset=["火烧云评分（不考虑色彩）"])
+                        st.dataframe(_styled, use_container_width=True, hide_index=True)
+    _render_multi_day_overview()
     st.stop()
 
 if run:
