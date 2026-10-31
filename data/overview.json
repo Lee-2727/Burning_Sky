@@ -5,7 +5,47 @@
   "longitude": 117.2214,
   "elevation_m": 30.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": null,
-  "days": [],
+  "updated_at": "2026-10-31 22:46:53 CST",
+  "days": [
+    {
+      "date": "2026-11-01",
+      "morning": {
+        "ECMWF IFS 0.25°": {
+          "probability": 20.0,
+          "color_score": 17.0,
+          "burn_scale": 3.5829629629629625,
+          "fire_score_no_color": 0.7165925925925926,
+          "burn_scale_label": "小小烧",
+          "event_time": "2026-11-01T06:27:03.420446"
+        },
+        "GFS Global": {
+          "probability": 18.0,
+          "color_score": 11.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-01T06:27:03.420446"
+        }
+      },
+      "evening": {
+        "ECMWF IFS 0.25°": {
+          "probability": 35.0,
+          "color_score": 41.0,
+          "burn_scale": 48.90617283950617,
+          "fire_score_no_color": 17.117160493827157,
+          "burn_scale_label": "小烧",
+          "event_time": "2026-11-01T17:21:51.984021"
+        },
+        "GFS Global": {
+          "probability": 18.0,
+          "color_score": 16.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-01T17:21:51.984021"
+        }
+      }
+    }
+  ],
   "model_errors": {}
 }
