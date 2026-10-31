@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import time
+import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -174,9 +175,6 @@ def main():
                     }
                 print(f"[{datetime.now(TZ):%H:%M:%S}] {day} {label}: finished", flush=True)
             snapshot["days"].append(day_entry)
-        if PLACE == "合肥":
-            print("Rate-limit safeguard: sleeping 75 seconds before Shenzhen.", flush=True)
-            time.sleep(75)
     finally:
         engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
 
@@ -210,4 +208,19 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # If launched without an explicit city (as in older/simple workflows),
+    # orchestrate both debug cities in a single run: Hefei first, Shenzhen second.
+    # Explicit BURNING_SKY_CITY remains supported for workflow matrix/loop runs.
+    requested_city = os.environ.get("BURNING_SKY_CITY", "").strip()
+    if requested_city:
+        main()
+    else:
+        for index, city in enumerate(("合肥", "深圳")):
+            if index:
+                print("Rate-limit safeguard: sleeping 75 seconds before Shenzhen.", flush=True)
+                time.sleep(75)
+            print(f"===== Updating {city} =====", flush=True)
+            env = os.environ.copy()
+            env["BURNING_SKY_CITY"] = city
+            subprocess.run([sys.executable, "-u", str(Path(__file__).resolve())],
+                           cwd=str(ROOT), env=env, check=True)
