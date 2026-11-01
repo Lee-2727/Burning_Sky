@@ -7,10 +7,6 @@ import re
 import math
 import importlib.util
 import sys
-import json
-import time
-import urllib.request
-from urllib.parse import quote
 from datetime import date
 from types import SimpleNamespace
 
@@ -37,57 +33,6 @@ if not hasattr(engine, "WEATHER_MODEL_CATALOG"):
     raise ImportError(f"加载的引擎文件缺少 WEATHER_MODEL_CATALOG：{_ENGINE_PATH}")
 
 st.set_page_config(page_title="Burning Sky", page_icon="🌇", layout="wide")
-
-_GITHUB_RAW_BASE = "https://raw.githubusercontent.com/Lee-2727/Burning_Sky/main/"
-
-def _github_latest_json(relative_path):
-    """Fetch a fresh public GitHub snapshot; cache-bust raw CDN responses."""
-    url = _GITHUB_RAW_BASE + quote(relative_path, safe="/") + f"?v={int(time.time())}"
-    req = urllib.request.Request(url, headers={"User-Agent": "BurningSky-Web/1.0", "Cache-Control": "no-cache"})
-    with urllib.request.urlopen(req, timeout=8) as response:
-        return json.loads(response.read().decode("utf-8"))
-
-def _latest_overview_snapshot(city, data_dir):
-    """Prefer the latest city snapshot on GitHub, then aggregate snapshot, then local files."""
-    candidates = (f"data/overview_{city}.json", "data/overview.json")
-    for rel in candidates:
-        try:
-            payload = _github_latest_json(rel)
-            if rel.endswith("overview.json"):
-                cities = payload.get("cities", {}) if isinstance(payload, dict) else {}
-                if isinstance(cities, dict) and city in cities:
-                    return cities[city]
-                if city == "合肥" and isinstance(payload, dict) and payload.get("days"):
-                    return payload
-            elif isinstance(payload, dict) and payload.get("days"):
-                return payload
-        except Exception:
-            continue
-    for rel in (f"overview_{city}.json", "overview.json"):
-        try:
-            with open(os.path.join(data_dir, rel), "r", encoding="utf-8") as f:
-                payload = json.load(f)
-            if rel == "overview.json":
-                cities = payload.get("cities", {}) if isinstance(payload, dict) else {}
-                if isinstance(cities, dict) and city in cities:
-                    return cities[city]
-                if city == "合肥" and isinstance(payload, dict) and payload.get("days"):
-                    return payload
-            elif isinstance(payload, dict) and payload.get("days"):
-                return payload
-        except Exception:
-            continue
-    return None
-
-def _latest_status_snapshot(data_dir):
-    try:
-        return _github_latest_json("data/overview_status.json")
-    except Exception:
-        try:
-            with open(os.path.join(data_dir, "overview_status.json"), "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
 
 # Community-hosted apps may have a public URL. Configure APP_PASSWORD in Streamlit
 # secrets or the environment to keep the interface restricted to the owner.
@@ -358,44 +303,90 @@ if st.session_state.get("show_multi_day_overview"):
     def _render_multi_day_overview():
         _data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
         # Background GitHub Actions status is published at model-batch boundaries.
+        _status_path = os.path.join(_data_dir, "overview_status.json")
         try:
-            _update_status = _latest_status_snapshot(_data_dir)
-            if not _update_status:
-                raise ValueError("状态文件尚不可用")
+            import json as _status_json
+            with open(_status_path, "r", encoding="utf-8") as _sf:
+                _update_status = _status_json.load(_sf)
             _state = _update_status.get("state", "unknown")
             _completed_models = _update_status.get("completed_models", [])
             _model_total = _update_status.get("model_total", 5)
             _model_index = _update_status.get("model_index", 0)
             _current_model = _update_status.get("current_model")
+            _active_direction = _update_status.get("direction_title", "朝霞/晚霞")
+            _task_progress = _update_status.get("task_progress", 0)
+            _task_total = _update_status.get("task_total", 30)
             if _state == "running":
-                st.info(f"🔄 多模概览后台正在更新：第 {_model_index}/{_model_total} 个模式 · {_current_model or '准备中'}。已完成：{', '.join(_completed_models) if _completed_models else '暂无'}。状态更新时间：{_update_status.get('updated_at', '未知')}。")
+                st.info(f"🔄 后台正在更新：{_active_direction} · 第 {_model_index}/{_model_total} 个模式 · {_current_model or '准备中'} · 总进度 {_task_progress}/{_task_total}。已完成模式：{', '.join(_completed_models) if _completed_models else '暂无'}。状态更新时间：{_update_status.get('updated_at', '未知')}。网页预报仍显示上一次完整发布的数据。")
             elif _state == "between_models":
                 st.info(f"⏳ 多模概览正在准备下一个模式。已完成 {_model_index}/{_model_total} 个模式：{', '.join(_completed_models)}。状态更新时间：{_update_status.get('updated_at', '未知')}。")
             elif _state == "completed":
-                st.success(f"✅ 多模概览本轮更新已完成。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
+                st.success(f"✅ {_active_direction}本轮五模式三日数据已完整发布。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
+            elif _state == "failed":
+                st.error(f"❌ {_active_direction}本轮更新失败（{_update_status.get('failure_count', 0)} 项）。已保留上一次完整发布的数据。原因：{_update_status.get('message', '请查看 GitHub Actions 日志')}。")
             else:
                 st.caption(f"多模概览后台状态：{_state} · 状态更新时间：{_update_status.get('updated_at', '未知')} · 下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
         except Exception:
-            st.caption("后台更新状态尚未发布；等待下一轮 GitHub Actions 更新任务启动。计划时刻：北京时间 00:30、03:00、06:00、09:00、12:00、15:00、18:00、21:00。")
+            st.caption("后台更新状态尚未发布；等待 GitHub Actions 启动。计划时刻：北京时间每日 00:00/04:00/20:00 更新朝霞，08:00/12:00/16:00 更新晚霞。")
         _city_cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overview_cities.txt")
         _overview_cities = []
         try:
             with open(_city_cfg, "r", encoding="utf-8-sig") as _cf:
                 _overview_cities = [line.split(",")[0].strip() for line in _cf if line.strip() and not line.lstrip().startswith("#")]
         except Exception:
-            _overview_cities = ["合肥", "芜湖", "南京", "武汉", "上海", "深圳"]
+            _overview_cities = ["合肥", "深圳"]
         if not _overview_cities:
-            _overview_cities = ["合肥", "芜湖", "南京", "武汉", "上海", "深圳"]
+            _overview_cities = ["合肥", "深圳"]
         _overview_city = st.selectbox("概览城市", _overview_cities, index=0, key="overview_city_select")
-        _overview = _latest_overview_snapshot(_overview_city, _data_dir)
+        _overview_path = os.path.join(_data_dir, f"overview_{_overview_city}.json")
+        _overview = None
+        try:
+            import json as _json
+            _city_snapshot = None
+            _aggregate_snapshot = None
+            try:
+                with open(_overview_path, "r", encoding="utf-8") as _f:
+                    _city_snapshot = _json.load(_f)
+            except Exception:
+                pass
+            try:
+                with open(os.path.join(_data_dir, "overview.json"), "r", encoding="utf-8") as _f:
+                    _aggregate = _json.load(_f)
+                _cities = _aggregate.get("cities", {}) if isinstance(_aggregate, dict) else {}
+                if isinstance(_cities, dict) and _overview_city in _cities:
+                    _aggregate_snapshot = _cities[_overview_city]
+                elif _overview_city == "合肥" and isinstance(_aggregate, dict) and _aggregate.get("days"):
+                    _aggregate_snapshot = _aggregate
+            except Exception:
+                pass
+
+            def _snapshot_freshness(_snapshot):
+                if not isinstance(_snapshot, dict):
+                    return ""
+                _times = _snapshot.get("direction_updated_at", {})
+                return max([str(_snapshot.get("updated_at") or "")] +
+                           [str(v or "") for v in _times.values()])
+
+            # Both files are published by the updater. If one is stale or only
+            # partially deployed, display whichever copy contains the newer result.
+            _candidates = [("城市独立文件", x) for x in (_city_snapshot,)
+                           if isinstance(x, dict) and x.get("days")]
+            _candidates += [("总览汇总文件", x) for x in (_aggregate_snapshot,)
+                            if isinstance(x, dict) and x.get("days")]
+            _overview_source, _overview = (max(_candidates, key=lambda item: _snapshot_freshness(item[1]))
+                                           if _candidates else (None, None))
+        except Exception:
+            _overview_source, _overview = None, None
         if not _overview or not _overview.get("days"):
             st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、五种天气模式的朝霞与晚霞结果。")
         else:
-            st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 最近更新：{_overview.get('updated_at', '未知')} · 预报范围：包含今天的未来三日 · 五模式。")
+            st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 预报范围：包含今天的未来三日 · 五模式 · 数据来源：{_overview_source} · 数据更新时间：{_overview.get('updated_at', '未知')}。")
             _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global", "CMA GRAPES Global", "ECMWF (AI)"]
             _model_short = {"ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON", "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)"}
+            _direction_times = _overview.get("direction_updated_at", {})
             for _direction, _direction_title in (("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")):
-                st.subheader(_direction_title)
+                _direction_update_time = _direction_times.get(_direction, "尚未更新")
+                st.subheader(f"{_direction_title}　·　更新时次：{_direction_update_time}")
                 _date_cols = st.columns(3)
                 for _col, _day in zip(_date_cols, _overview.get("days", [])):
                     with _col:
@@ -535,59 +526,6 @@ def _burn_label(inferred, summary):
         label = "大烧"
     return label, burn_index
 
-def _apply_single_result_special_rules(result):
-    """Apply the requested conservative rules to the single-query regular probability."""
-    if not isinstance(result, dict):
-        return result
-    inferred = result.get("inferred") or {}
-    geometry = result.get("geometry") or {}
-    rows = geometry.get("rows") or []
-    local_geo = next((r for r in rows if isinstance(r, dict) and isinstance(r.get("distance_km"), (int, float)) and abs(float(r["distance_km"])) < 0.01), {})
-    base_agl = local_geo.get("cloud_base_agl_km")
-    base_source = str(local_geo.get("base_source", ""))
-    is_profile_base = "剖面" in base_source and "自动失败" not in base_source
-
-    # The local path sample is the 0-km nine-point neighborhood average.
-    samples = [r for r in result.get("samples", []) if isinstance(r, dict)]
-    local_sample = next((r for r in samples if isinstance(r.get("distance_km"), (int, float)) and abs(float(r["distance_km"])) < 0.01), {})
-    local_low = local_sample.get("cloud_cover_low")
-    local_total = local_sample.get("cloud_cover")
-
-    # Average cloud cover along the path only within the local theoretical limit.
-    reach = local_geo.get("reach_km")
-    if not isinstance(reach, (int, float)) or reach <= 0:
-        reach = result.get("max_reach")
-    path_rows = [r for r in samples if isinstance(r.get("distance_km"), (int, float))
-                 and (not isinstance(reach, (int, float)) or float(r["distance_km"]) <= float(reach))]
-    path_cover = [float(r["cloud_cover"]) for r in path_rows
-                  if isinstance(r.get("cloud_cover"), (int, float))]
-    avg_path_cover = sum(path_cover) / len(path_cover) if path_cover else None
-    boundaries = result.get("boundaries") or {}
-    clear_gaps = boundaries.get("clear_gaps") or []
-    has_clear_gap = bool(clear_gaps)
-
-    score = inferred.get("regular_score", inferred.get("score"))
-    reason = None
-    if is_profile_base and isinstance(base_agl, (int, float)) and float(base_agl) < 0.5:
-        score, reason = 0, "云底过底"
-    elif isinstance(local_low, (int, float)) and float(local_low) >= 90:
-        score, reason = 0, "低云遮挡过多"
-    elif isinstance(avg_path_cover, (int, float)) and avg_path_cover > 50 and not has_clear_gap:
-        if isinstance(score, (int, float)):
-            score = max(0, min(100, int(round(float(score) * 0.5))))
-        reason = "光线难以穿透"
-    elif isinstance(local_total, (int, float)) and float(local_total) < 10:
-        reason = "光板天"
-    elif isinstance(score, (int, float)) and float(score) < 20:
-        reason = "机会太小，几乎不烧"
-
-    if isinstance(score, (int, float)):
-        inferred["regular_score"] = int(round(max(0, min(100, float(score)))))
-        inferred["score"] = inferred["regular_score"]
-    result["special_judgment"] = reason
-    result["inferred"] = inferred
-    return result
-
 def _path_sampling_table(details):
     """Extract only the along-path sampling rows from the legacy detailed report."""
     columns = [
@@ -625,7 +563,7 @@ if results:
         directions = [item for item in directions if item[0] == visible_direction]
     columns = st.columns(len(directions))
     for col, (key, title) in zip(columns, directions):
-        result = _apply_single_result_special_rules(results.get(key, {}))
+        result = results.get(key, {})
         inferred = result.get("inferred", {})
         with col:
             st.subheader(title)
@@ -644,12 +582,17 @@ if results:
             burn_text = burn_label
             color_palette = {"平平无奇": "#e2c76a", "普通": "#c99b24", "绚烂": "#e67e22", "史诗": "#d62828", "世纪": "#9d174d"}
             color_hex = color_palette.get(color_class, "#4b5563")
-            special_judgment = result.get("special_judgment")
-            judgment_html = (f'<span style="color:#111111;">{special_judgment}</span>' if special_judgment
-                            else f'{regular_label} <span style="color:{color_hex};">{color_class}</span>的{burn_text}')
+            special_verdict = inferred.get("verdict_override")
+            if special_verdict:
+                st.markdown(
+                    f'<div style="font-size:24px;font-weight:800;line-height:1.5;margin:6px 0 2px 0;color:#111111;">'
+                    f'{special_verdict}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    f'<div style="font-size:24px;font-weight:800;line-height:1.5;margin:6px 0 2px 0;">'
+                    f'{regular_label} <span style="color:{color_hex};">{color_class}</span>的{burn_text}</div>',
+                    unsafe_allow_html=True)
             st.markdown(
-                f'<div style="font-size:24px;font-weight:800;line-height:1.5;margin:6px 0 2px 0;">'
-                f'{judgment_html}</div>'
                 f'<div style="font-size:11px;font-weight:400;color:#858585;line-height:1.5;margin:0 0 12px 0;">'
                 f'常规概率：&lt;45% 小概率，45%–75% 有概率，&gt;75% 高概率；'
                 f'色彩评分：&lt;30 平平无奇，30–&lt;50 普通，50–&lt;70 绚烂，70–&lt;90 史诗，≥90 世纪；'

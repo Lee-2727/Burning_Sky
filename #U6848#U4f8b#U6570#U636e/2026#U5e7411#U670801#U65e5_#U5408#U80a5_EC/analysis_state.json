@@ -1,0 +1,3346 @@
+{
+  "schema_version": 1,
+  "app_version": "火烧云预报工具 v1.4.67（本地200公里烧云规模评估）",
+  "saved_at": "2026-11-01T13:02:55.924316+08:00",
+  "place": "合肥",
+  "date": "2026-11-01",
+  "latitude": "31.8047",
+  "longitude": "117.2214",
+  "elevation_m": 0.0,
+  "weather_model": "ECMWF IFS 0.25°",
+  "model_code": "EC",
+  "cloud_base_mode": "自动剖面推算",
+  "aod_inputs": {
+    "morning_aod": "",
+    "evening_aod": ""
+  },
+  "cloud_base_inputs": {
+    "morning_cloud_base_km": "2.0",
+    "evening_cloud_base_km": "2.0"
+  },
+  "last_fetch_time": "2026-11-01 13:01 中国标准时间",
+  "direction_results": {
+    "evening": {
+      "summary": "模型数据上线：2026-11-01 09:24（北京时间）\n晚霞 · 合肥 · 2026-11-01　17:21 / 方位 253°\nECMWF IFS 0.25°　|　云量 总 100% · 低 4% · 中 100% · 高 66% · 可染色云量占比 约 58%估算\n潜在霞云距 约 50.0 km　|　极限云距 约 72 km　|　晴空间隔 未形成可判读的晴空间隔\n云底 0.17 km（剖面离地高度 + 地点海拔（绝对高度））　|　AOD 0.25",
+      "details": "晚霞详细采样报告\n地点：合肥；日期：2026-11-01；模式：ECMWF IFS 0.25°；事件时刻：2026-11-01 17:21:51.984021；方位角：253.42°\n火烧云发生概率估计：36%（经验估计，尚未经历史样本校准）\n有利情景上限：36%（表示条件理想时的潜在机会，不代表实际发生概率）\n色彩表现评分：41/100（色彩潜力一般；色彩表现经验指数，不是实际色彩饱和度/红霞面积的精确预测。）\n可染色云量占比：约 58%估算。该值是结合本地中高云比例、太阳方向晴空间隔距离和连续云区延伸距离的启发式估算，不是模式直接输出的真实受光比例。\n模型数据上线：2026-11-01 09:24（北京时间）\n潜在霞云距（本地连续中高云末端）：约 50.0 km；极限云距（几何上限）：约 72 km；晴空间隔：未形成可判读的晴空间隔\n彩虹出现机会：偏低（经验指数 44/100，非统计概率）；反太阳方向采样点 0 km，降水概率 98%，小时降水 0.80 mm/h\n采样动态扩展：初始 0–200 km；粗采样最大理论距离 71.9 km；按约 100 km 缓冲扩展，最终采样上限 200 km。\n距离 | 中心坐标 | 总云/低云/中云/高云 | 能见度 | 风速 | 云底绝对海拔 | 有效云底绝对海拔 | 理论深入距离 | 几何筛选\n  0 km | 31.805,117.221 | 100%/0%/100%/26% | — | 4.2 m/s | 0.17 km | 0.00 km | 0 km | 未通过\n 25 km | 31.740,116.968 | 100%/0%/100%/63% | — | 4.0 m/s | 0.10 km | 0.00 km | 0 km | 未通过\n 50 km | 31.675,116.715 | 100%/1%/100%/91% | — | 3.7 m/s | 0.12 km | 0.00 km | 0 km | 未通过\n100 km | 31.544,116.210 | 100%/4%/100%/90% | — | 2.2 m/s | 1.70 km | 0.08 km | 62 km | 未通过\n150 km | 31.411,115.706 | 100%/21%/100%/82% | — | 2.7 m/s | 1.62 km | 0.10 km | 72 km | 未通过\n200 km | 31.275,115.204 | 100%/8%/100%/87% | — | 4.0 m/s | 0.09 km | 0.00 km | 0 km | 未通过\n\n【各采样点 15 km 半径内的原始空间采样】\n\n距离 0 km（中心 31.8047,117.2214）\n  点1 31.8047,117.2214 | 总/低/中/高云 100%/0%/100%/20% | 能见度 — | 风速 4.3 m/s\n  点2 31.4599,117.3418 | 总/低/中/高云 98%/0%/98%/23% | 能见度 — | 风速 4.3 m/s\n  点3 31.5892,117.2967 | 总/低/中/高云 98%/0%/98%/23% | 能见度 — | 风速 4.3 m/s\n  点4 31.7013,117.2576 | 总/低/中/高云 100%/0%/100%/20% | 能见度 — | 风速 4.3 m/s\n  点5 31.9081,117.1851 | 总/低/中/高云 100%/0%/100%/31% | 能见度 — | 风速 4.2 m/s\n  点6 32.0202,117.1457 | 总/低/中/高云 100%/0%/100%/31% | 能见度 — | 风速 4.2 m/s\n  点7 32.1494,117.1001 | 总/低/中/高云 100%/0%/100%/9% | 能见度 — | 风速 3.2 m/s\n  点8 31.7738,117.0997 | 总/低/中/高云 100%/0%/100%/56% | 能见度 — | 风速 4.3 m/s\n  点9 31.8354,117.3431 | 总/低/中/高云 100%/0%/100%/20% | 能见度 — | 风速 4.3 m/s\n\n距离 25 km（中心 31.7403,116.9680）\n  点1 31.7403,116.9680 | 总/低/中/高云 100%/0%/100%/56% | 能见度 — | 风速 4.3 m/s\n  点2 31.3955,117.0883 | 总/低/中/高云 100%/0%/100%/70% | 能见度 — | 风速 3.9 m/s\n  点3 31.5248,117.0433 | 总/低/中/高云 100%/0%/100%/70% | 能见度 — | 风速 3.9 m/s\n  点4 31.6368,117.0042 | 总/低/中/高云 100%/0%/100%/56% | 能见度 — | 风速 4.3 m/s\n  点5 31.8437,116.9318 | 总/低/中/高云 100%/0%/100%/56% | 能见度 — | 风速 4.3 m/s\n  点6 31.9557,116.8924 | 总/低/中/高云 100%/0%/100%/39% | 能见度 — | 风速 4.0 m/s\n  点7 32.0850,116.8469 | 总/低/中/高云 100%/0%/100%/67% | 能见度 — | 风速 3.4 m/s\n  点8 31.7094,116.8464 | 总/低/中/高云 100%/0%/100%/98% | 能见度 — | 风速 3.9 m/s\n  点9 31.7710,117.0897 | 总/低/中/高云 100%/0%/100%/56% | 能见度 — | 风速 4.3 m/s\n\n距离 50 km（中心 31.6754,116.7150）\n  点1 31.6754,116.7150 | 总/低/中/高云 100%/0%/100%/98% | 能见度 — | 风速 3.9 m/s\n  点2 31.3305,116.8352 | 总/低/中/高云 100%/9%/100%/86% | 能见度 — | 风速 3.9 m/s\n  点3 31.4599,116.7902 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 4.0 m/s\n  点4 31.5719,116.7512 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 4.0 m/s\n  点5 31.7788,116.6788 | 总/低/中/高云 100%/0%/100%/98% | 能见度 — | 风速 3.9 m/s\n  点6 31.8908,116.6394 | 总/低/中/高云 100%/0%/100%/67% | 能见度 — | 风速 3.4 m/s\n  点7 32.0201,116.5939 | 总/低/中/高云 100%/0%/100%/70% | 能见度 — | 风速 3.1 m/s\n  点8 31.6445,116.5935 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 3.4 m/s\n  点9 31.7061,116.8366 | 总/低/中/高云 100%/0%/100%/98% | 能见度 — | 风速 3.9 m/s\n\n距离 100 km（中心 31.5440,116.2100）\n  点1 31.5440,116.2100 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 2.3 m/s\n  点2 31.1992,116.3301 | 总/低/中/高云 100%/14%/100%/100% | 能见度 — | 风速 1.1 m/s\n  点3 31.3285,116.2851 | 总/低/中/高云 100%/14%/100%/100% | 能见度 — | 风速 1.1 m/s\n  点4 31.4406,116.2461 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 2.3 m/s\n  点5 31.6475,116.1739 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 3.1 m/s\n  点6 31.7595,116.1346 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 3.1 m/s\n  点7 31.8888,116.0891 | 总/低/中/高云 100%/0%/100%/9% | 能见度 — | 风速 2.8 m/s\n  点8 31.5132,116.0887 | 总/低/中/高云 100%/11%/100%/100% | 能见度 — | 风速 1.8 m/s\n  点9 31.5748,116.3314 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 2.3 m/s\n\n距离 150 km（中心 31.4107,115.7065）\n  点1 31.4107,115.7065 | 总/低/中/高云 100%/2%/100%/100% | 能见度 — | 风速 1.8 m/s\n  点2 31.0659,115.8263 | 总/低/中/高云 100%/42%/100%/81% | 能见度 — | 风速 3.8 m/s\n  点3 31.1952,115.7815 | 总/低/中/高云 100%/59%/100%/100% | 能见度 — | 风速 4.1 m/s\n  点4 31.3073,115.7425 | 总/低/中/高云 100%/59%/100%/100% | 能见度 — | 风速 4.1 m/s\n  点5 31.5142,115.6704 | 总/低/中/高云 100%/2%/100%/100% | 能见度 — | 风速 1.8 m/s\n  点6 31.6262,115.6311 | 总/低/中/高云 100%/2%/100%/48% | 能见度 — | 风速 2.5 m/s\n  点7 31.7554,115.5857 | 总/低/中/高云 100%/2%/100%/14% | 能见度 — | 风速 2.3 m/s\n  点8 31.3799,115.5853 | 总/低/中/高云 100%/16%/100%/97% | 能见度 — | 风速 1.8 m/s\n  点9 31.4415,115.8277 | 总/低/中/高云 100%/2%/100%/100% | 能见度 — | 风速 1.8 m/s\n\n距离 200 km（中心 31.2755,115.2044）\n  点1 31.2755,115.2044 | 总/低/中/高云 100%/11%/100%/97% | 能见度 — | 风速 2.8 m/s\n  点2 30.9306,115.3241 | 总/低/中/高云 100%/3%/100%/100% | 能见度 — | 风速 4.4 m/s\n  点3 31.0600,115.2793 | 总/低/中/高云 100%/3%/100%/100% | 能见度 — | 风速 4.4 m/s\n  点4 31.1720,115.2404 | 总/低/中/高云 100%/11%/100%/97% | 能见度 — | 风速 2.8 m/s\n  点5 31.3789,115.1683 | 总/低/中/高云 100%/14%/100%/81% | 能见度 — | 风速 4.9 m/s\n  点6 31.4909,115.1291 | 总/低/中/高云 100%/14%/100%/81% | 能见度 — | 风速 4.9 m/s\n  点7 31.6202,115.0838 | 总/低/中/高云 100%/0%/100%/45% | 能见度 — | 风速 5.3 m/s\n  点8 31.2446,115.0834 | 总/低/中/高云 100%/2%/100%/86% | 能见度 — | 风速 4.2 m/s\n  点9 31.3062,115.3254 | 总/低/中/高云 100%/11%/100%/97% | 能见度 — | 风速 2.8 m/s\n\n【双评分说明】\n• 日落方向中/高云加权均值约 83%：存在潜在受光云层。\n• 低云加权均值约 4%：模式显示低云遮挡风险较低。\n• 总云量加权均值约 100%：整体云量很高，需警惕厚云/阴天情形。\n• 日落方向 AOD（550 nm）约 0.254：气溶胶消光可能削弱远距离光线，按经验规则扣分。\n常规概率为基于当前预报证据的经验估计；上限概率是假设有利云层形态/云隙恰好形成时的潜在机会估计。两者尚未经历史实况校准。\n边界定义：以中云或高云任一云量≥25%标记中高云采样点；潜在霞云距取本地连续中高云区沿太阳方向的末端。极限云距仅由本地有效云底按 D=2√(2Rh_eff) 计算，不再被远端云起点缩短。晴空间隔列出极限云距以内识别到的全部有效云洞，括号内为各云洞宽度；若最后一个云洞延伸至理论上限，则终点截断到极限云距。云洞边界为离散采样估算，不是连续云缘。\n重要限制：当前边界沿观测点至太阳方位的单线采样估算；地图视图使用现有每个距离点周边约15 km采样点，属于稀疏空间示意，不等于卫星云图或连续三维云体。要确认真实云洞边界，需要更密集二维采样与云顶/云底信息。\n彩虹原理依据教程第 2.3.2 节：一次内反射彩虹的视角约 42°，位于反太阳方向；观察者不一定要在本地下雨。当前仅用反太阳方向 0/25/50/100/150 km 的模式降水概率、小时降水量和本地总云量估算机会指数，无法识别雨滴直径、液态相态、云幡结构或实际可见度，因此指数不是统计概率。\n说明：剖面云底为气压层云量/RH启发式推算，不是实测。云底采用最低可能云层，不保证就是最易着色的云层。\n几何距离按 D=2√(2Rh_eff) 计算；实际照明时间使用简化太阳高度角模型。远距离采样间距较疏，采样点之间的云缘位置无法精确确定。",
+      "inferred": {
+        "score": 36,
+        "tendency": "模式云况偏弱",
+        "low": 3.690690690690691,
+        "mid": 99.87987987987985,
+        "high": 65.88288288288288,
+        "total": 99.87987987987985,
+        "visibility_m": null,
+        "wind_ms": 3.613773773773773,
+        "aod": 0.25369369369369366,
+        "color_pos": 0.78,
+        "color_name": "动态曲线峰值时刻的综合受光色（所有有效距离段加权；色相为示意估算）",
+        "color_rgb": [
+          106,
+          23,
+          37
+        ],
+        "reasons": [
+          "日落方向中/高云加权均值约 83%：存在潜在受光云层。",
+          "低云加权均值约 4%：模式显示低云遮挡风险较低。",
+          "总云量加权均值约 100%：整体云量很高，需警惕厚云/阴天情形。",
+          "日落方向 AOD（550 nm）约 0.254：气溶胶消光可能削弱远距离光线，按经验规则扣分。"
+        ],
+        "clear_gap_count": 0,
+        "largest_gap_size_km": 0.0,
+        "total_gap_size_km": 0,
+        "gap_fraction_of_reach": 0.0,
+        "farthest_gap_distance_km": null,
+        "regular_score": 36,
+        "upper_score": 36,
+        "score_weights": {
+          "geometry": 25,
+          "gap": 25,
+          "target": 20,
+          "low": 15,
+          "total": 10
+        },
+        "aod_regular_penalty": 1.0,
+        "aod_upper_penalty": 0.5,
+        "score_notes": [
+          "基础评分权重：光照几何25%、光路/晴空间隔25%、中高云20%、低云遮挡15%、总云量10%；基础权重归一化后，再独立应用AOD扣分。",
+          "AOD扣分：常规-1.0分，上限-0.5分；区间内线性变化，未经过历史实况校准。",
+          "上限评分保留几何和受光云量的硬约束，放宽部分云况惩罚；它描述理想情景潜力，不代表发生概率。",
+          "云洞状态未知：距离采样不足或低/中/高云数据不完整，不能把缺测当作晴空，也不按已证实连续云层硬封顶。"
+        ],
+        "low_cloud_screen": null,
+        "low_cloud_color_factor": 1.0,
+        "low_cloud_color_note": "未命中连续低云屏障规则；不额外压低暖色显示。",
+        "color_score": 41,
+        "color_score_label": "色彩潜力一般",
+        "color_score_reasons": [
+          "中高云较多，色彩覆盖可能较大但层次有不确定性",
+          "总云量接近全覆盖，需警惕厚云和光线被削弱"
+        ],
+        "color_score_note": "色彩表现经验指数，不是实际色彩饱和度/红霞面积的精确预测。",
+        "peak_cloud_color_rule": "动态曲线峰值时刻的综合受光色（所有有效距离段加权；色相为示意估算）",
+        "peak_cloud_color_base_rgb": [
+          190,
+          91,
+          157
+        ],
+        "peak_cloud_color_gap_start_km": null,
+        "peak_cloud_color_edge_km": 71.89186325771837,
+        "peak_cloud_color_note": "代表主要受光云区的最鲜艳色相倾向；并非整片天空平均色或精确光谱预测。",
+        "local_scale_clouds": {
+          "total": 99.90123456790124,
+          "low": 14.864197530864198,
+          "mid": 99.90123456790124,
+          "high": 42.67901234567901,
+          "radius_km": 200,
+          "sample_count": 81
+        },
+        "burn_scale_index": 49.32148148148148,
+        "burn_scale_label": "小烧",
+        "tintable_ratio": 58
+      },
+      "samples": [
+        {
+          "distance_km": 0,
+          "lat": 31.804700000000004,
+          "lon": 117.22140000000002,
+          "time": "2026-11-01T09:00",
+          "cloud_cover": 99.55555555555556,
+          "cloud_cover_low": 0.0,
+          "center_cloud_cover_low": 0,
+          "cross_track_low_cover": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "cross_track_offsets_km": [
+            -40.0,
+            -25.0,
+            -12.0,
+            12.0,
+            25.0,
+            40.0
+          ],
+          "cross_track_low_ge70_count": 0,
+          "cross_track_low_ge70_fraction": 0.0,
+          "cloud_cover_mid": 99.55555555555556,
+          "cloud_cover_high": 25.88888888888889,
+          "visibility_m": null,
+          "wind_ms": 4.155555555555555,
+          "precipitation_probability": 98.44444444444444,
+          "precipitation": 0.7333333333333334,
+          "wind_direction": 324.01185522069306,
+          "wind_gusts": 8.600000000000001,
+          "area_radius_km": 15,
+          "area_sample_count": 9
+        },
+        {
+          "distance_km": 25,
+          "lat": 31.740284601457695,
+          "lon": 116.96802590422703,
+          "time": "2026-11-01T09:00",
+          "cloud_cover": 100.0,
+          "cloud_cover_low": 0.0,
+          "center_cloud_cover_low": 0,
+          "cross_track_low_cover": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "cross_track_offsets_km": [
+            -40.0,
+            -25.0,
+            -12.0,
+            12.0,
+            25.0,
+            40.0
+          ],
+          "cross_track_low_ge70_count": 0,
+          "cross_track_low_ge70_fraction": 0.0,
+          "cloud_cover_mid": 100.0,
+          "cloud_cover_high": 63.111111111111114,
+          "visibility_m": null,
+          "wind_ms": 4.0311111111111115,
+          "precipitation_probability": 98.66666666666667,
+          "precipitation": 0.6888888888888889,
+          "wind_direction": 320.5578283607089,
+          "wind_gusts": 8.244444444444445,
+          "area_radius_km": 15,
+          "area_sample_count": 9
+        },
+        {
+          "distance_km": 50,
+          "lat": 31.675368611294104,
+          "lon": 116.71500534807274,
+          "time": "2026-11-01T09:00",
+          "cloud_cover": 100.0,
+          "cloud_cover_low": 1.0,
+          "center_cloud_cover_low": 0,
+          "cross_track_low_cover": [
+            9,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "cross_track_offsets_km": [
+            -40.0,
+            -25.0,
+            -12.0,
+            12.0,
+            25.0,
+            40.0
+          ],
+          "cross_track_low_ge70_count": 0,
+          "cross_track_low_ge70_fraction": 0.0,
+          "cloud_cover_mid": 100.0,
+          "cloud_cover_high": 90.77777777777777,
+          "visibility_m": null,
+          "wind_ms": 3.711111111111111,
+          "precipitation_probability": 100.0,
+          "precipitation": 0.7,
+          "wind_direction": 314.89387223734445,
+          "wind_gusts": 7.677777777777777,
+          "area_radius_km": 15,
+          "area_sample_count": 9
+        },
+        {
+          "distance_km": 100,
+          "lat": 31.544042724486797,
+          "lon": 116.21003014836833,
+          "time": "2026-11-01T09:00",
+          "cloud_cover": 100.0,
+          "cloud_cover_low": 4.333333333333333,
+          "center_cloud_cover_low": 0,
+          "cross_track_low_cover": [
+            14,
+            14,
+            0,
+            0,
+            0,
+            0
+          ],
+          "cross_track_offsets_km": [
+            -40.0,
+            -25.0,
+            -12.0,
+            12.0,
+            25.0,
+            40.0
+          ],
+          "cross_track_low_ge70_count": 0,
+          "cross_track_low_ge70_fraction": 0.0,
+          "cloud_cover_mid": 100.0,
+          "cloud_cover_high": 89.88888888888889,
+          "visibility_m": null,
+          "wind_ms": 2.197777777777778,
+          "precipitation_probability": 100.0,
+          "precipitation": 1.1666666666666667,
+          "wind_direction": 322.8018162299718,
+          "wind_gusts": 6.855555555555554,
+          "area_radius_km": 15,
+          "area_sample_count": 9
+        },
+        {
+          "distance_km": 150,
+          "lat": 31.410738144745185,
+          "lon": 115.70648461793269,
+          "time": "2026-11-01T09:00",
+          "cloud_cover": 100.0,
+          "cloud_cover_low": 20.666666666666668,
+          "center_cloud_cover_low": 2,
+          "cross_track_low_cover": [
+            42,
+            59,
+            59,
+            2,
+            2,
+            2
+          ],
+          "cross_track_offsets_km": [
+            -40.0,
+            -25.0,
+            -12.0,
+            12.0,
+            25.0,
+            40.0
+          ],
+          "cross_track_low_ge70_count": 0,
+          "cross_track_low_ge70_fraction": 0.0,
+          "cloud_cover_mid": 100.0,
+          "cloud_cover_high": 82.22222222222223,
+          "visibility_m": null,
+          "wind_ms": 2.6744444444444446,
+          "precipitation_probability": 100.0,
+          "precipitation": 1.188888888888889,
+          "wind_direction": 38.11039903410972,
+          "wind_gusts": 8.666666666666666,
+          "area_radius_km": 15,
+          "area_sample_count": 9
+        },
+        {
+          "distance_km": 200,
+          "lat": 31.275470782269384,
+          "lon": 115.20437838390535,
+          "time": "2026-11-01T09:00",
+          "cloud_cover": 100.0,
+          "cloud_cover_low": 7.666666666666667,
+          "center_cloud_cover_low": 11,
+          "cross_track_low_cover": [
+            3,
+            3,
+            11,
+            14,
+            14,
+            0
+          ],
+          "cross_track_offsets_km": [
+            -40.0,
+            -25.0,
+            -12.0,
+            12.0,
+            25.0,
+            40.0
+          ],
+          "cross_track_low_ge70_count": 0,
+          "cross_track_low_ge70_fraction": 0.0,
+          "cloud_cover_mid": 100.0,
+          "cloud_cover_high": 87.11111111111111,
+          "visibility_m": null,
+          "wind_ms": 4.043333333333333,
+          "precipitation_probability": 99.55555555555556,
+          "precipitation": 1.0333333333333334,
+          "wind_direction": 11.552278130077367,
+          "wind_gusts": 10.911111111111111,
+          "area_radius_km": 15,
+          "area_sample_count": 9
+        }
+      ],
+      "raw_details": [
+        {
+          "distance_km": 0,
+          "center": [
+            31.804700000000004,
+            117.22140000000002
+          ],
+          "records": [
+            {
+              "lat": 31.804700000000004,
+              "lon": 117.22140000000002,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 20,
+              "visibility": null,
+              "wind_speed_10m": 4.27,
+              "precipitation_probability": 98,
+              "precipitation": 0.8,
+              "wind_gusts_10m": 9.0,
+              "wind_direction_10m": 327
+            },
+            {
+              "lat": 31.45987586628005,
+              "lon": 117.34175382739511,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -40.0,
+              "cloud_cover": 98,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 98,
+              "cloud_cover_high": 23,
+              "visibility": null,
+              "wind_speed_10m": 4.33,
+              "precipitation_probability": 100,
+              "precipitation": 0.8,
+              "wind_gusts_10m": 9.2,
+              "wind_direction_10m": 326
+            },
+            {
+              "lat": 31.589198134434017,
+              "lon": 117.29672562450969,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -25.0,
+              "cloud_cover": 98,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 98,
+              "cloud_cover_high": 23,
+              "visibility": null,
+              "wind_speed_10m": 4.33,
+              "precipitation_probability": 100,
+              "precipitation": 0.8,
+              "wind_gusts_10m": 9.2,
+              "wind_direction_10m": 326
+            },
+            {
+              "lat": 31.701264630058954,
+              "lon": 117.25759997325736,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -12.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 20,
+              "visibility": null,
+              "wind_speed_10m": 4.27,
+              "precipitation_probability": 98,
+              "precipitation": 0.8,
+              "wind_gusts_10m": 9.0,
+              "wind_direction_10m": 327
+            },
+            {
+              "lat": 31.908125103027984,
+              "lon": 117.1851188858725,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 12.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 31,
+              "visibility": null,
+              "wind_speed_10m": 4.22,
+              "precipitation_probability": 98,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 8.1,
+              "wind_direction_10m": 324
+            },
+            {
+              "lat": 32.020157303809185,
+              "lon": 117.14572219778836,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 25.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 31,
+              "visibility": null,
+              "wind_speed_10m": 4.22,
+              "precipitation_probability": 98,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 8.1,
+              "wind_direction_10m": 324
+            },
+            {
+              "lat": 32.149410053016474,
+              "lon": 117.10014457804152,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 40.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 9,
+              "visibility": null,
+              "wind_speed_10m": 3.19,
+              "precipitation_probability": 98,
+              "precipitation": 0.5,
+              "wind_gusts_10m": 7.1,
+              "wind_direction_10m": 311
+            },
+            {
+              "lat": 31.77384320652465,
+              "lon": 117.09973639803673,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 56,
+              "visibility": null,
+              "wind_speed_10m": 4.3,
+              "precipitation_probability": 98,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 8.7,
+              "wind_direction_10m": 324
+            },
+            {
+              "lat": 31.835441005888153,
+              "lon": 117.34314474240728,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 20,
+              "visibility": null,
+              "wind_speed_10m": 4.27,
+              "precipitation_probability": 98,
+              "precipitation": 0.8,
+              "wind_gusts_10m": 9.0,
+              "wind_direction_10m": 327
+            }
+          ],
+          "mean": {
+            "distance_km": 0,
+            "lat": 31.804700000000004,
+            "lon": 117.22140000000002,
+            "time": "2026-11-01T09:00",
+            "cloud_cover": 99.55555555555556,
+            "cloud_cover_low": 0.0,
+            "center_cloud_cover_low": 0,
+            "cross_track_low_cover": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cross_track_offsets_km": [
+              -40.0,
+              -25.0,
+              -12.0,
+              12.0,
+              25.0,
+              40.0
+            ],
+            "cross_track_low_ge70_count": 0,
+            "cross_track_low_ge70_fraction": 0.0,
+            "cloud_cover_mid": 99.55555555555556,
+            "cloud_cover_high": 25.88888888888889,
+            "visibility_m": null,
+            "wind_ms": 4.155555555555555,
+            "precipitation_probability": 98.44444444444444,
+            "precipitation": 0.7333333333333334,
+            "wind_direction": 324.01185522069306,
+            "wind_gusts": 8.600000000000001,
+            "area_radius_km": 15,
+            "area_sample_count": 9
+          }
+        },
+        {
+          "distance_km": 25,
+          "center": [
+            31.740284601457695,
+            116.96802590422703
+          ],
+          "records": [
+            {
+              "lat": 31.740284601457695,
+              "lon": 116.96802590422703,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 56,
+              "visibility": null,
+              "wind_speed_10m": 4.3,
+              "precipitation_probability": 98,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 8.7,
+              "wind_direction_10m": 324
+            },
+            {
+              "lat": 31.395460609753215,
+              "lon": 117.08829707733184,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -40.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 70,
+              "visibility": null,
+              "wind_speed_10m": 3.89,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 8.7,
+              "wind_direction_10m": 314
+            },
+            {
+              "lat": 31.524782791520536,
+              "lon": 117.04329953532852,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -25.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 70,
+              "visibility": null,
+              "wind_speed_10m": 3.89,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 8.7,
+              "wind_direction_10m": 314
+            },
+            {
+              "lat": 31.63684924436447,
+              "lon": 117.00420078081186,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -12.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 56,
+              "visibility": null,
+              "wind_speed_10m": 4.3,
+              "precipitation_probability": 98,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 8.7,
+              "wind_direction_10m": 324
+            },
+            {
+              "lat": 31.843709717391093,
+              "lon": 116.9317701466424,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 12.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 56,
+              "visibility": null,
+              "wind_speed_10m": 4.3,
+              "precipitation_probability": 98,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 8.7,
+              "wind_direction_10m": 324
+            },
+            {
+              "lat": 31.95574196141643,
+              "lon": 116.89240122335241,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 25.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 39,
+              "visibility": null,
+              "wind_speed_10m": 4.0,
+              "precipitation_probability": 96,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 7.4,
+              "wind_direction_10m": 323
+            },
+            {
+              "lat": 32.08499479862264,
+              "lon": 116.8468560241547,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 40.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 67,
+              "visibility": null,
+              "wind_speed_10m": 3.41,
+              "precipitation_probability": 100,
+              "precipitation": 0.6,
+              "wind_gusts_10m": 7.0,
+              "wind_direction_10m": 320
+            },
+            {
+              "lat": 31.709427953104417,
+              "lon": 116.84644688821595,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 98,
+              "visibility": null,
+              "wind_speed_10m": 3.89,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 7.6,
+              "wind_direction_10m": 318
+            },
+            {
+              "lat": 31.771025752661316,
+              "lon": 117.08968580081398,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 56,
+              "visibility": null,
+              "wind_speed_10m": 4.3,
+              "precipitation_probability": 98,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 8.7,
+              "wind_direction_10m": 324
+            }
+          ],
+          "mean": {
+            "distance_km": 25,
+            "lat": 31.740284601457695,
+            "lon": 116.96802590422703,
+            "time": "2026-11-01T09:00",
+            "cloud_cover": 100.0,
+            "cloud_cover_low": 0.0,
+            "center_cloud_cover_low": 0,
+            "cross_track_low_cover": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cross_track_offsets_km": [
+              -40.0,
+              -25.0,
+              -12.0,
+              12.0,
+              25.0,
+              40.0
+            ],
+            "cross_track_low_ge70_count": 0,
+            "cross_track_low_ge70_fraction": 0.0,
+            "cloud_cover_mid": 100.0,
+            "cloud_cover_high": 63.111111111111114,
+            "visibility_m": null,
+            "wind_ms": 4.0311111111111115,
+            "precipitation_probability": 98.66666666666667,
+            "precipitation": 0.6888888888888889,
+            "wind_direction": 320.5578283607089,
+            "wind_gusts": 8.244444444444445,
+            "area_radius_km": 15,
+            "area_sample_count": 9
+          }
+        },
+        {
+          "distance_km": 50,
+          "center": [
+            31.675368611294104,
+            116.71500534807274
+          ],
+          "records": [
+            {
+              "lat": 31.675368611294104,
+              "lon": 116.71500534807274,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 98,
+              "visibility": null,
+              "wind_speed_10m": 3.89,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 7.6,
+              "wind_direction_10m": 318
+            },
+            {
+              "lat": 31.330544762511717,
+              "lon": 116.8351934929126,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -40.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 9,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 86,
+              "visibility": null,
+              "wind_speed_10m": 3.86,
+              "precipitation_probability": 100,
+              "precipitation": 1.0,
+              "wind_gusts_10m": 8.7,
+              "wind_direction_10m": 307
+            },
+            {
+              "lat": 31.45986685734051,
+              "lon": 116.79022675039607,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -25.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 4.0,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 8.3,
+              "wind_direction_10m": 307
+            },
+            {
+              "lat": 31.571933267130568,
+              "lon": 116.75115501432492,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -12.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 4.0,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 8.3,
+              "wind_direction_10m": 307
+            },
+            {
+              "lat": 31.778793740214986,
+              "lon": 116.67877506195623,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 12.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 98,
+              "visibility": null,
+              "wind_speed_10m": 3.89,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 7.6,
+              "wind_direction_10m": 318
+            },
+            {
+              "lat": 31.890826027759136,
+              "lon": 116.6394340293956,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 25.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 67,
+              "visibility": null,
+              "wind_speed_10m": 3.41,
+              "precipitation_probability": 100,
+              "precipitation": 0.6,
+              "wind_gusts_10m": 7.0,
+              "wind_direction_10m": 320
+            },
+            {
+              "lat": 32.02007895352231,
+              "lon": 116.59392139791657,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 40.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 70,
+              "visibility": null,
+              "wind_speed_10m": 3.06,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 6.7,
+              "wind_direction_10m": 322
+            },
+            {
+              "lat": 31.64451210898688,
+              "lon": 116.59351130120024,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 3.4,
+              "precipitation_probability": 100,
+              "precipitation": 0.5,
+              "wind_gusts_10m": 7.3,
+              "wind_direction_10m": 317
+            },
+            {
+              "lat": 31.7061099087379,
+              "lon": 116.83658001438789,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 98,
+              "visibility": null,
+              "wind_speed_10m": 3.89,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 7.6,
+              "wind_direction_10m": 318
+            }
+          ],
+          "mean": {
+            "distance_km": 50,
+            "lat": 31.675368611294104,
+            "lon": 116.71500534807274,
+            "time": "2026-11-01T09:00",
+            "cloud_cover": 100.0,
+            "cloud_cover_low": 1.0,
+            "center_cloud_cover_low": 0,
+            "cross_track_low_cover": [
+              9,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cross_track_offsets_km": [
+              -40.0,
+              -25.0,
+              -12.0,
+              12.0,
+              25.0,
+              40.0
+            ],
+            "cross_track_low_ge70_count": 0,
+            "cross_track_low_ge70_fraction": 0.0,
+            "cloud_cover_mid": 100.0,
+            "cloud_cover_high": 90.77777777777777,
+            "visibility_m": null,
+            "wind_ms": 3.711111111111111,
+            "precipitation_probability": 100.0,
+            "precipitation": 0.7,
+            "wind_direction": 314.89387223734445,
+            "wind_gusts": 7.677777777777777,
+            "area_radius_km": 15,
+            "area_sample_count": 9
+          }
+        },
+        {
+          "distance_km": 100,
+          "center": [
+            31.544042724486797,
+            116.21003014836833
+          ],
+          "records": [
+            {
+              "lat": 31.544042724486797,
+              "lon": 116.21003014836833,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 2.26,
+              "precipitation_probability": 100,
+              "precipitation": 1.1,
+              "wind_gusts_10m": 7.3,
+              "wind_direction_10m": 315
+            },
+            {
+              "lat": 31.199219164236016,
+              "lon": 116.33005114656316,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -40.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 14,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 1.08,
+              "precipitation_probability": 100,
+              "precipitation": 1.5,
+              "wind_gusts_10m": 6.2,
+              "wind_direction_10m": 338
+            },
+            {
+              "lat": 31.328541083551826,
+              "lon": 116.28514640701667,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -25.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 14,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 1.08,
+              "precipitation_probability": 100,
+              "precipitation": 1.5,
+              "wind_gusts_10m": 6.2,
+              "wind_direction_10m": 338
+            },
+            {
+              "lat": 31.440607406425215,
+              "lon": 116.24612906261746,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -12.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 2.26,
+              "precipitation_probability": 100,
+              "precipitation": 1.1,
+              "wind_gusts_10m": 7.3,
+              "wind_direction_10m": 315
+            },
+            {
+              "lat": 31.647467879625893,
+              "lon": 116.17385114023386,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 12.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 3.11,
+              "precipitation_probability": 100,
+              "precipitation": 0.9,
+              "wind_gusts_10m": 7.3,
+              "wind_direction_10m": 315
+            },
+            {
+              "lat": 31.759500255021674,
+              "lon": 116.13456625629908,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 25.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 3.11,
+              "precipitation_probability": 100,
+              "precipitation": 0.9,
+              "wind_gusts_10m": 7.3,
+              "wind_direction_10m": 315
+            },
+            {
+              "lat": 31.888753359552574,
+              "lon": 116.0891191893619,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 40.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 9,
+              "visibility": null,
+              "wind_speed_10m": 2.78,
+              "precipitation_probability": 100,
+              "precipitation": 1.0,
+              "wind_gusts_10m": 6.0,
+              "wind_direction_10m": 308
+            },
+            {
+              "lat": 31.513186517010226,
+              "lon": 116.08870715684895,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 11,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 1.84,
+              "precipitation_probability": 100,
+              "precipitation": 1.4,
+              "wind_gusts_10m": 6.8,
+              "wind_direction_10m": 347
+            },
+            {
+              "lat": 31.574784317151657,
+              "lon": 116.33143323335594,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 2.26,
+              "precipitation_probability": 100,
+              "precipitation": 1.1,
+              "wind_gusts_10m": 7.3,
+              "wind_direction_10m": 315
+            }
+          ],
+          "mean": {
+            "distance_km": 100,
+            "lat": 31.544042724486797,
+            "lon": 116.21003014836833,
+            "time": "2026-11-01T09:00",
+            "cloud_cover": 100.0,
+            "cloud_cover_low": 4.333333333333333,
+            "center_cloud_cover_low": 0,
+            "cross_track_low_cover": [
+              14,
+              14,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cross_track_offsets_km": [
+              -40.0,
+              -25.0,
+              -12.0,
+              12.0,
+              25.0,
+              40.0
+            ],
+            "cross_track_low_ge70_count": 0,
+            "cross_track_low_ge70_fraction": 0.0,
+            "cloud_cover_mid": 100.0,
+            "cloud_cover_high": 89.88888888888889,
+            "visibility_m": null,
+            "wind_ms": 2.197777777777778,
+            "precipitation_probability": 100.0,
+            "precipitation": 1.1666666666666667,
+            "wind_direction": 322.8018162299718,
+            "wind_gusts": 6.855555555555554,
+            "area_radius_km": 15,
+            "area_sample_count": 9
+          }
+        },
+        {
+          "distance_km": 150,
+          "center": [
+            31.410738144745185,
+            115.70648461793269
+          ],
+          "records": [
+            {
+              "lat": 31.410738144745185,
+              "lon": 115.70648461793269,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 2,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 1.82,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 4.8,
+              "wind_direction_10m": 81
+            },
+            {
+              "lat": 31.065914876555308,
+              "lon": 115.82633706892102,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -40.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 42,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 81,
+              "visibility": null,
+              "wind_speed_10m": 3.81,
+              "precipitation_probability": 100,
+              "precipitation": 1.8,
+              "wind_gusts_10m": 11.3,
+              "wind_direction_10m": 30
+            },
+            {
+              "lat": 31.195236618209634,
+              "lon": 115.78149485134395,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -25.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 59,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 4.08,
+              "precipitation_probability": 100,
+              "precipitation": 1.7,
+              "wind_gusts_10m": 16.0,
+              "wind_direction_10m": 36
+            },
+            {
+              "lat": 31.307302853104133,
+              "lon": 115.74253235443803,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -12.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 59,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 4.08,
+              "precipitation_probability": 100,
+              "precipitation": 1.7,
+              "wind_gusts_10m": 16.0,
+              "wind_direction_10m": 36
+            },
+            {
+              "lat": 31.514163326421876,
+              "lon": 115.67035731832141,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 12.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 2,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 1.82,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 4.8,
+              "wind_direction_10m": 81
+            },
+            {
+              "lat": 31.626195790738013,
+              "lon": 115.63112905486855,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 25.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 2,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 48,
+              "visibility": null,
+              "wind_speed_10m": 2.52,
+              "precipitation_probability": 100,
+              "precipitation": 1.2,
+              "wind_gusts_10m": 7.0,
+              "wind_direction_10m": 326
+            },
+            {
+              "lat": 31.755449076207785,
+              "lon": 115.58574810397636,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 40.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 2,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 14,
+              "visibility": null,
+              "wind_speed_10m": 2.31,
+              "precipitation_probability": 100,
+              "precipitation": 0.9,
+              "wind_gusts_10m": 8.0,
+              "wind_direction_10m": 18
+            },
+            {
+              "lat": 31.379882235695245,
+              "lon": 115.58533411715507,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 16,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 97,
+              "visibility": null,
+              "wind_speed_10m": 1.81,
+              "precipitation_probability": 100,
+              "precipitation": 1.3,
+              "wind_gusts_10m": 5.3,
+              "wind_direction_10m": 6
+            },
+            {
+              "lat": 31.44148003622981,
+              "lon": 115.82771468140368,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 2,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 1.82,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 4.8,
+              "wind_direction_10m": 81
+            }
+          ],
+          "mean": {
+            "distance_km": 150,
+            "lat": 31.410738144745185,
+            "lon": 115.70648461793269,
+            "time": "2026-11-01T09:00",
+            "cloud_cover": 100.0,
+            "cloud_cover_low": 20.666666666666668,
+            "center_cloud_cover_low": 2,
+            "cross_track_low_cover": [
+              42,
+              59,
+              59,
+              2,
+              2,
+              2
+            ],
+            "cross_track_offsets_km": [
+              -40.0,
+              -25.0,
+              -12.0,
+              12.0,
+              25.0,
+              40.0
+            ],
+            "cross_track_low_ge70_count": 0,
+            "cross_track_low_ge70_fraction": 0.0,
+            "cloud_cover_mid": 100.0,
+            "cloud_cover_high": 82.22222222222223,
+            "visibility_m": null,
+            "wind_ms": 2.6744444444444446,
+            "precipitation_probability": 100.0,
+            "precipitation": 1.188888888888889,
+            "wind_direction": 38.11039903410972,
+            "wind_gusts": 8.666666666666666,
+            "area_radius_km": 15,
+            "area_sample_count": 9
+          }
+        },
+        {
+          "distance_km": 200,
+          "center": [
+            31.275470782269384,
+            115.20437838390535
+          ],
+          "records": [
+            {
+              "lat": 31.275470782269384,
+              "lon": 115.20437838390535,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 11,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 97,
+              "visibility": null,
+              "wind_speed_10m": 2.77,
+              "precipitation_probability": 100,
+              "precipitation": 1.4,
+              "wind_gusts_10m": 8.6,
+              "wind_direction_10m": 13
+            },
+            {
+              "lat": 30.93064780960504,
+              "lon": 115.32406095048486,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -40.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 3,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 4.4,
+              "precipitation_probability": 100,
+              "precipitation": 1.1,
+              "wind_gusts_10m": 12.3,
+              "wind_direction_10m": 3
+            },
+            {
+              "lat": 31.05996937148868,
+              "lon": 115.2792817503364,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -25.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 3,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 100,
+              "visibility": null,
+              "wind_speed_10m": 4.4,
+              "precipitation_probability": 100,
+              "precipitation": 1.1,
+              "wind_gusts_10m": 12.3,
+              "wind_direction_10m": 3
+            },
+            {
+              "lat": 31.172035517361557,
+              "lon": 115.24037453613118,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": -12.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 11,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 97,
+              "visibility": null,
+              "wind_speed_10m": 2.77,
+              "precipitation_probability": 100,
+              "precipitation": 1.4,
+              "wind_gusts_10m": 8.6,
+              "wind_direction_10m": 13
+            },
+            {
+              "lat": 31.378895990797133,
+              "lon": 115.16830320398219,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 12.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 14,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 81,
+              "visibility": null,
+              "wind_speed_10m": 4.88,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 12.8,
+              "wind_direction_10m": 23
+            },
+            {
+              "lat": 31.490928545082486,
+              "lon": 115.12913201168135,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 25.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 14,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 81,
+              "visibility": null,
+              "wind_speed_10m": 4.88,
+              "precipitation_probability": 100,
+              "precipitation": 0.7,
+              "wind_gusts_10m": 12.8,
+              "wind_direction_10m": 23
+            },
+            {
+              "lat": 31.620182013621665,
+              "lon": 115.0838177036369,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": 40.0,
+              "cloud_cover": 100,
+              "cloud_cover_low": 0,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 45,
+              "visibility": null,
+              "wind_speed_10m": 5.32,
+              "precipitation_probability": 100,
+              "precipitation": 0.4,
+              "wind_gusts_10m": 13.0,
+              "wind_direction_10m": 12
+            },
+            {
+              "lat": 31.244615175175635,
+              "lon": 115.08340174456248,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 2,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 86,
+              "visibility": null,
+              "wind_speed_10m": 4.2,
+              "precipitation_probability": 96,
+              "precipitation": 1.1,
+              "wind_gusts_10m": 9.2,
+              "wind_direction_10m": 1
+            },
+            {
+              "lat": 31.306212976105865,
+              "lon": 115.32543405053775,
+              "time": "2026-11-01T09:00",
+              "cross_track_offset_km": null,
+              "cloud_cover": 100,
+              "cloud_cover_low": 11,
+              "cloud_cover_mid": 100,
+              "cloud_cover_high": 97,
+              "visibility": null,
+              "wind_speed_10m": 2.77,
+              "precipitation_probability": 100,
+              "precipitation": 1.4,
+              "wind_gusts_10m": 8.6,
+              "wind_direction_10m": 13
+            }
+          ],
+          "mean": {
+            "distance_km": 200,
+            "lat": 31.275470782269384,
+            "lon": 115.20437838390535,
+            "time": "2026-11-01T09:00",
+            "cloud_cover": 100.0,
+            "cloud_cover_low": 7.666666666666667,
+            "center_cloud_cover_low": 11,
+            "cross_track_low_cover": [
+              3,
+              3,
+              11,
+              14,
+              14,
+              0
+            ],
+            "cross_track_offsets_km": [
+              -40.0,
+              -25.0,
+              -12.0,
+              12.0,
+              25.0,
+              40.0
+            ],
+            "cross_track_low_ge70_count": 0,
+            "cross_track_low_ge70_fraction": 0.0,
+            "cloud_cover_mid": 100.0,
+            "cloud_cover_high": 87.11111111111111,
+            "visibility_m": null,
+            "wind_ms": 4.043333333333333,
+            "precipitation_probability": 99.55555555555556,
+            "precipitation": 1.0333333333333334,
+            "wind_direction": 11.552278130077367,
+            "wind_gusts": 10.911111111111111,
+            "area_radius_km": 15,
+            "area_sample_count": 9
+          }
+        }
+      ],
+      "profiles": [
+        {
+          "distance_km": 0,
+          "lat": 31.804700000000004,
+          "lon": 117.22140000000002,
+          "time": "2026-11-01 09:00 UTC",
+          "ground_elevation_m": 0.0,
+          "elevation_note": "用户地点海拔 0 m（用于本地云层高度换算）",
+          "estimated_base_km": 0.174,
+          "status": "最低可用气压层已显示云层，真实云底可能更低",
+          "levels": [
+            {
+              "pressure_hpa": 1000,
+              "height_m_asl": 174.0,
+              "cloud_cover": 0,
+              "relative_humidity": 87,
+              "height_agl_km": 0.174,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 925,
+              "height_m_asl": 829.0,
+              "cloud_cover": 0,
+              "relative_humidity": 61,
+              "height_agl_km": 0.829,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 850,
+              "height_m_asl": 1534.0,
+              "cloud_cover": 0,
+              "relative_humidity": 57,
+              "height_agl_km": 1.534,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 700,
+              "height_m_asl": 3125.0,
+              "cloud_cover": 66,
+              "relative_humidity": 97,
+              "height_agl_km": 3.125,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 600,
+              "height_m_asl": 4373.0,
+              "cloud_cover": 71,
+              "relative_humidity": 98,
+              "height_agl_km": 4.373,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 500,
+              "height_m_asl": 5820.0,
+              "cloud_cover": 62,
+              "relative_humidity": 96,
+              "height_agl_km": 5.82,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 400,
+              "height_m_asl": 7529.63,
+              "cloud_cover": 0,
+              "relative_humidity": 50,
+              "height_agl_km": 7.52963,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 300,
+              "height_m_asl": 9633.87,
+              "cloud_cover": 0,
+              "relative_humidity": 16,
+              "height_agl_km": 9.63387,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 250,
+              "height_m_asl": 10900.95,
+              "cloud_cover": 0,
+              "relative_humidity": 20,
+              "height_agl_km": 10.90095,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 200,
+              "height_m_asl": 12376.74,
+              "cloud_cover": 0,
+              "relative_humidity": 48,
+              "height_agl_km": 12.37674,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 150,
+              "height_m_asl": 14176.12,
+              "cloud_cover": 0,
+              "relative_humidity": 40,
+              "height_agl_km": 14.176120000000001,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 100,
+              "height_m_asl": 16575.0,
+              "cloud_cover": 0,
+              "relative_humidity": 67,
+              "height_agl_km": 16.575,
+              "cloudy_candidate": false
+            }
+          ],
+          "cloudy_level_pressure_hpa": 1000
+        },
+        {
+          "distance_km": 25,
+          "lat": 31.740284601457695,
+          "lon": 116.96802590422703,
+          "time": "2026-11-01 09:00 UTC",
+          "ground_elevation_m": 71.0,
+          "elevation_note": "地形海拔 71 m",
+          "estimated_base_km": 0.104,
+          "status": "最低可用气压层已显示云层，真实云底可能更低",
+          "levels": [
+            {
+              "pressure_hpa": 1000,
+              "height_m_asl": 175.0,
+              "cloud_cover": 0,
+              "relative_humidity": 87,
+              "height_agl_km": 0.104,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 925,
+              "height_m_asl": 829.0,
+              "cloud_cover": 0,
+              "relative_humidity": 62,
+              "height_agl_km": 0.758,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 850,
+              "height_m_asl": 1535.0,
+              "cloud_cover": 0,
+              "relative_humidity": 56,
+              "height_agl_km": 1.464,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 700,
+              "height_m_asl": 3124.0,
+              "cloud_cover": 66,
+              "relative_humidity": 97,
+              "height_agl_km": 3.053,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 600,
+              "height_m_asl": 4374.0,
+              "cloud_cover": 71,
+              "relative_humidity": 98,
+              "height_agl_km": 4.303,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 500,
+              "height_m_asl": 5820.0,
+              "cloud_cover": 69,
+              "relative_humidity": 97,
+              "height_agl_km": 5.749,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 400,
+              "height_m_asl": 7529.63,
+              "cloud_cover": 0,
+              "relative_humidity": 62,
+              "height_agl_km": 7.45863,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 300,
+              "height_m_asl": 9633.87,
+              "cloud_cover": 0,
+              "relative_humidity": 16,
+              "height_agl_km": 9.56287,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 250,
+              "height_m_asl": 10900.95,
+              "cloud_cover": 0,
+              "relative_humidity": 22,
+              "height_agl_km": 10.82995,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 200,
+              "height_m_asl": 12376.74,
+              "cloud_cover": 0,
+              "relative_humidity": 50,
+              "height_agl_km": 12.30574,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 150,
+              "height_m_asl": 14173.13,
+              "cloud_cover": 0,
+              "relative_humidity": 40,
+              "height_agl_km": 14.102129999999999,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 100,
+              "height_m_asl": 16575.0,
+              "cloud_cover": 0,
+              "relative_humidity": 70,
+              "height_agl_km": 16.504,
+              "cloudy_candidate": false
+            }
+          ],
+          "cloudy_level_pressure_hpa": 1000
+        },
+        {
+          "distance_km": 50,
+          "lat": 31.675368611294104,
+          "lon": 116.71500534807274,
+          "time": "2026-11-01 09:00 UTC",
+          "ground_elevation_m": 55.0,
+          "elevation_note": "地形海拔 55 m",
+          "estimated_base_km": 0.123,
+          "status": "最低可用气压层已显示云层，真实云底可能更低",
+          "levels": [
+            {
+              "pressure_hpa": 1000,
+              "height_m_asl": 178.0,
+              "cloud_cover": 0,
+              "relative_humidity": 88,
+              "height_agl_km": 0.123,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 925,
+              "height_m_asl": 832.0,
+              "cloud_cover": 0,
+              "relative_humidity": 65,
+              "height_agl_km": 0.777,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 850,
+              "height_m_asl": 1536.0,
+              "cloud_cover": 0,
+              "relative_humidity": 56,
+              "height_agl_km": 1.481,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 700,
+              "height_m_asl": 3125.0,
+              "cloud_cover": 72,
+              "relative_humidity": 98,
+              "height_agl_km": 3.07,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 600,
+              "height_m_asl": 4374.0,
+              "cloud_cover": 71,
+              "relative_humidity": 98,
+              "height_agl_km": 4.319,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 500,
+              "height_m_asl": 5820.0,
+              "cloud_cover": 78,
+              "relative_humidity": 99,
+              "height_agl_km": 5.765,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 400,
+              "height_m_asl": 7528.4,
+              "cloud_cover": 47,
+              "relative_humidity": 92,
+              "height_agl_km": 7.4734,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 300,
+              "height_m_asl": 9633.87,
+              "cloud_cover": 0,
+              "relative_humidity": 16,
+              "height_agl_km": 9.57887,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 250,
+              "height_m_asl": 10899.05,
+              "cloud_cover": 0,
+              "relative_humidity": 22,
+              "height_agl_km": 10.84405,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 200,
+              "height_m_asl": 12376.74,
+              "cloud_cover": 0,
+              "relative_humidity": 48,
+              "height_agl_km": 12.32174,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 150,
+              "height_m_asl": 14173.13,
+              "cloud_cover": 0,
+              "relative_humidity": 43,
+              "height_agl_km": 14.118129999999999,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 100,
+              "height_m_asl": 16575.0,
+              "cloud_cover": 0,
+              "relative_humidity": 63,
+              "height_agl_km": 16.52,
+              "cloudy_candidate": false
+            }
+          ],
+          "cloudy_level_pressure_hpa": 1000
+        },
+        {
+          "distance_km": 100,
+          "lat": 31.544042724486797,
+          "lon": 116.21003014836833,
+          "time": "2026-11-01 09:00 UTC",
+          "ground_elevation_m": 386.0,
+          "elevation_note": "地形海拔 386 m",
+          "estimated_base_km": 1.7044305555555554,
+          "status": "云量阈值线性插值",
+          "levels": [
+            {
+              "pressure_hpa": 925,
+              "height_m_asl": 836.0,
+              "cloud_cover": 0,
+              "relative_humidity": 75,
+              "height_agl_km": 0.45,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 850,
+              "height_m_asl": 1538.0,
+              "cloud_cover": 0,
+              "relative_humidity": 62,
+              "height_agl_km": 1.152,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 700,
+              "height_m_asl": 3129.0,
+              "cloud_cover": 72,
+              "relative_humidity": 98,
+              "height_agl_km": 2.743,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 600,
+              "height_m_asl": 4380.0,
+              "cloud_cover": 100,
+              "relative_humidity": 100,
+              "height_agl_km": 3.994,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 500,
+              "height_m_asl": 5826.0,
+              "cloud_cover": 78,
+              "relative_humidity": 99,
+              "height_agl_km": 5.44,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 400,
+              "height_m_asl": 7537.04,
+              "cloud_cover": 100,
+              "relative_humidity": 100,
+              "height_agl_km": 7.15104,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 300,
+              "height_m_asl": 9638.71,
+              "cloud_cover": 0,
+              "relative_humidity": 22,
+              "height_agl_km": 9.252709999999999,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 250,
+              "height_m_asl": 10904.76,
+              "cloud_cover": 0,
+              "relative_humidity": 27,
+              "height_agl_km": 10.51876,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 200,
+              "height_m_asl": 12381.4,
+              "cloud_cover": 0,
+              "relative_humidity": 53,
+              "height_agl_km": 11.9954,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 150,
+              "height_m_asl": 14182.09,
+              "cloud_cover": 0,
+              "relative_humidity": 37,
+              "height_agl_km": 13.79609,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 100,
+              "height_m_asl": 16583.33,
+              "cloud_cover": 0,
+              "relative_humidity": 60,
+              "height_agl_km": 16.19733,
+              "cloudy_candidate": false
+            }
+          ],
+          "cloudy_level_pressure_hpa": 700
+        },
+        {
+          "distance_km": 150,
+          "lat": 31.410738144745185,
+          "lon": 115.70648461793269,
+          "time": "2026-11-01 09:00 UTC",
+          "ground_elevation_m": 405.0,
+          "elevation_note": "地形海拔 405 m",
+          "estimated_base_km": 1.6236666666666666,
+          "status": "云量阈值线性插值",
+          "levels": [
+            {
+              "pressure_hpa": 925,
+              "height_m_asl": 836.0,
+              "cloud_cover": 0,
+              "relative_humidity": 80,
+              "height_agl_km": 0.431,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 850,
+              "height_m_asl": 1537.0,
+              "cloud_cover": 0,
+              "relative_humidity": 62,
+              "height_agl_km": 1.132,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 700,
+              "height_m_asl": 3130.0,
+              "cloud_cover": 81,
+              "relative_humidity": 99,
+              "height_agl_km": 2.725,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 600,
+              "height_m_asl": 4380.0,
+              "cloud_cover": 100,
+              "relative_humidity": 100,
+              "height_agl_km": 3.975,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 500,
+              "height_m_asl": 5826.0,
+              "cloud_cover": 100,
+              "relative_humidity": 100,
+              "height_agl_km": 5.421,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 400,
+              "height_m_asl": 7537.04,
+              "cloud_cover": 59,
+              "relative_humidity": 95,
+              "height_agl_km": 7.13204,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 300,
+              "height_m_asl": 9640.32,
+              "cloud_cover": 0,
+              "relative_humidity": 26,
+              "height_agl_km": 9.23532,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 250,
+              "height_m_asl": 10902.86,
+              "cloud_cover": 0,
+              "relative_humidity": 33,
+              "height_agl_km": 10.497860000000001,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 200,
+              "height_m_asl": 12379.07,
+              "cloud_cover": 0,
+              "relative_humidity": 58,
+              "height_agl_km": 11.97407,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 150,
+              "height_m_asl": 14173.13,
+              "cloud_cover": 0,
+              "relative_humidity": 49,
+              "height_agl_km": 13.76813,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 100,
+              "height_m_asl": 16575.0,
+              "cloud_cover": 0,
+              "relative_humidity": 53,
+              "height_agl_km": 16.17,
+              "cloudy_candidate": false
+            }
+          ],
+          "cloudy_level_pressure_hpa": 700
+        },
+        {
+          "distance_km": 200,
+          "lat": 31.275470782269384,
+          "lon": 115.20437838390535,
+          "time": "2026-11-01 09:00 UTC",
+          "ground_elevation_m": 92.0,
+          "elevation_note": "地形海拔 92 m",
+          "estimated_base_km": 0.086,
+          "status": "最低可用气压层已显示云层，真实云底可能更低",
+          "levels": [
+            {
+              "pressure_hpa": 1000,
+              "height_m_asl": 178.0,
+              "cloud_cover": 20,
+              "relative_humidity": 93,
+              "height_agl_km": 0.086,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 925,
+              "height_m_asl": 829.0,
+              "cloud_cover": 0,
+              "relative_humidity": 78,
+              "height_agl_km": 0.737,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 850,
+              "height_m_asl": 1534.0,
+              "cloud_cover": 0,
+              "relative_humidity": 61,
+              "height_agl_km": 1.442,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 700,
+              "height_m_asl": 3133.0,
+              "cloud_cover": 100,
+              "relative_humidity": 100,
+              "height_agl_km": 3.041,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 600,
+              "height_m_asl": 4385.0,
+              "cloud_cover": 100,
+              "relative_humidity": 100,
+              "height_agl_km": 4.293,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 500,
+              "height_m_asl": 5833.0,
+              "cloud_cover": 78,
+              "relative_humidity": 99,
+              "height_agl_km": 5.741,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 400,
+              "height_m_asl": 7548.15,
+              "cloud_cover": 67,
+              "relative_humidity": 97,
+              "height_agl_km": 7.45615,
+              "cloudy_candidate": true
+            },
+            {
+              "pressure_hpa": 300,
+              "height_m_asl": 9651.61,
+              "cloud_cover": 0,
+              "relative_humidity": 28,
+              "height_agl_km": 9.559610000000001,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 250,
+              "height_m_asl": 10914.29,
+              "cloud_cover": 0,
+              "relative_humidity": 33,
+              "height_agl_km": 10.82229,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 200,
+              "height_m_asl": 12390.7,
+              "cloud_cover": 0,
+              "relative_humidity": 60,
+              "height_agl_km": 12.2987,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 150,
+              "height_m_asl": 14185.07,
+              "cloud_cover": 0,
+              "relative_humidity": 51,
+              "height_agl_km": 14.093069999999999,
+              "cloudy_candidate": false
+            },
+            {
+              "pressure_hpa": 100,
+              "height_m_asl": 16575.0,
+              "cloud_cover": 0,
+              "relative_humidity": 57,
+              "height_agl_km": 16.483,
+              "cloudy_candidate": false
+            }
+          ],
+          "cloudy_level_pressure_hpa": 1000
+        }
+      ],
+      "geometry": {
+        "rows": [
+          {
+            "distance_km": 0,
+            "cloud_base_km": 0.174,
+            "cloud_base_asl_km": 0.174,
+            "cloud_base_agl_km": 0.174,
+            "base_source": "剖面离地高度 + 地点海拔（绝对高度）",
+            "profile_status": "最低可用气压层已显示云层，真实云底可能更低",
+            "aod": 0.28,
+            "aod_source": "CAMS 逐点 AOD",
+            "equivalent_height_km": 1.6661022550876021,
+            "effective_base_km": 0.0,
+            "reach_km": 0.0,
+            "target_cloud_cover": 99.55555555555556,
+            "target_cloud_note": "中/高云最大值 100%",
+            "has_target_cloud": true,
+            "within_reach": true,
+            "eligible": false,
+            "duration_min": 0.5
+          },
+          {
+            "distance_km": 25,
+            "cloud_base_km": 0.104,
+            "cloud_base_asl_km": 0.104,
+            "cloud_base_agl_km": 0.104,
+            "base_source": "剖面离地高度 + 地点海拔（绝对高度）",
+            "profile_status": "最低可用气压层已显示云层，真实云底可能更低",
+            "aod": 0.26,
+            "aod_source": "CAMS 逐点 AOD",
+            "equivalent_height_km": 1.629048269010741,
+            "effective_base_km": 0.0,
+            "reach_km": 0.0,
+            "target_cloud_cover": 100.0,
+            "target_cloud_note": "中/高云最大值 100%",
+            "has_target_cloud": true,
+            "within_reach": false,
+            "eligible": false,
+            "duration_min": 0.5
+          },
+          {
+            "distance_km": 50,
+            "cloud_base_km": 0.123,
+            "cloud_base_asl_km": 0.123,
+            "cloud_base_agl_km": 0.123,
+            "base_source": "剖面离地高度 + 地点海拔（绝对高度）",
+            "profile_status": "最低可用气压层已显示云层，真实云底可能更低",
+            "aod": 0.26,
+            "aod_source": "CAMS 逐点 AOD",
+            "equivalent_height_km": 1.629048269010741,
+            "effective_base_km": 0.0,
+            "reach_km": 0.0,
+            "target_cloud_cover": 100.0,
+            "target_cloud_note": "中/高云最大值 100%",
+            "has_target_cloud": true,
+            "within_reach": false,
+            "eligible": false,
+            "duration_min": 0.5
+          },
+          {
+            "distance_km": 100,
+            "cloud_base_km": 1.7044305555555554,
+            "cloud_base_asl_km": 1.7044305555555554,
+            "cloud_base_agl_km": 1.7044305555555554,
+            "base_source": "剖面离地高度 + 地点海拔（绝对高度）",
+            "profile_status": "云量阈值线性插值",
+            "aod": 0.26,
+            "aod_source": "CAMS 逐点 AOD",
+            "equivalent_height_km": 1.629048269010741,
+            "effective_base_km": 0.07538228654481438,
+            "reach_km": 61.98459233978289,
+            "target_cloud_cover": 100.0,
+            "target_cloud_note": "中/高云最大值 100%",
+            "has_target_cloud": true,
+            "within_reach": false,
+            "eligible": false,
+            "duration_min": 0.5
+          },
+          {
+            "distance_km": 150,
+            "cloud_base_km": 1.6236666666666666,
+            "cloud_base_asl_km": 1.6236666666666666,
+            "cloud_base_agl_km": 1.6236666666666666,
+            "base_source": "剖面离地高度 + 地点海拔（绝对高度）",
+            "profile_status": "云量阈值线性插值",
+            "aod": 0.21,
+            "aod_source": "CAMS 逐点 AOD",
+            "equivalent_height_km": 1.5222612188617115,
+            "effective_base_km": 0.10140544780495508,
+            "reach_km": 71.89186325771837,
+            "target_cloud_cover": 100.0,
+            "target_cloud_note": "中/高云最大值 100%",
+            "has_target_cloud": true,
+            "within_reach": false,
+            "eligible": false,
+            "duration_min": 0.5
+          },
+          {
+            "distance_km": 200,
+            "cloud_base_km": 0.086,
+            "cloud_base_asl_km": 0.086,
+            "cloud_base_agl_km": 0.086,
+            "base_source": "剖面离地高度 + 地点海拔（绝对高度）",
+            "profile_status": "最低可用气压层已显示云层，真实云底可能更低",
+            "aod": 0.19,
+            "aod_source": "CAMS 逐点 AOD",
+            "equivalent_height_km": 1.4722194895832201,
+            "effective_base_km": 0.0,
+            "reach_km": 0.0,
+            "target_cloud_cover": 100.0,
+            "target_cloud_note": "中/高云最大值 100%",
+            "has_target_cloud": true,
+            "within_reach": false,
+            "eligible": false,
+            "duration_min": 0.5
+          }
+        ],
+        "farthest": null,
+        "profile_success_count": 6,
+        "profile_count": 6,
+        "scale_height_km": 0.5
+      },
+      "distances": [
+        0,
+        25,
+        50,
+        100,
+        150,
+        200
+      ],
+      "max_reach": 71.89186325771837,
+      "aod": 0.25369369369369366,
+      "rainbow": {
+        "score": 44,
+        "label": "偏低",
+        "distance_km": 0,
+        "precip_probability": 98.0,
+        "precipitation": 0.8,
+        "cloud_cover": 100.0,
+        "anti_solar_azimuth": 73.41778738306368,
+        "note": "经验指数，未校准为真实发生概率。"
+      },
+      "dynamic_light_curve": {
+        "samples": [
+          {
+            "datetime": "2026-11-01T16:51:51.984021",
+            "minutes_from_event": -30.0,
+            "solar_altitude_deg": 5.214662642968321,
+            "solar_azimuth_deg": 249.3886026456439,
+            "brightness": 56.6,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.802,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.0
+          },
+          {
+            "datetime": "2026-11-01T16:52:51.984021",
+            "minutes_from_event": -29.0,
+            "solar_altitude_deg": 5.015579869578204,
+            "solar_azimuth_deg": 249.5268521177048,
+            "brightness": 56.6,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.803,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.0
+          },
+          {
+            "datetime": "2026-11-01T16:53:51.984021",
+            "minutes_from_event": -28.0,
+            "solar_altitude_deg": 4.816318219226716,
+            "solar_azimuth_deg": 249.6647990548368,
+            "brightness": 56.6,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.803,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.0
+          },
+          {
+            "datetime": "2026-11-01T16:54:51.984021",
+            "minutes_from_event": -27.0,
+            "solar_altitude_deg": 4.6168792338294935,
+            "solar_azimuth_deg": 249.80244679214985,
+            "brightness": 56.6,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.803,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.0
+          },
+          {
+            "datetime": "2026-11-01T16:55:51.984021",
+            "minutes_from_event": -26.0,
+            "solar_altitude_deg": 4.417264444531099,
+            "solar_azimuth_deg": 249.93979865530596,
+            "brightness": 56.6,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.803,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.0
+          },
+          {
+            "datetime": "2026-11-01T16:56:51.984021",
+            "minutes_from_event": -25.0,
+            "solar_altitude_deg": 4.217475371741145,
+            "solar_azimuth_deg": 250.07685796054704,
+            "brightness": 56.6,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.804,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.0
+          },
+          {
+            "datetime": "2026-11-01T16:57:51.984021",
+            "minutes_from_event": -24.0,
+            "solar_altitude_deg": 4.017513525596215,
+            "solar_azimuth_deg": 250.2136280153208,
+            "brightness": 56.7,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.804,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.1
+          },
+          {
+            "datetime": "2026-11-01T16:58:51.984021",
+            "minutes_from_event": -23.0,
+            "solar_altitude_deg": 3.817380405558808,
+            "solar_azimuth_deg": 250.35011211770188,
+            "brightness": 56.7,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.804,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.1
+          },
+          {
+            "datetime": "2026-11-01T16:59:51.984021",
+            "minutes_from_event": -22.0,
+            "solar_altitude_deg": 3.617077500882502,
+            "solar_azimuth_deg": 250.48631355702793,
+            "brightness": 56.7,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.805,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.1
+          },
+          {
+            "datetime": "2026-11-01T17:00:51.984021",
+            "minutes_from_event": -21.0,
+            "solar_altitude_deg": 3.4166062906421786,
+            "solar_azimuth_deg": 250.62223561393017,
+            "brightness": 56.7,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.805,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.1
+          },
+          {
+            "datetime": "2026-11-01T17:01:51.984021",
+            "minutes_from_event": -20.0,
+            "solar_altitude_deg": 3.215968243847186,
+            "solar_azimuth_deg": 250.75788156048293,
+            "brightness": 56.8,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.806,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.3
+          },
+          {
+            "datetime": "2026-11-01T17:02:51.984021",
+            "minutes_from_event": -19.0,
+            "solar_altitude_deg": 3.0151648195587626,
+            "solar_azimuth_deg": 250.89325466036132,
+            "brightness": 56.8,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.806,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.3
+          },
+          {
+            "datetime": "2026-11-01T17:03:51.984021",
+            "minutes_from_event": -18.0,
+            "solar_altitude_deg": 2.8141974670046466,
+            "solar_azimuth_deg": 251.02835816899847,
+            "brightness": 56.9,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.807,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.4
+          },
+          {
+            "datetime": "2026-11-01T17:04:51.984021",
+            "minutes_from_event": -17.0,
+            "solar_altitude_deg": 2.6130676256922527,
+            "solar_azimuth_deg": 251.1631953337427,
+            "brightness": 56.9,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.808,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.4
+          },
+          {
+            "datetime": "2026-11-01T17:05:51.984021",
+            "minutes_from_event": -16.0,
+            "solar_altitude_deg": 2.411776725521932,
+            "solar_azimuth_deg": 251.29776939401796,
+            "brightness": 56.9,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.808,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.4
+          },
+          {
+            "datetime": "2026-11-01T17:06:51.984021",
+            "minutes_from_event": -15.0,
+            "solar_altitude_deg": 2.2103261868996213,
+            "solar_azimuth_deg": 251.43208358148627,
+            "brightness": 57.0,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.809,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.5
+          },
+          {
+            "datetime": "2026-11-01T17:07:51.984021",
+            "minutes_from_event": -14.0,
+            "solar_altitude_deg": 2.0087174208490097,
+            "solar_azimuth_deg": 251.56614112021146,
+            "brightness": 57.1,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.81,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.6
+          },
+          {
+            "datetime": "2026-11-01T17:08:51.984021",
+            "minutes_from_event": -13.0,
+            "solar_altitude_deg": 1.806951829036393,
+            "solar_azimuth_deg": 251.69994522670007,
+            "brightness": 57.1,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.811,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.6
+          },
+          {
+            "datetime": "2026-11-01T17:09:51.984021",
+            "minutes_from_event": -12.0,
+            "solar_altitude_deg": 1.6050308042238868,
+            "solar_azimuth_deg": 251.83349911056263,
+            "brightness": 57.2,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.812,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.8
+          },
+          {
+            "datetime": "2026-11-01T17:10:51.984021",
+            "minutes_from_event": -11.0,
+            "solar_altitude_deg": 1.4029557298659796,
+            "solar_azimuth_deg": 251.96680597394237,
+            "brightness": 57.3,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.813,
+            "air_transmission": 0.915,
+            "relative_brightness": 71.9
+          },
+          {
+            "datetime": "2026-11-01T17:11:51.984021",
+            "minutes_from_event": -10.0,
+            "solar_altitude_deg": 1.200727980561993,
+            "solar_azimuth_deg": 252.09986901217974,
+            "brightness": 57.4,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.814,
+            "air_transmission": 0.915,
+            "relative_brightness": 72.0
+          },
+          {
+            "datetime": "2026-11-01T17:12:51.984021",
+            "minutes_from_event": -9.0,
+            "solar_altitude_deg": 0.9983489220778665,
+            "solar_azimuth_deg": 252.23269141385984,
+            "brightness": 57.5,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.816,
+            "air_transmission": 0.915,
+            "relative_brightness": 72.1
+          },
+          {
+            "datetime": "2026-11-01T17:13:51.984021",
+            "minutes_from_event": -8.0,
+            "solar_altitude_deg": 0.7958199114553253,
+            "solar_azimuth_deg": 252.3652763609872,
+            "brightness": 57.6,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.818,
+            "air_transmission": 0.915,
+            "relative_brightness": 72.3
+          },
+          {
+            "datetime": "2026-11-01T17:14:51.984021",
+            "minutes_from_event": -7.0,
+            "solar_altitude_deg": 0.5931422971172395,
+            "solar_azimuth_deg": 252.49762702915856,
+            "brightness": 57.8,
+            "color": [
+              246,
+              199,
+              114
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.82,
+            "air_transmission": 0.915,
+            "relative_brightness": 72.5
+          },
+          {
+            "datetime": "2026-11-01T17:15:51.984021",
+            "minutes_from_event": -6.0,
+            "solar_altitude_deg": 0.39031741897832717,
+            "solar_azimuth_deg": 252.62974658774485,
+            "brightness": 58.0,
+            "color": [
+              246,
+              192,
+              108
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.823,
+            "air_transmission": 0.915,
+            "relative_brightness": 72.8
+          },
+          {
+            "datetime": "2026-11-01T17:16:51.984021",
+            "minutes_from_event": -5.0,
+            "solar_altitude_deg": 0.18734660854840968,
+            "solar_azimuth_deg": 252.76163820006585,
+            "brightness": 58.2,
+            "color": [
+              245,
+              177,
+              97
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.826,
+            "air_transmission": 0.915,
+            "relative_brightness": 73.0
+          },
+          {
+            "datetime": "2026-11-01T17:17:51.984021",
+            "minutes_from_event": -4.0,
+            "solar_altitude_deg": -0.015768810963066926,
+            "solar_azimuth_deg": 252.8933050235686,
+            "brightness": 58.5,
+            "color": [
+              244,
+              163,
+              87
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.83,
+            "air_transmission": 0.915,
+            "relative_brightness": 73.4
+          },
+          {
+            "datetime": "2026-11-01T17:18:51.984021",
+            "minutes_from_event": -3.0,
+            "solar_altitude_deg": -0.21902752453685537,
+            "solar_azimuth_deg": 253.0247502100164,
+            "brightness": 58.9,
+            "color": [
+              244,
+              148,
+              75
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.836,
+            "air_transmission": 0.915,
+            "relative_brightness": 73.9
+          },
+          {
+            "datetime": "2026-11-01T17:19:51.984021",
+            "minutes_from_event": -2.0,
+            "solar_altitude_deg": -0.42242822532719515,
+            "solar_azimuth_deg": 253.15597690554256,
+            "brightness": 59.6,
+            "color": [
+              243,
+              135,
+              64
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.846,
+            "air_transmission": 0.915,
+            "relative_brightness": 74.8
+          },
+          {
+            "datetime": "2026-11-01T17:20:51.984021",
+            "minutes_from_event": -1.0,
+            "solar_altitude_deg": -0.625969614223095,
+            "solar_azimuth_deg": 253.28698825133085,
+            "brightness": 61.9,
+            "color": [
+              242,
+              123,
+              59
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.876,
+            "air_transmission": 0.915,
+            "relative_brightness": 77.7
+          },
+          {
+            "datetime": "2026-11-01T17:21:51.984021",
+            "minutes_from_event": 0.0,
+            "solar_altitude_deg": -0.8296504002440628,
+            "solar_azimuth_deg": 253.4177873830637,
+            "brightness": 70.2,
+            "color": [
+              241,
+              114,
+              57
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.988,
+            "air_transmission": 0.915,
+            "relative_brightness": 88.1
+          },
+          {
+            "datetime": "2026-11-01T17:22:51.984021",
+            "minutes_from_event": 1.0,
+            "solar_altitude_deg": -1.0334693001054944,
+            "solar_azimuth_deg": 253.54837743160078,
+            "brightness": 71.2,
+            "color": [
+              239,
+              104,
+              55
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.995,
+            "air_transmission": 0.915,
+            "relative_brightness": 89.3
+          },
+          {
+            "datetime": "2026-11-01T17:23:51.984021",
+            "minutes_from_event": 2.0,
+            "solar_altitude_deg": -1.237425038197614,
+            "solar_azimuth_deg": 253.67876152304916,
+            "brightness": 72.0,
+            "color": [
+              238,
+              95,
+              54
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.996,
+            "air_transmission": 0.915,
+            "relative_brightness": 90.3
+          },
+          {
+            "datetime": "2026-11-01T17:24:51.984021",
+            "minutes_from_event": 3.0,
+            "solar_altitude_deg": -1.4415163464847893,
+            "solar_azimuth_deg": 253.8089427789527,
+            "brightness": 72.4,
+            "color": [
+              237,
+              85,
+              52
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.989,
+            "air_transmission": 0.915,
+            "relative_brightness": 90.8
+          },
+          {
+            "datetime": "2026-11-01T17:25:51.984021",
+            "minutes_from_event": 4.0,
+            "solar_altitude_deg": -1.6457419644039817,
+            "solar_azimuth_deg": 253.9389243164863,
+            "brightness": 72.2,
+            "color": [
+              235,
+              75,
+              50
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.975,
+            "air_transmission": 0.915,
+            "relative_brightness": 90.6
+          },
+          {
+            "datetime": "2026-11-01T17:26:51.984021",
+            "minutes_from_event": 5.0,
+            "solar_altitude_deg": -1.8501006387632088,
+            "solar_azimuth_deg": 254.0687092486507,
+            "brightness": 71.2,
+            "color": [
+              234,
+              66,
+              48
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.948,
+            "air_transmission": 0.915,
+            "relative_brightness": 89.3
+          },
+          {
+            "datetime": "2026-11-01T17:27:51.984021",
+            "minutes_from_event": 6.0,
+            "solar_altitude_deg": -2.054591123642737,
+            "solar_azimuth_deg": 254.1983006844676,
+            "brightness": 69.5,
+            "color": [
+              231,
+              58,
+              47
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.915,
+            "air_transmission": 0.915,
+            "relative_brightness": 87.2
+          },
+          {
+            "datetime": "2026-11-01T17:28:51.984021",
+            "minutes_from_event": 7.0,
+            "solar_altitude_deg": -2.2592121802934884,
+            "solar_azimuth_deg": 254.32770172918026,
+            "brightness": 67.6,
+            "color": [
+              221,
+              56,
+              47
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.883,
+            "air_transmission": 0.915,
+            "relative_brightness": 84.8
+          },
+          {
+            "datetime": "2026-11-01T17:29:51.984021",
+            "minutes_from_event": 8.0,
+            "solar_altitude_deg": -2.463962577036952,
+            "solar_azimuth_deg": 254.45691548445376,
+            "brightness": 65.8,
+            "color": [
+              213,
+              52,
+              45
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.857,
+            "air_transmission": 0.915,
+            "relative_brightness": 82.6
+          },
+          {
+            "datetime": "2026-11-01T17:30:51.984021",
+            "minutes_from_event": 9.0,
+            "solar_altitude_deg": -2.6688410892511882,
+            "solar_azimuth_deg": 254.58594504844808,
+            "brightness": 64.4,
+            "color": [
+              204,
+              50,
+              45
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.834,
+            "air_transmission": 0.915,
+            "relative_brightness": 80.8
+          },
+          {
+            "datetime": "2026-11-01T17:31:51.984021",
+            "minutes_from_event": 10.0,
+            "solar_altitude_deg": -2.87384649894193,
+            "solar_azimuth_deg": 254.7147935165233,
+            "brightness": 63.6,
+            "color": [
+              196,
+              47,
+              44
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.814,
+            "air_transmission": 0.915,
+            "relative_brightness": 79.8
+          },
+          {
+            "datetime": "2026-11-01T17:32:51.984021",
+            "minutes_from_event": 11.0,
+            "solar_altitude_deg": -3.0789775951362373,
+            "solar_azimuth_deg": 254.84346398069718,
+            "brightness": 63.2,
+            "color": [
+              186,
+              44,
+              43
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.8,
+            "air_transmission": 0.915,
+            "relative_brightness": 79.3
+          },
+          {
+            "datetime": "2026-11-01T17:33:51.984021",
+            "minutes_from_event": 12.0,
+            "solar_altitude_deg": -3.2842331734591,
+            "solar_azimuth_deg": 254.9719595303468,
+            "brightness": 63.1,
+            "color": [
+              178,
+              41,
+              42
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.792,
+            "air_transmission": 0.915,
+            "relative_brightness": 79.2
+          },
+          {
+            "datetime": "2026-11-01T17:34:51.984021",
+            "minutes_from_event": 13.0,
+            "solar_altitude_deg": -3.4896120361147354,
+            "solar_azimuth_deg": 255.10028325229774,
+            "brightness": 63.2,
+            "color": [
+              169,
+              39,
+              41
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.787,
+            "air_transmission": 0.915,
+            "relative_brightness": 79.3
+          },
+          {
+            "datetime": "2026-11-01T17:35:51.984021",
+            "minutes_from_event": 14.0,
+            "solar_altitude_deg": -3.695112991792115,
+            "solar_azimuth_deg": 255.2284382310304,
+            "brightness": 63.6,
+            "color": [
+              160,
+              35,
+              40
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.79,
+            "air_transmission": 0.915,
+            "relative_brightness": 79.8
+          },
+          {
+            "datetime": "2026-11-01T17:36:51.984021",
+            "minutes_from_event": 15.0,
+            "solar_altitude_deg": -3.900734855570093,
+            "solar_azimuth_deg": 255.35642754888994,
+            "brightness": 63.9,
+            "color": [
+              151,
+              32,
+              39
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.8,
+            "air_transmission": 0.915,
+            "relative_brightness": 80.2
+          },
+          {
+            "datetime": "2026-11-01T17:37:51.984021",
+            "minutes_from_event": 16.0,
+            "solar_altitude_deg": -4.106476448816238,
+            "solar_azimuth_deg": 255.48425428630736,
+            "brightness": 64.9,
+            "color": [
+              142,
+              30,
+              38
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.82,
+            "air_transmission": 0.915,
+            "relative_brightness": 81.4
+          },
+          {
+            "datetime": "2026-11-01T17:38:51.984021",
+            "minutes_from_event": 17.0,
+            "solar_altitude_deg": -4.312336599095673,
+            "solar_azimuth_deg": 255.6119215220082,
+            "brightness": 66.3,
+            "color": [
+              133,
+              26,
+              37
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.845,
+            "air_transmission": 0.915,
+            "relative_brightness": 83.2
+          },
+          {
+            "datetime": "2026-11-01T17:39:51.984021",
+            "minutes_from_event": 18.0,
+            "solar_altitude_deg": -4.518314140073812,
+            "solar_azimuth_deg": 255.73943233323365,
+            "brightness": 68.6,
+            "color": [
+              124,
+              24,
+              36
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.875,
+            "air_transmission": 0.915,
+            "relative_brightness": 86.1
+          },
+          {
+            "datetime": "2026-11-01T17:40:51.984021",
+            "minutes_from_event": 19.0,
+            "solar_altitude_deg": -4.724407911422361,
+            "solar_azimuth_deg": 255.8667897959566,
+            "brightness": 72.0,
+            "color": [
+              119,
+              23,
+              37
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.914,
+            "air_transmission": 0.915,
+            "relative_brightness": 90.3
+          },
+          {
+            "datetime": "2026-11-01T17:41:51.984021",
+            "minutes_from_event": 20.0,
+            "solar_altitude_deg": -4.930616758803879,
+            "solar_azimuth_deg": 255.9939969849811,
+            "brightness": 76.4,
+            "color": [
+              112,
+              24,
+              36
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.962,
+            "air_transmission": 0.915,
+            "relative_brightness": 95.9
+          },
+          {
+            "datetime": "2026-11-01T17:42:51.984021",
+            "minutes_from_event": 21.0,
+            "solar_altitude_deg": -5.1369395334562284,
+            "solar_azimuth_deg": 256.12105697466416,
+            "brightness": 79.7,
+            "color": [
+              106,
+              23,
+              37
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.999,
+            "air_transmission": 0.915,
+            "relative_brightness": 100.0
+          },
+          {
+            "datetime": "2026-11-01T17:43:51.984021",
+            "minutes_from_event": 22.0,
+            "solar_altitude_deg": -5.343375092581908,
+            "solar_azimuth_deg": 256.2479728383894,
+            "brightness": 79.7,
+            "color": [
+              100,
+              23,
+              36
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 1.0,
+            "air_transmission": 0.915,
+            "relative_brightness": 100.0
+          },
+          {
+            "datetime": "2026-11-01T17:44:51.984021",
+            "minutes_from_event": 23.0,
+            "solar_altitude_deg": -5.549922298931918,
+            "solar_azimuth_deg": 256.3747476492945,
+            "brightness": 0.0,
+            "color": [
+              93,
+              24,
+              37
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.0,
+            "air_transmission": 0.915,
+            "relative_brightness": 0.0
+          },
+          {
+            "datetime": "2026-11-01T17:45:51.984021",
+            "minutes_from_event": 24.0,
+            "solar_altitude_deg": -5.756580020791603,
+            "solar_azimuth_deg": 256.5013844803775,
+            "brightness": 0.0,
+            "color": [
+              87,
+              23,
+              36
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.0,
+            "air_transmission": 0.915,
+            "relative_brightness": 0.0
+          },
+          {
+            "datetime": "2026-11-01T17:46:51.984021",
+            "minutes_from_event": 25.0,
+            "solar_altitude_deg": -5.963347131891567,
+            "solar_azimuth_deg": 256.62788640472104,
+            "brightness": 0.0,
+            "color": [
+              81,
+              23,
+              37
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.0,
+            "air_transmission": 0.915,
+            "relative_brightness": 0.0
+          },
+          {
+            "datetime": "2026-11-01T17:47:51.984021",
+            "minutes_from_event": 26.0,
+            "solar_altitude_deg": -6.170222511310399,
+            "solar_azimuth_deg": 256.7542564957319,
+            "brightness": 0.0,
+            "color": [
+              75,
+              23,
+              37
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.0,
+            "air_transmission": 0.915,
+            "relative_brightness": 0.0
+          },
+          {
+            "datetime": "2026-11-01T17:48:51.984021",
+            "minutes_from_event": 27.0,
+            "solar_altitude_deg": -6.377205043383185,
+            "solar_azimuth_deg": 256.88049782737437,
+            "brightness": 0.0,
+            "color": [
+              68,
+              23,
+              37
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.0,
+            "air_transmission": 0.915,
+            "relative_brightness": 0.0
+          },
+          {
+            "datetime": "2026-11-01T17:49:51.984021",
+            "minutes_from_event": 28.0,
+            "solar_altitude_deg": -6.584293617611564,
+            "solar_azimuth_deg": 257.0066134744032,
+            "brightness": 0.0,
+            "color": [
+              62,
+              23,
+              38
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.0,
+            "air_transmission": 0.915,
+            "relative_brightness": 0.0
+          },
+          {
+            "datetime": "2026-11-01T17:50:51.984021",
+            "minutes_from_event": 29.0,
+            "solar_altitude_deg": -6.7914871285695995,
+            "solar_azimuth_deg": 257.1326065126058,
+            "brightness": 0.0,
+            "color": [
+              56,
+              23,
+              37
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.0,
+            "air_transmission": 0.915,
+            "relative_brightness": 0.0
+          },
+          {
+            "datetime": "2026-11-01T17:51:51.984021",
+            "minutes_from_event": 30.0,
+            "solar_altitude_deg": -6.998784475812144,
+            "solar_azimuth_deg": 257.25848001904325,
+            "brightness": 0.0,
+            "color": [
+              49,
+              23,
+              38
+            ],
+            "optical_transmission": 0.872,
+            "atmospheric_color_quality": 0.872,
+            "path_transmission": 0.0,
+            "air_transmission": 0.915,
+            "relative_brightness": 0.0
+          }
+        ],
+        "peak": {
+          "datetime": "2026-11-01T17:42:51.984021",
+          "minutes_from_event": 21.0,
+          "solar_altitude_deg": -5.1369395334562284,
+          "solar_azimuth_deg": 256.12105697466416,
+          "brightness": 79.7,
+          "color": [
+            106,
+            23,
+            37
+          ],
+          "optical_transmission": 0.872,
+          "atmospheric_color_quality": 0.872,
+          "path_transmission": 0.999,
+          "air_transmission": 0.915,
+          "relative_brightness": 100.0
+        },
+        "raw_peak_brightness": 79.7,
+        "note": "逐分钟估算；brightness 是保留的原始受光覆盖经验指数，relative_brightness 是本次预测窗口内归一化的相对亮度（窗口峰值=100）。相对亮度适合观察同一次预测内的起伏，不可用于比较不同日期的绝对强弱。原始指数结合受光几何、有限的最强异层光路衰减及 AOD/能见度修正；色彩灰化与亮度衰减分开处理。它不是实测辐射亮度或真实色度预测。"
+      },
+      "origin": [
+        31.8047,
+        117.2214
+      ],
+      "azimuth": 253.4177873830637,
+      "event_dt": "2026-11-01T17:21:51.984021",
+      "boundaries": {
+        "near_cloud_edge_km": 0,
+        "remote_cloud_start_km": 25.0,
+        "cloud_edge_distance_km": 71.89186325771837,
+        "local_cloud_reach_km": 71.89186325771837,
+        "fire_cloud_range_km": 50.0,
+        "clear_gap_start_km": null,
+        "clear_gap_end_km": null,
+        "clear_gaps": [],
+        "clear_gap_count": 0,
+        "largest_gap_size_km": 0.0,
+        "farthest_gap_distance_km": null,
+        "farthest_gap_start_km": null,
+        "gap_status": "unknown",
+        "gap_evidence_points": 3,
+        "gap_evidence_span_km": 50.0,
+        "cloudy_count": 3
+      },
+      "local_scale_clouds": {
+        "total": 99.90123456790124,
+        "low": 14.864197530864198,
+        "mid": 99.90123456790124,
+        "high": 42.67901234567901,
+        "radius_km": 200,
+        "sample_count": 81
+      }
+    }
+  },
+  "last_report": "晚霞详细采样报告\n地点：合肥；日期：2026-11-01；模式：ECMWF IFS 0.25°；事件时刻：2026-11-01 17:21:51.984021；方位角：253.42°\n火烧云发生概率估计：36%（经验估计，尚未经历史样本校准）\n有利情景上限：36%（表示条件理想时的潜在机会，不代表实际发生概率）\n色彩表现评分：41/100（色彩潜力一般；色彩表现经验指数，不是实际色彩饱和度/红霞面积的精确预测。）\n可染色云量占比：约 58%估算。该值是结合本地中高云比例、太阳方向晴空间隔距离和连续云区延伸距离的启发式估算，不是模式直接输出的真实受光比例。\n模型数据上线：2026-11-01 09:24（北京时间）\n潜在霞云距（本地连续中高云末端）：约 50.0 km；极限云距（几何上限）：约 72 km；晴空间隔：未形成可判读的晴空间隔\n彩虹出现机会：偏低（经验指数 44/100，非统计概率）；反太阳方向采样点 0 km，降水概率 98%，小时降水 0.80 mm/h\n采样动态扩展：初始 0–200 km；粗采样最大理论距离 71.9 km；按约 100 km 缓冲扩展，最终采样上限 200 km。\n距离 | 中心坐标 | 总云/低云/中云/高云 | 能见度 | 风速 | 云底绝对海拔 | 有效云底绝对海拔 | 理论深入距离 | 几何筛选\n  0 km | 31.805,117.221 | 100%/0%/100%/26% | — | 4.2 m/s | 0.17 km | 0.00 km | 0 km | 未通过\n 25 km | 31.740,116.968 | 100%/0%/100%/63% | — | 4.0 m/s | 0.10 km | 0.00 km | 0 km | 未通过\n 50 km | 31.675,116.715 | 100%/1%/100%/91% | — | 3.7 m/s | 0.12 km | 0.00 km | 0 km | 未通过\n100 km | 31.544,116.210 | 100%/4%/100%/90% | — | 2.2 m/s | 1.70 km | 0.08 km | 62 km | 未通过\n150 km | 31.411,115.706 | 100%/21%/100%/82% | — | 2.7 m/s | 1.62 km | 0.10 km | 72 km | 未通过\n200 km | 31.275,115.204 | 100%/8%/100%/87% | — | 4.0 m/s | 0.09 km | 0.00 km | 0 km | 未通过\n\n【各采样点 15 km 半径内的原始空间采样】\n\n距离 0 km（中心 31.8047,117.2214）\n  点1 31.8047,117.2214 | 总/低/中/高云 100%/0%/100%/20% | 能见度 — | 风速 4.3 m/s\n  点2 31.4599,117.3418 | 总/低/中/高云 98%/0%/98%/23% | 能见度 — | 风速 4.3 m/s\n  点3 31.5892,117.2967 | 总/低/中/高云 98%/0%/98%/23% | 能见度 — | 风速 4.3 m/s\n  点4 31.7013,117.2576 | 总/低/中/高云 100%/0%/100%/20% | 能见度 — | 风速 4.3 m/s\n  点5 31.9081,117.1851 | 总/低/中/高云 100%/0%/100%/31% | 能见度 — | 风速 4.2 m/s\n  点6 32.0202,117.1457 | 总/低/中/高云 100%/0%/100%/31% | 能见度 — | 风速 4.2 m/s\n  点7 32.1494,117.1001 | 总/低/中/高云 100%/0%/100%/9% | 能见度 — | 风速 3.2 m/s\n  点8 31.7738,117.0997 | 总/低/中/高云 100%/0%/100%/56% | 能见度 — | 风速 4.3 m/s\n  点9 31.8354,117.3431 | 总/低/中/高云 100%/0%/100%/20% | 能见度 — | 风速 4.3 m/s\n\n距离 25 km（中心 31.7403,116.9680）\n  点1 31.7403,116.9680 | 总/低/中/高云 100%/0%/100%/56% | 能见度 — | 风速 4.3 m/s\n  点2 31.3955,117.0883 | 总/低/中/高云 100%/0%/100%/70% | 能见度 — | 风速 3.9 m/s\n  点3 31.5248,117.0433 | 总/低/中/高云 100%/0%/100%/70% | 能见度 — | 风速 3.9 m/s\n  点4 31.6368,117.0042 | 总/低/中/高云 100%/0%/100%/56% | 能见度 — | 风速 4.3 m/s\n  点5 31.8437,116.9318 | 总/低/中/高云 100%/0%/100%/56% | 能见度 — | 风速 4.3 m/s\n  点6 31.9557,116.8924 | 总/低/中/高云 100%/0%/100%/39% | 能见度 — | 风速 4.0 m/s\n  点7 32.0850,116.8469 | 总/低/中/高云 100%/0%/100%/67% | 能见度 — | 风速 3.4 m/s\n  点8 31.7094,116.8464 | 总/低/中/高云 100%/0%/100%/98% | 能见度 — | 风速 3.9 m/s\n  点9 31.7710,117.0897 | 总/低/中/高云 100%/0%/100%/56% | 能见度 — | 风速 4.3 m/s\n\n距离 50 km（中心 31.6754,116.7150）\n  点1 31.6754,116.7150 | 总/低/中/高云 100%/0%/100%/98% | 能见度 — | 风速 3.9 m/s\n  点2 31.3305,116.8352 | 总/低/中/高云 100%/9%/100%/86% | 能见度 — | 风速 3.9 m/s\n  点3 31.4599,116.7902 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 4.0 m/s\n  点4 31.5719,116.7512 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 4.0 m/s\n  点5 31.7788,116.6788 | 总/低/中/高云 100%/0%/100%/98% | 能见度 — | 风速 3.9 m/s\n  点6 31.8908,116.6394 | 总/低/中/高云 100%/0%/100%/67% | 能见度 — | 风速 3.4 m/s\n  点7 32.0201,116.5939 | 总/低/中/高云 100%/0%/100%/70% | 能见度 — | 风速 3.1 m/s\n  点8 31.6445,116.5935 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 3.4 m/s\n  点9 31.7061,116.8366 | 总/低/中/高云 100%/0%/100%/98% | 能见度 — | 风速 3.9 m/s\n\n距离 100 km（中心 31.5440,116.2100）\n  点1 31.5440,116.2100 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 2.3 m/s\n  点2 31.1992,116.3301 | 总/低/中/高云 100%/14%/100%/100% | 能见度 — | 风速 1.1 m/s\n  点3 31.3285,116.2851 | 总/低/中/高云 100%/14%/100%/100% | 能见度 — | 风速 1.1 m/s\n  点4 31.4406,116.2461 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 2.3 m/s\n  点5 31.6475,116.1739 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 3.1 m/s\n  点6 31.7595,116.1346 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 3.1 m/s\n  点7 31.8888,116.0891 | 总/低/中/高云 100%/0%/100%/9% | 能见度 — | 风速 2.8 m/s\n  点8 31.5132,116.0887 | 总/低/中/高云 100%/11%/100%/100% | 能见度 — | 风速 1.8 m/s\n  点9 31.5748,116.3314 | 总/低/中/高云 100%/0%/100%/100% | 能见度 — | 风速 2.3 m/s\n\n距离 150 km（中心 31.4107,115.7065）\n  点1 31.4107,115.7065 | 总/低/中/高云 100%/2%/100%/100% | 能见度 — | 风速 1.8 m/s\n  点2 31.0659,115.8263 | 总/低/中/高云 100%/42%/100%/81% | 能见度 — | 风速 3.8 m/s\n  点3 31.1952,115.7815 | 总/低/中/高云 100%/59%/100%/100% | 能见度 — | 风速 4.1 m/s\n  点4 31.3073,115.7425 | 总/低/中/高云 100%/59%/100%/100% | 能见度 — | 风速 4.1 m/s\n  点5 31.5142,115.6704 | 总/低/中/高云 100%/2%/100%/100% | 能见度 — | 风速 1.8 m/s\n  点6 31.6262,115.6311 | 总/低/中/高云 100%/2%/100%/48% | 能见度 — | 风速 2.5 m/s\n  点7 31.7554,115.5857 | 总/低/中/高云 100%/2%/100%/14% | 能见度 — | 风速 2.3 m/s\n  点8 31.3799,115.5853 | 总/低/中/高云 100%/16%/100%/97% | 能见度 — | 风速 1.8 m/s\n  点9 31.4415,115.8277 | 总/低/中/高云 100%/2%/100%/100% | 能见度 — | 风速 1.8 m/s\n\n距离 200 km（中心 31.2755,115.2044）\n  点1 31.2755,115.2044 | 总/低/中/高云 100%/11%/100%/97% | 能见度 — | 风速 2.8 m/s\n  点2 30.9306,115.3241 | 总/低/中/高云 100%/3%/100%/100% | 能见度 — | 风速 4.4 m/s\n  点3 31.0600,115.2793 | 总/低/中/高云 100%/3%/100%/100% | 能见度 — | 风速 4.4 m/s\n  点4 31.1720,115.2404 | 总/低/中/高云 100%/11%/100%/97% | 能见度 — | 风速 2.8 m/s\n  点5 31.3789,115.1683 | 总/低/中/高云 100%/14%/100%/81% | 能见度 — | 风速 4.9 m/s\n  点6 31.4909,115.1291 | 总/低/中/高云 100%/14%/100%/81% | 能见度 — | 风速 4.9 m/s\n  点7 31.6202,115.0838 | 总/低/中/高云 100%/0%/100%/45% | 能见度 — | 风速 5.3 m/s\n  点8 31.2446,115.0834 | 总/低/中/高云 100%/2%/100%/86% | 能见度 — | 风速 4.2 m/s\n  点9 31.3062,115.3254 | 总/低/中/高云 100%/11%/100%/97% | 能见度 — | 风速 2.8 m/s\n\n【双评分说明】\n• 日落方向中/高云加权均值约 83%：存在潜在受光云层。\n• 低云加权均值约 4%：模式显示低云遮挡风险较低。\n• 总云量加权均值约 100%：整体云量很高，需警惕厚云/阴天情形。\n• 日落方向 AOD（550 nm）约 0.254：气溶胶消光可能削弱远距离光线，按经验规则扣分。\n常规概率为基于当前预报证据的经验估计；上限概率是假设有利云层形态/云隙恰好形成时的潜在机会估计。两者尚未经历史实况校准。\n边界定义：以中云或高云任一云量≥25%标记中高云采样点；潜在霞云距取本地连续中高云区沿太阳方向的末端。极限云距仅由本地有效云底按 D=2√(2Rh_eff) 计算，不再被远端云起点缩短。晴空间隔列出极限云距以内识别到的全部有效云洞，括号内为各云洞宽度；若最后一个云洞延伸至理论上限，则终点截断到极限云距。云洞边界为离散采样估算，不是连续云缘。\n重要限制：当前边界沿观测点至太阳方位的单线采样估算；地图视图使用现有每个距离点周边约15 km采样点，属于稀疏空间示意，不等于卫星云图或连续三维云体。要确认真实云洞边界，需要更密集二维采样与云顶/云底信息。\n彩虹原理依据教程第 2.3.2 节：一次内反射彩虹的视角约 42°，位于反太阳方向；观察者不一定要在本地下雨。当前仅用反太阳方向 0/25/50/100/150 km 的模式降水概率、小时降水量和本地总云量估算机会指数，无法识别雨滴直径、液态相态、云幡结构或实际可见度，因此指数不是统计概率。\n说明：剖面云底为气压层云量/RH启发式推算，不是实测。云底采用最低可能云层，不保证就是最易着色的云层。\n几何距离按 D=2√(2Rh_eff) 计算；实际照明时间使用简化太阳高度角模型。远距离采样间距较疏，采样点之间的云缘位置无法精确确定。",
+  "note": "历史案例加载时原样显示已保存结果；不会自动重新请求天气 API。"
+}

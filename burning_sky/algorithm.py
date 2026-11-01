@@ -1113,8 +1113,11 @@ def apply_peak_cloud_color(inferred, boundaries, samples):
     inferred["peak_cloud_color_note"] = "代表主要受光云区的最鲜艳色相倾向；并非整片天空平均色或精确光谱预测。"
     return inferred
 
-def apply_path_score_pair(inferred, geometry, boundaries):
-    """按显式权重拆分常规分与理想情景上限分；分数不是统计概率。"""
+def apply_path_score_pair(inferred, geometry, boundaries, samples=None):
+    """按显式权重拆分常规分与理想情景上限分；分数不是统计概率。
+
+    同时统一执行单次单模式的特殊判定：剖面云底过低、本地低云遮挡、
+    连续云路难穿透、光板天及低概率结论。"""
     low, mid, high, total = (inferred.get(k) for k in ("low", "mid", "high", "total"))
     aod = inferred.get("aod")
     target_values = [v for v in (mid, high) if isinstance(v, (int, float))]
@@ -1222,8 +1225,61 @@ def apply_path_score_pair(inferred, geometry, boundaries):
     if gap_status == "continuous_cloud":
         regular = min(regular, 20)
         upper = min(upper, 35)
+    # 读取真正的本地采样点，不能用整条路径的加权低云均值代替本地低云量。
+    local_sample = None
+    path_samples = []
+    if samples:
+        try:
+            ordered_samples = sorted(samples, key=lambda row: float(row.get("distance_km", 1e12)))
+            local_sample = next((row for row in ordered_samples
+                                 if abs(float(row.get("distance_km", 1e12))) < 0.01), None)
+            if isinstance(reach, (int, float)) and reach > 0:
+                path_samples = [row for row in ordered_samples
+                                if 0 <= float(row.get("distance_km", -1)) <= float(reach)
+                                and isinstance(row.get("cloud_cover"), (int, float))]
+            else:
+                path_samples = [row for row in ordered_samples
+                                if isinstance(row.get("cloud_cover"), (int, float))]
+        except (TypeError, ValueError):
+            local_sample, path_samples = None, []
+
+    local_low = local_sample.get("cloud_cover_low") if local_sample else None
+    local_total = local_sample.get("cloud_cover") if local_sample else None
+    path_mean_total = (sum(float(row["cloud_cover"]) for row in path_samples) / len(path_samples)
+                       if path_samples else total)
+    profile_base_agl = local.get("cloud_base_agl_km") if local else None
+    profile_based = bool(local and "剖面" in str(local.get("base_source", "")))
+
+    verdict_override = None
+    new_rule_notes = []
+    if profile_based and isinstance(profile_base_agl, (int, float)) and profile_base_agl < 0.5:
+        regular = 0
+        verdict_override = "云底过底"
+        new_rule_notes.append(
+            f"本地剖面推算云底离地高度约 {profile_base_agl * 1000:.0f} m，低于500 m，常规概率直接归零。")
+    elif isinstance(local_low, (int, float)) and local_low >= 90:
+        regular = 0
+        verdict_override = "低云遮挡过多"
+        new_rule_notes.append(
+            f"本地采样低云量为 {local_low:.0f}%，达到90%，常规概率直接归零。")
+    elif isinstance(local_total, (int, float)) and local_total < 10:
+        verdict_override = "光板天"
+        new_rule_notes.append(
+            f"本地总云量为 {local_total:.0f}%，低于10%，单次单模式结论标记为光板天。")
+    elif (gap_status == "continuous_cloud" and not gaps
+          and isinstance(path_mean_total, (int, float)) and path_mean_total > 50):
+        before = regular
+        regular *= 0.5
+        verdict_override = "光线难以穿透"
+        new_rule_notes.append(
+            f"极限云距内未识别到可判读晴空间隔，采样路径平均总云量约 {path_mean_total:.0f}%；"
+            f"常规概率由 {before:.0f}% 折半至 {regular:.0f}%。")
+
     regular = int(round(max(0, min(100, regular))))
     upper = int(round(max(regular, min(100, upper))))
+    if verdict_override is None and regular < 20:
+        verdict_override = "机会太小，几乎不烧"
+    inferred["verdict_override"] = verdict_override
     inferred["regular_score"] = regular
     inferred["upper_score"] = upper
     inferred["score"] = regular  # 旧 UI 兼容：主分数统一指常规评分
@@ -1243,6 +1299,7 @@ def apply_path_score_pair(inferred, geometry, boundaries):
         )
     elif gap_status == "unknown":
         inferred["score_notes"].append("云洞状态未知：距离采样不足或低/中/高云数据不完整，不能把缺测当作晴空，也不按已证实连续云层硬封顶。")
+    inferred["score_notes"].extend(new_rule_notes)
     return inferred
 
 def calculate_color_performance_score(inferred):

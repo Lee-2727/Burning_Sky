@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "state": "waiting",
   "updated_at": "尚未运行",
   "current_model": null,
@@ -8,12 +8,11 @@
   "completed_models": [],
   "cities": [
     "合肥",
-    "芜湖",
-    "南京",
-    "武汉",
-    "上海",
     "深圳"
   ],
   "city_progress": 0,
-  "next_update": "每日 00:30、03:00、06:00、09:00、12:00、15:00、18:00、21:00（北京时间）"
+  "city_total": 2,
+  "task_progress": 0,
+  "task_total": 30,
+  "next_update": "北京时间每日 20:00、00:00、04:00 更新朝霞；08:00、12:00、16:00 更新晚霞"
 }

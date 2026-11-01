@@ -1023,7 +1023,7 @@ class FireCloudApp(tk.Tk):
                 if not isinstance(local_reach, (int, float)) or local_reach <= 0:
                     local_reach = max_reach if max_reach > 0 else None
                 boundaries = estimate_path_cloud_boundaries(samples, local_reach)
-                inferred = apply_path_score_pair(inferred, geometry, boundaries)
+                inferred = apply_path_score_pair(inferred, geometry, boundaries, samples=samples)
                 inferred = apply_low_cloud_screen_constraint(inferred, samples=samples, source="online_path",
                                                              max_relevant_distance_km=max_reach,
                                                              local_low_cloud_above_ground=local_low_above_ground)
@@ -1249,7 +1249,8 @@ class FireCloudApp(tk.Tk):
                 color_label = inferred_result.get("color_score_label", "色彩待估")
                 getattr(self, f"{prefix}_color_score_label").configure(
                     text=(f"色彩 {color_score}/100\n{color_label}" if color_score is not None else "色彩 —/100"))
-                self._set_judgment_text(getattr(self, f"{prefix}_judgment_label"), regular_score, color_score, inferred_result.get("burn_scale_label"))
+                self._set_judgment_text(getattr(self, f"{prefix}_judgment_label"), regular_score, color_score,
+                                         inferred_result.get("verdict_override") or inferred_result.get("burn_scale_label"))
                 rainbow = result.get("rainbow", {})
                 getattr(self, f"{prefix}_rainbow_label").configure(
                     text=self._rainbow_indicator_text(rainbow, result.get("event_dt"), direction_key))
@@ -2026,7 +2027,7 @@ class FireCloudApp(tk.Tk):
                     if not isinstance(reach, (int, float)) or reach <= 0:
                         reach = max((r.get("reach_km") or 0 for r in geometry.get("rows", [])), default=0)
                     boundaries = estimate_path_cloud_boundaries(samples, reach)
-                    inferred = apply_path_score_pair(inferred, geometry, boundaries)
+                    inferred = apply_path_score_pair(inferred, geometry, boundaries, samples=samples)
                     inferred = apply_low_cloud_screen_constraint(inferred, samples=samples, source="online_path",
                                                                  max_relevant_distance_km=reach,
                                                                  local_low_cloud_above_ground=local_low_above_ground)
@@ -3390,6 +3391,17 @@ class FireCloudApp(tk.Tk):
 
     @staticmethod
     def _set_judgment_text(widget, regular_score, color_score, burn_label):
+        special_verdicts = {"云底过底", "光线难以穿透", "低云遮挡过多", "机会太小，几乎不烧", "光板天"}
+        if str(burn_label or "") in special_verdicts:
+            try:
+                widget.configure(state="normal")
+                widget.delete("1.0", "end")
+                widget.insert("end", str(burn_label), "special_black")
+                widget.tag_configure("special_black", foreground="#111111")
+                widget.configure(state="disabled")
+            except Exception:
+                pass
+            return
         try:
             p = float(regular_score)
             probability_label = "小概率" if p < 45 else ("有概率" if p <= 75 else "高概率")
@@ -4237,7 +4249,7 @@ class FireCloudApp(tk.Tk):
         boundaries={"clear_gap_start_km":gap_start,"clear_gap_end_km":gap_end,"cloud_edge_distance_km":next_cloud,
                     "gap_status":gap_status,"gap_evidence_points":len(zones),"gap_evidence_span_km":max_dist,
                     "fire_cloud_range_km":max_dist}
-        inferred=apply_path_score_pair(inferred,geometry,boundaries)
+        inferred=apply_path_score_pair(inferred,geometry,boundaries,samples=samples)
         barrier_analysis = self._analyze_solar_path_barriers(zones)
         # 太阳光路屏障是独立的关键约束：不让远处晴空段把连续高密遮挡带平均掉。
         inferred["pre_barrier_regular_score"] = inferred["regular_score"]
