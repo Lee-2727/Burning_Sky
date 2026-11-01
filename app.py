@@ -7,6 +7,9 @@ import re
 import math
 import importlib.util
 import sys
+import json
+import time
+import urllib.request
 from datetime import date
 from types import SimpleNamespace
 
@@ -33,6 +36,54 @@ if not hasattr(engine, "WEATHER_MODEL_CATALOG"):
     raise ImportError(f"加载的引擎文件缺少 WEATHER_MODEL_CATALOG：{_ENGINE_PATH}")
 
 st.set_page_config(page_title="Burning Sky", page_icon="🌇", layout="wide")
+
+def _github_latest_json(relative_path):
+    """Fetch the latest public snapshot from the repository raw endpoint (no Streamlit cache)."""
+    url = f"https://raw.githubusercontent.com/Lee-2727/Burning_Sky/main/{relative_path}"
+    req = urllib.request.Request(url + f"?v={int(time.time())}", headers={"User-Agent": "BurningSky-Web/1.0", "Cache-Control": "no-cache"})
+    with urllib.request.urlopen(req, timeout=8) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+def _latest_overview_snapshot(city, data_dir):
+    """Prefer GitHub's newest published JSON; fall back to the deployed local snapshot."""
+    for rel in (f"data/overview_{city}.json", "data/overview.json"):
+        try:
+            payload = _github_latest_json(rel)
+            if rel.endswith("overview.json") and isinstance(payload, dict):
+                cities = payload.get("cities", {})
+                if isinstance(cities, dict) and city in cities:
+                    return cities[city]
+                if city == "合肥" and payload.get("days"):
+                    return payload
+            elif isinstance(payload, dict) and payload.get("days"):
+                return payload
+        except Exception:
+            pass
+    for rel in (f"overview_{city}.json", "overview.json"):
+        try:
+            with open(os.path.join(data_dir, rel), "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            if rel == "overview.json" and isinstance(payload, dict):
+                cities = payload.get("cities", {})
+                if isinstance(cities, dict) and city in cities:
+                    return cities[city]
+                if city == "合肥" and payload.get("days"):
+                    return payload
+            elif isinstance(payload, dict) and payload.get("days"):
+                return payload
+        except Exception:
+            pass
+    return None
+
+def _latest_status_snapshot(data_dir):
+    try:
+        return _github_latest_json("data/overview_status.json")
+    except Exception:
+        try:
+            with open(os.path.join(data_dir, "overview_status.json"), "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
 
 # Community-hosted apps may have a public URL. Configure APP_PASSWORD in Streamlit
 # secrets or the environment to keep the interface restricted to the owner.
@@ -305,9 +356,9 @@ if st.session_state.get("show_multi_day_overview"):
         # Background GitHub Actions status is published at model-batch boundaries.
         _status_path = os.path.join(_data_dir, "overview_status.json")
         try:
-            import json as _status_json
-            with open(_status_path, "r", encoding="utf-8") as _sf:
-                _update_status = _status_json.load(_sf)
+            _update_status = _latest_status_snapshot(_data_dir)
+            if not _update_status:
+                raise ValueError("状态文件尚不可用")
             _state = _update_status.get("state", "unknown")
             _completed_models = _update_status.get("completed_models", [])
             _model_total = _update_status.get("model_total", 5)
@@ -339,24 +390,7 @@ if st.session_state.get("show_multi_day_overview"):
             _overview_cities = ["合肥", "深圳"]
         _overview_city = st.selectbox("概览城市", _overview_cities, index=0, key="overview_city_select")
         _overview_path = os.path.join(_data_dir, f"overview_{_overview_city}.json")
-        _overview = None
-        try:
-            import json as _json
-            with open(_overview_path, "r", encoding="utf-8") as _f:
-                _overview = _json.load(_f)
-        except Exception:
-            # Compatibility: deployments may only contain the aggregate overview.json.
-            # Prefer the selected city's entry; support the old single-city Hefei format.
-            try:
-                with open(os.path.join(_data_dir, "overview.json"), "r", encoding="utf-8") as _f:
-                    _legacy = _json.load(_f)
-                _cities = _legacy.get("cities", {}) if isinstance(_legacy, dict) else {}
-                if isinstance(_cities, dict) and _overview_city in _cities:
-                    _overview = _cities[_overview_city]
-                elif _overview_city == "合肥" and isinstance(_legacy, dict) and _legacy.get("days"):
-                    _overview = _legacy
-            except Exception:
-                pass
+        _overview = _latest_overview_snapshot(_overview_city, _data_dir)
         if not _overview or not _overview.get("days"):
             st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、五种天气模式的朝霞与晚霞结果。")
         else:
@@ -506,6 +540,59 @@ def _burn_label(inferred, summary):
         label = "大烧"
     return label, burn_index
 
+def _apply_single_result_special_rules(result):
+    """Apply requested single-query probability overrides and judgment text."""
+    inferred = result.get("inferred", {})
+    # Read local AGL cloud base from the local geometry row (profile-derived value).
+    local_geometry = next((r for r in (result.get("geometry", {}) or {}).get("rows", [])
+                          if isinstance(r, dict) and r.get("distance_km") == 0), {})
+    base_agl_km = local_geometry.get("cloud_base_agl_km")
+    if not isinstance(base_agl_km, (int, float)):
+        base_agl_km = local_geometry.get("cloud_base_km")
+    local = result.get("local_scale_clouds") or {}
+    low = local.get("low")
+    total = sum(float(local.get(k) or 0) for k in ("low", "mid", "high")
+                if isinstance(local.get(k), (int, float)))
+    samples = [x for x in result.get("samples", []) if isinstance(x, dict)]
+    reach = result.get("max_reach")
+    if not isinstance(reach, (int, float)) or reach <= 0:
+        reach = (result.get("geometry", {}) or {}).get("reach_km")
+    relevant = [x for x in samples if isinstance(x.get("distance_km"), (int, float))
+                and (not isinstance(reach, (int, float)) or x.get("distance_km") <= reach)]
+    cover_values = [x.get("cloud_cover") for x in relevant
+                    if isinstance(x.get("cloud_cover"), (int, float))]
+    avg_path_cloud = sum(cover_values) / len(cover_values) if cover_values else None
+    boundaries = result.get("boundaries", {}) or {}
+    has_gap = (boundaries.get("clear_gap_start_km") is not None
+               and boundaries.get("clear_gap_end_km") is not None)
+    # A cloud-free endpoint inside the modeled limit is also a recognized clear interval.
+    endpoint_clear = any(isinstance(x.get("cloud_cover"), (int, float))
+                         and x.get("cloud_cover") <= 15 for x in relevant)
+    no_clear_gap = not has_gap and not endpoint_clear
+
+    reason = None
+    score = inferred.get("regular_score", inferred.get("score"))
+    profile_derived = "剖面" in str(local_geometry.get("base_source", ""))
+    if profile_derived and isinstance(base_agl_km, (int, float)) and base_agl_km < 0.5:
+        score, reason = 0, "云底过底"
+    elif isinstance(low, (int, float)) and low >= 90:
+        score, reason = 0, "低云遮挡过多"
+    elif isinstance(avg_path_cloud, (int, float)) and avg_path_cloud > 50 and no_clear_gap:
+        if isinstance(score, (int, float)):
+            score = int(round(score * 0.5))
+        reason = "光线难以穿透"
+    elif isinstance(total, (int, float)) and total < 10:
+        reason = "光板天"
+    elif isinstance(score, (int, float)) and score < 20:
+        reason = "机会太小，几乎不烧"
+
+    if isinstance(score, (int, float)):
+        inferred["regular_score"] = int(round(max(0, min(100, score))))
+        inferred["score"] = inferred["regular_score"]
+    result["special_judgment"] = reason
+    result["inferred"] = inferred
+    return result
+
 def _path_sampling_table(details):
     """Extract only the along-path sampling rows from the legacy detailed report."""
     columns = [
@@ -543,7 +630,7 @@ if results:
         directions = [item for item in directions if item[0] == visible_direction]
     columns = st.columns(len(directions))
     for col, (key, title) in zip(columns, directions):
-        result = results.get(key, {})
+        result = _apply_single_result_special_rules(results.get(key, {}))
         inferred = result.get("inferred", {})
         with col:
             st.subheader(title)
@@ -560,11 +647,16 @@ if results:
             regular_label = _probability_label(regular_score)
             color_class = _color_label(color_score)
             burn_text = burn_label
+            special_judgment = result.get("special_judgment")
             color_palette = {"平平无奇": "#e2c76a", "普通": "#c99b24", "绚烂": "#e67e22", "史诗": "#d62828", "世纪": "#9d174d"}
             color_hex = color_palette.get(color_class, "#4b5563")
+            if special_judgment:
+                judgment_html = f'<span style="color:#111111;">{special_judgment}</span>'
+            else:
+                judgment_html = f'{regular_label} <span style="color:{color_hex};">{color_class}</span>的{burn_text}'
             st.markdown(
                 f'<div style="font-size:24px;font-weight:800;line-height:1.5;margin:6px 0 2px 0;">'
-                f'{regular_label} <span style="color:{color_hex};">{color_class}</span>的{burn_text}</div>'
+                f'{judgment_html}</div>'
                 f'<div style="font-size:11px;font-weight:400;color:#858585;line-height:1.5;margin:0 0 12px 0;">'
                 f'常规概率：&lt;45% 小概率，45%–75% 有概率，&gt;75% 高概率；'
                 f'色彩评分：&lt;30 平平无奇，30–&lt;50 普通，50–&lt;70 绚烂，70–&lt;90 史诗，≥90 世纪；'
