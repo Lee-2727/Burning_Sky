@@ -1,9 +1,12 @@
 {
   "schema_version": 2,
-  "state": "waiting",
-  "updated_at": "尚未运行",
-  "current_model": null,
-  "model_index": 0,
+  "state": "running",
+  "direction": "morning",
+  "direction_title": "朝霞",
+  "started_at": "2026-11-02 04:24:21 CST",
+  "updated_at": "2026-11-02 04:24:21 CST",
+  "current_model": "ECMWF IFS 0.25°",
+  "model_index": 1,
   "model_total": 5,
   "completed_models": [],
   "cities": [
@@ -14,5 +17,5 @@
   "city_total": 2,
   "task_progress": 0,
   "task_total": 30,
-  "next_update": "北京时间每日 20:00、00:00、04:00 更新朝霞；08:00、12:00、16:00 更新晚霞"
+  "next_update": "北京时间每日 00:00/04:00/20:00 朝霞；08:00/12:00/16:00 晚霞"
 }
