@@ -1027,6 +1027,8 @@ class FireCloudApp(tk.Tk):
                 inferred = apply_low_cloud_screen_constraint(inferred, samples=samples, source="online_path",
                                                              max_relevant_distance_km=max_reach,
                                                              local_low_cloud_above_ground=local_low_above_ground)
+                # 最终兜底：低云屏障等后续阶段不得覆盖单次单模式特殊判定。
+                inferred = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
                 inferred = apply_peak_cloud_color(inferred, boundaries, samples)
                 if elevation_filter_result.get("applied"):
                     inferred.setdefault("score_notes", []).append(
@@ -1053,8 +1055,8 @@ class FireCloudApp(tk.Tk):
                 base_short = ('—' if local_geometry is None or local_geometry.get('cloud_base_km') is None else
                               format(local_geometry.get('cloud_base_km'), '.2f') + ' km')
                 base_source_raw = local_geometry.get('base_source', '未知来源') if local_geometry else '未知来源'
-                if '剖面推算' in base_source_raw:
-                    base_source_short = '推算'
+                if '剖面' in base_source_raw:
+                    base_source_short = '剖面推算'
                 elif '自动失败' in base_source_raw:
                     base_source_short = '默认值'
                 elif '手动' in base_source_raw:

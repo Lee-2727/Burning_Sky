@@ -69,3 +69,45 @@ def test_regular_probability_below_20_uses_low_chance_verdict():
     result = apply_path_score_pair(inferred, geometry, boundaries, samples=samples)
     assert result['regular_score'] < 20
     assert result['verdict_override'] == '机会太小，几乎不烧'
+
+
+def test_real_case_profile_180m_and_local_low_100pct_remains_hard_zero_after_later_screen():
+    from burning_sky.algorithm import enforce_single_mode_special_verdicts, apply_low_cloud_screen_constraint
+    inferred, geometry, boundaries, samples = _inputs(
+        base_agl=0.18,
+        base_source='剖面离地高度 + 地点海拔（绝对高度）',
+        local_low=100,
+        local_total=100,
+        path_total=100,
+        gap_status='continuous_cloud',
+    )
+    result = apply_path_score_pair(inferred, geometry, boundaries, samples=samples)
+    # Simulate the subsequent low-cloud screen used by the live web pipeline.
+    result = apply_low_cloud_screen_constraint(result, samples=samples, source='online_path',
+                                               max_relevant_distance_km=100)
+    result = enforce_single_mode_special_verdicts(result, geometry, boundaries, samples=samples)
+    assert result['regular_score'] == 0
+    assert result['verdict_override'] == '云底过底'
+    assert result['verdict_rule'] == 'profile_cloud_base_below_500m'
+
+
+def test_final_verdict_fallback_detects_local_low_cloud_from_sample():
+    from burning_sky.algorithm import enforce_single_mode_special_verdicts
+    inferred, geometry, boundaries, samples = _inputs(
+        base_agl=1.2, base_source='手动绝对高度', local_low=100, local_total=100,
+        path_total=100, gap_status='continuous_cloud')
+    result = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
+    assert result['regular_score'] == 0
+    assert result['verdict_override'] == '低云遮挡过多'
+
+
+def test_exact_profile_source_label_with_unknown_gap_still_triggers_cloud_base_rule():
+    from burning_sky.algorithm import enforce_single_mode_special_verdicts
+    inferred, geometry, boundaries, samples = _inputs(
+        base_agl=0.18,
+        base_source='剖面离地高度 + 地点海拔（绝对高度）',
+        local_low=30, local_total=100, path_total=100, gap_status='unknown')
+    result = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
+    assert result['regular_score'] == 0
+    assert result['verdict_override'] == '云底过底'
+    assert result['special_rule_diagnostics']['profile_based'] is True

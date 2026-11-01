@@ -1300,7 +1300,85 @@ def apply_path_score_pair(inferred, geometry, boundaries, samples=None):
     elif gap_status == "unknown":
         inferred["score_notes"].append("云洞状态未知：距离采样不足或低/中/高云数据不完整，不能把缺测当作晴空，也不按已证实连续云层硬封顶。")
     inferred["score_notes"].extend(new_rule_notes)
+    return enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
+
+def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=None):
+    """Re-apply single-mode hard rules at the final result boundary.
+
+    This deliberately runs after any subsequent low-cloud screen adjustments,
+    so later scoring stages cannot leave a non-zero regular score or a generic
+    burn label when a higher-priority special condition is present.
+    """
+    inferred = inferred if isinstance(inferred, dict) else dict(inferred or {})
+    geometry = geometry or {}
+    boundaries = boundaries or {}
+    rows = geometry.get("rows", []) or []
+    local = next((r for r in rows if r.get("distance_km") is not None and abs(float(r.get("distance_km"))) < 0.01), None)
+    ordered = sorted((samples or []), key=lambda r: float(r.get("distance_km", 1e12)))
+    local_sample = next((r for r in ordered if r.get("distance_km") is not None and abs(float(r.get("distance_km"))) < 0.01), None)
+
+    base_source = str((local or {}).get("base_source", ""))
+    profile_status = str((local or {}).get("profile_status", ""))
+    profile_based = ("剖面" in base_source) or (bool(profile_status) and not any(
+        marker in profile_status for marker in ("失败", "缺测", "未获取", "回退")))
+    base_agl = (local or {}).get("cloud_base_agl_km")
+    local_low = None
+    local_total = None
+    if local_sample:
+        local_low = local_sample.get("center_cloud_cover_low", local_sample.get("cloud_cover_low"))
+        local_total = local_sample.get("cloud_cover")
+
+    reach = (local or {}).get("reach_km")
+    if not isinstance(reach, (int, float)) or reach <= 0:
+        reach = boundaries.get("local_cloud_reach_km") or boundaries.get("cloud_edge_distance_km")
+    path_samples = [r for r in ordered if isinstance(r.get("cloud_cover"), (int, float)) and
+                    (not isinstance(reach, (int, float)) or reach <= 0 or
+                     0 <= float(r.get("distance_km", -1)) <= float(reach))]
+    path_mean = (sum(float(r["cloud_cover"]) for r in path_samples) / len(path_samples)
+                 if path_samples else inferred.get("total"))
+    gaps = boundaries.get("clear_gaps") or []
+    gap_status = boundaries.get("gap_status", "unknown")
+
+    verdict = None
+    rule = None
+    if profile_based and isinstance(base_agl, (int, float)) and float(base_agl) < 0.5:
+        inferred["regular_score"] = 0
+        verdict, rule = "云底过底", "profile_cloud_base_below_500m"
+    elif isinstance(local_low, (int, float)) and float(local_low) >= 90:
+        inferred["regular_score"] = 0
+        verdict, rule = "低云遮挡过多", "local_low_cloud_at_least_90pct"
+    elif (gap_status == "continuous_cloud" and not gaps and
+          isinstance(path_mean, (int, float)) and float(path_mean) > 50):
+        # apply_path_score_pair() may already have applied the 0.5 factor.
+        if inferred.get("verdict_override") != "光线难以穿透":
+            inferred["regular_score"] = float(inferred.get("regular_score", inferred.get("score", 0))) * 0.5
+        verdict, rule = "光线难以穿透", "continuous_cloud_path_mean_over_50pct"
+    elif isinstance(local_total, (int, float)) and float(local_total) < 10:
+        verdict, rule = "光板天", "local_total_cloud_below_10pct"
+
+    score = int(round(max(0, min(100, float(inferred.get("regular_score", inferred.get("score", 0)) or 0)))))
+    inferred["regular_score"] = score
+    inferred["score"] = score
+    if verdict is None and score < 20:
+        verdict, rule = "机会太小，几乎不烧", "regular_probability_below_20pct"
+    if verdict is not None:
+        inferred["verdict_override"] = verdict
+        inferred["verdict_rule"] = rule
+    inferred["special_rule_diagnostics"] = {
+        "local_base_agl_km": base_agl,
+        "local_base_source": base_source,
+        "profile_based": profile_based,
+        "local_low_cloud_pct": local_low,
+        "local_total_cloud_pct": local_total,
+        "path_mean_total_cloud_pct": round(float(path_mean), 1) if isinstance(path_mean, (int, float)) else None,
+        "gap_status": gap_status,
+        "clear_gap_count": len(gaps),
+    }
+    upper = inferred.get("upper_score")
+    if isinstance(upper, (int, float)):
+        inferred["upper_score"] = int(round(max(score, min(100, float(upper)))))
     return inferred
+
 
 def calculate_color_performance_score(inferred):
     """独立估算色彩表现潜力；这是经验指数，不是光谱/辐射传输模拟。"""

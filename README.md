@@ -1,3 +1,9 @@
+# Burning Sky Web Package — V1.6.9
+
+本包基于 V1.6.8 修复单次单模式特殊判定的最终执行链路，并增加网页端诊断。详细变更见 `CHANGELOG_V1_6_9.md`。城市、五模式、未来三日范围及六个北京时间定时点均保持不变。
+
+---
+
 # Burning Sky V1.4.67 — Engine Architecture Migration
 
 This release is a compatibility-first architecture refactor. The validated v1.4.67

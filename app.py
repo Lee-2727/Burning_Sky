@@ -619,6 +619,21 @@ if results:
             else:
                 st.caption(curve.get("note", "当前没有可参与动态受光估算的云层；已保留空白坐标框，不会伪造色彩曲线。"))
             with st.expander(f"{title}详细采样与分析报告"):
+                diagnostics = inferred.get("special_rule_diagnostics")
+                if diagnostics:
+                    st.caption("特殊判定诊断（用于核对云底、近场低云与连续云路规则是否实际命中）")
+                    diag_rows = [
+                        {"检查项": "本地剖面云底离地高度", "实际值": diagnostics.get("local_base_agl_km"), "单位": "km"},
+                        {"检查项": "云底来源", "实际值": diagnostics.get("local_base_source"), "单位": ""},
+                        {"检查项": "是否识别为剖面云底", "实际值": diagnostics.get("profile_based"), "单位": ""},
+                        {"检查项": "本地低云量", "实际值": diagnostics.get("local_low_cloud_pct"), "单位": "%"},
+                        {"检查项": "本地总云量", "实际值": diagnostics.get("local_total_cloud_pct"), "单位": "%"},
+                        {"检查项": "极限云距内路径平均总云量", "实际值": diagnostics.get("path_mean_total_cloud_pct"), "单位": "%"},
+                        {"检查项": "晴空间隔状态", "实际值": diagnostics.get("gap_status"), "单位": ""},
+                        {"检查项": "有效晴空间隔数量", "实际值": diagnostics.get("clear_gap_count"), "单位": "个"},
+                        {"检查项": "最终命中规则", "实际值": inferred.get("verdict_rule", "无"), "单位": ""},
+                    ]
+                    st.dataframe(pd.DataFrame(diag_rows), use_container_width=True, hide_index=True)
                 path_table = _path_sampling_table(result.get("details", ""))
                 if not path_table.empty:
                     st.dataframe(path_table, use_container_width=True, hide_index=True)
