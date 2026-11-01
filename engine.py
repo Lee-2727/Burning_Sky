@@ -1027,9 +1027,9 @@ class FireCloudApp(tk.Tk):
                 inferred = apply_low_cloud_screen_constraint(inferred, samples=samples, source="online_path",
                                                              max_relevant_distance_km=max_reach,
                                                              local_low_cloud_above_ground=local_low_above_ground)
-                # 最终兜底：低云屏障等后续阶段不得覆盖单次单模式特殊判定。
-                inferred = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
                 inferred = apply_peak_cloud_color(inferred, boundaries, samples)
+                # 结果发布前最后一道规则闸门：低云屏障、色彩处理之后重新核定特殊结论。
+                inferred = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
                 if elevation_filter_result.get("applied"):
                     inferred.setdefault("score_notes", []).append(
                         "高海拔近场低云过滤：" + elevation_filter_result.get("reason", "已应用") +
@@ -1126,12 +1126,14 @@ class FireCloudApp(tk.Tk):
                 inferred["burn_scale_index"] = burn_scale_index
                 inferred["burn_scale_label"] = burn_scale_label
                 inferred["tintable_ratio"] = tintable_ratio
+                special_summary_line = (f"\n特殊判定：{inferred.get('verdict_override')}" if inferred.get("verdict_override") else "")
                 summary = (
                     f"{model_time_text}\n"
                     f"{direction_name} · {data['place']} · {data['date'].isoformat()}　{event_dt.strftime('%H:%M')} / 方位 {azimuth:.0f}°\n"
                     f"{model_label}　|　云量 总 {self._fmt_pct(inferred['total'])} · 低 {self._fmt_pct(inferred['low'])} · 中 {self._fmt_pct(inferred['mid'])} · 高 {self._fmt_pct(inferred['high'])} · 可染色云量占比 {tintable_text}\n"
                     f"潜在霞云距 {fire_range_text}　|　极限云距 {cloud_edge_text}　|　晴空间隔 {gap_text}\n"
                     f"云底 {base_short}（{base_source_short}）　|　AOD {aod_short}"
+                    f"{special_summary_line}"
                 )
                 detail_lines = [
                     f"{direction_name}详细采样报告", f"地点：{data['place']}；日期：{data['date']}；模式：{model_label}；事件时刻：{event_dt}；方位角：{azimuth:.2f}°",

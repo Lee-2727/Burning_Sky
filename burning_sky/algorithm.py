@@ -1321,12 +1321,24 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
     profile_status = str((local or {}).get("profile_status", ""))
     profile_based = ("剖面" in base_source) or (bool(profile_status) and not any(
         marker in profile_status for marker in ("失败", "缺测", "未获取", "回退")))
+    # 优先使用明确的 AGL 字段；若字段缺失，则用剖面云底的绝对高度作保守兜底。
+    # 当前网页摘要展示的是 cloud_base_km（绝对海拔），不能因 AGL 派生字段缺失
+    # 而漏掉用户定义的“剖面云底低于 500 m”硬规则。
     base_agl = (local or {}).get("cloud_base_agl_km")
+    base_asl = (local or {}).get("cloud_base_km", (local or {}).get("cloud_base_asl_km"))
+    profile_base_for_rule = base_agl if isinstance(base_agl, (int, float)) else base_asl
+    base_height_basis = "离地高度 AGL" if isinstance(base_agl, (int, float)) else "绝对高度 ASL（AGL 缺失时兜底）"
     local_low = None
     local_total = None
     if local_sample:
-        local_low = local_sample.get("center_cloud_cover_low", local_sample.get("cloud_cover_low"))
+        local_low = local_sample.get("center_cloud_cover_low")
+        if local_low is None:
+            local_low = local_sample.get("cloud_cover_low")
         local_total = local_sample.get("cloud_cover")
+    if local_low is None:
+        local_low = inferred.get("low")
+    if local_total is None:
+        local_total = inferred.get("total")
 
     reach = (local or {}).get("reach_km")
     if not isinstance(reach, (int, float)) or reach <= 0:
@@ -1341,7 +1353,7 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
 
     verdict = None
     rule = None
-    if profile_based and isinstance(base_agl, (int, float)) and float(base_agl) < 0.5:
+    if profile_based and isinstance(profile_base_for_rule, (int, float)) and float(profile_base_for_rule) < 0.5:
         inferred["regular_score"] = 0
         verdict, rule = "云底过底", "profile_cloud_base_below_500m"
     elif isinstance(local_low, (int, float)) and float(local_low) >= 90:
@@ -1366,6 +1378,9 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
         inferred["verdict_rule"] = rule
     inferred["special_rule_diagnostics"] = {
         "local_base_agl_km": base_agl,
+        "local_base_asl_km": base_asl,
+        "profile_base_value_used_km": profile_base_for_rule,
+        "profile_base_height_basis": base_height_basis,
         "local_base_source": base_source,
         "profile_based": profile_based,
         "local_low_cloud_pct": local_low,

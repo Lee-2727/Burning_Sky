@@ -111,3 +111,28 @@ def test_exact_profile_source_label_with_unknown_gap_still_triggers_cloud_base_r
     assert result['regular_score'] == 0
     assert result['verdict_override'] == '云底过底'
     assert result['special_rule_diagnostics']['profile_based'] is True
+
+
+def test_profile_absolute_cloud_base_fallback_when_agl_field_missing():
+    from burning_sky.algorithm import enforce_single_mode_special_verdicts
+    inferred, geometry, boundaries, samples = _inputs(
+        base_agl=1.2, base_source='剖面离地高度 + 地点海拔（绝对高度）',
+        local_low=100, local_total=100, path_total=100)
+    geometry['rows'][0].pop('cloud_base_agl_km', None)
+    geometry['rows'][0]['cloud_base_km'] = 0.18
+    result = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
+    assert result['regular_score'] == 0
+    assert result['verdict_override'] == '云底过底'
+    assert result['special_rule_diagnostics']['profile_base_height_basis'].startswith('绝对高度')
+
+
+def test_final_low_cloud_rule_uses_inferred_low_if_local_sample_missing():
+    from burning_sky.algorithm import enforce_single_mode_special_verdicts
+    inferred, geometry, boundaries, samples = _inputs(
+        base_agl=1.2, base_source='手动绝对高度', local_low=100, local_total=100)
+    samples[0].pop('center_cloud_cover_low', None)
+    samples[0].pop('cloud_cover_low', None)
+    inferred['low'] = 95
+    result = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
+    assert result['regular_score'] == 0
+    assert result['verdict_override'] == '低云遮挡过多'
