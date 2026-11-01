@@ -5,9 +5,9 @@
   "longitude": 114.0579,
   "elevation_m": 20.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": "2026-11-01 20:48:29 CST",
+  "updated_at": "2026-11-01 21:52:07 CST",
   "direction_updated_at": {
-    "morning": "2026-11-01 20:48:29 CST",
+    "morning": "2026-11-01 21:52:07 CST",
     "evening": "2026-11-01 16:52:32 CST"
   },
   "days": [
@@ -104,9 +104,9 @@
         "ECMWF IFS 0.25°": {
           "probability": 53.0,
           "color_score": 70.0,
-          "burn_scale": 12.266049382716048,
-          "fire_score_no_color": 6.501006172839506,
-          "burn_scale_label": "微烧",
+          "burn_scale": 9.418641975308642,
+          "fire_score_no_color": 4.99188024691358,
+          "burn_scale_label": "小小烧",
           "event_time": "2026-11-02T06:28:28.658857"
         },
         "GFS Global": {
@@ -189,8 +189,8 @@
       "date": "2026-11-03",
       "morning": {
         "ECMWF IFS 0.25°": {
-          "probability": 31.0,
-          "color_score": 12.0,
+          "probability": 25.0,
+          "color_score": 11.0,
           "burn_scale": 0.0,
           "fire_score_no_color": 0.0,
           "burn_scale_label": "几乎不烧",
