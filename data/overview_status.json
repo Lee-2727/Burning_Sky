@@ -4,9 +4,9 @@
   "direction": "evening",
   "direction_title": "晚霞",
   "started_at": "2026-11-01 12:41:50 CST",
-  "updated_at": "2026-11-01 12:44:19 CST",
-  "current_model": "ECMWF IFS 0.25°",
-  "model_index": 1,
+  "updated_at": "2026-11-01 12:44:20 CST",
+  "current_model": "GFS Global",
+  "model_index": 2,
   "model_total": 5,
   "completed_models": [
     "ECMWF IFS 0.25°"
