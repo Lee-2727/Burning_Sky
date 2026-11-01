@@ -5,8 +5,8 @@
   "direction_title": "晚霞",
   "started_at": "2026-11-01 08:38:47 CST",
   "updated_at": "2026-11-01 08:44:09 CST",
-  "current_model": "GFS Global",
-  "model_index": 2,
+  "current_model": "ICON Global",
+  "model_index": 3,
   "model_total": 5,
   "completed_models": [
     "ECMWF IFS 0.25°",
