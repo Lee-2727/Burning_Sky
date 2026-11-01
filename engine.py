@@ -367,6 +367,23 @@ def request_json(req, timeout=20, retries=3, cache_key=None, cache_ttl=None):
 
 
 
+def calculate_burn_scale(mid_cloud, high_cloud, tintable_ratio):
+    """Return effective tintable mid/high cloud amount (%) and its size class."""
+    values = (mid_cloud, high_cloud, tintable_ratio)
+    if not all(isinstance(v, (int, float)) and math.isfinite(float(v)) for v in values):
+        return None, "暂不可判定"
+    mid_high_cover = max(0.0, min(100.0, float(mid_cloud) + float(high_cloud)))
+    ratio = max(0.0, min(100.0, float(tintable_ratio)))
+    value = round(mid_high_cover * ratio / 100.0, 2)
+    if value <= 0: label = "几乎不烧"
+    elif value < 10: label = "小小烧"
+    elif value < 30: label = "微烧"
+    elif value < 50: label = "小烧"
+    elif value < 70: label = "中烧"
+    else: label = "大烧"
+    return value, label
+
+
 class FireCloudApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -1082,16 +1099,10 @@ class FireCloudApp(tk.Tk):
                     tintable_text = "暂不可估"
                 else:
                     tintable_text = f"约 {tintable_ratio}%"
-                # 新的霞云规模直接采用可染色云占比，不再叠加旧的本地200 km云量公式。
-                burn_scale_index = float(tintable_ratio) if isinstance(tintable_ratio,(int,float)) else None
-                burn_scale_label = "暂不可判定"
-                if burn_scale_index is not None:
-                    if burn_scale_index <= 0: burn_scale_label = "几乎不烧"
-                    elif burn_scale_index < 10: burn_scale_label = "小小烧"
-                    elif burn_scale_index < 30: burn_scale_label = "微烧"
-                    elif burn_scale_index < 50: burn_scale_label = "小烧"
-                    elif burn_scale_index < 70: burn_scale_label = "中烧"
-                    else: burn_scale_label = "大烧"
+                # 霞云规模必须同时考虑天空中实际存在的中高云量与其中可染色的比例。
+                # 可染色云占比本身只是中高云资源的几何筛选比例，不能直接作为霞云规模。
+                burn_scale_index, burn_scale_label = calculate_burn_scale(
+                    inferred.get("mid"), inferred.get("high"), tintable_ratio)
                 inferred["burn_scale_index"] = burn_scale_index
                 inferred["burn_scale_label"] = burn_scale_label
                 inferred["tintable_ratio"] = tintable_ratio

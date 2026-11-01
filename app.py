@@ -555,21 +555,13 @@ def _color_label(value):
     return "世纪"
 
 def _burn_label(inferred, summary):
-    """The new cloud-scale indicator is the physically estimated tintable-cloud ratio."""
-    ratio = inferred.get("tintable_ratio")
-    if not isinstance(ratio, (int, float)) or not math.isfinite(float(ratio)):
-        match = re.search(r"可染色云(?:量)?占比\s+(?:约\s*)?(\d+(?:\.\d+)?)%", str(summary or ""))
-        ratio = float(match.group(1)) if match else None
-    if ratio is None:
-        return "暂不可判定", None
-    value = max(0.0, min(100.0, float(ratio)))
-    if value <= 0: label = "几乎不烧"
-    elif value < 10: label = "小小烧"
-    elif value < 30: label = "微烧"
-    elif value < 50: label = "小烧"
-    elif value < 70: label = "中烧"
-    else: label = "大烧"
-    return label, value
+    """Classify cloud scale from actual mid/high cloud cover × tintable ratio."""
+    value = inferred.get("burn_scale_index")
+    label = inferred.get("burn_scale_label")
+    if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+        value, label = engine.calculate_burn_scale(
+            inferred.get("mid"), inferred.get("high"), inferred.get("tintable_ratio"))
+    return (label or "暂不可判定"), value
 
 def _path_sampling_table(details):
     """Extract only the along-path sampling rows from the legacy detailed report."""
