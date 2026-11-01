@@ -5,9 +5,10 @@
   "longitude": 114.0579,
   "elevation_m": 20.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": "2026-11-01 04:39:25 CST",
+  "updated_at": "2026-11-01 08:52:47 CST",
   "direction_updated_at": {
-    "morning": "2026-11-01 04:39:25 CST"
+    "morning": "2026-11-01 04:39:25 CST",
+    "evening": "2026-11-01 08:52:47 CST"
   },
   "days": [
     {
@@ -56,33 +57,44 @@
       },
       "evening": {
         "ECMWF IFS 0.25°": {
-          "probability": 29.0,
-          "color_score": 11.0,
+          "probability": 51.0,
+          "color_score": 27.0,
+          "burn_scale": 0.6258024691358023,
+          "fire_score_no_color": 0.3191592592592592,
+          "burn_scale_label": "小小烧",
+          "event_time": "2026-11-01T17:46:24.648960"
+        },
+        "GFS Global": {
+          "probability": 69.0,
+          "color_score": 63.0,
+          "burn_scale": 4.130864197530864,
+          "fire_score_no_color": 2.850296296296296,
+          "burn_scale_label": "小小烧",
+          "event_time": "2026-11-01T17:46:24.648960"
+        },
+        "ICON Global": {
+          "probability": 20.0,
+          "color_score": 69.0,
+          "burn_scale": 2.226666666666666,
+          "fire_score_no_color": 0.44533333333333325,
+          "burn_scale_label": "小小烧",
+          "event_time": "2026-11-01T17:46:24.648960"
+        },
+        "CMA GRAPES Global": {
+          "probability": 53.0,
+          "color_score": 14.0,
           "burn_scale": 0.0,
           "fire_score_no_color": 0.0,
           "burn_scale_label": "几乎不烧",
           "event_time": "2026-11-01T17:46:24.648960"
         },
-        "GFS Global": {
-          "probability": null,
-          "color_score": null,
-          "burn_scale": null,
-          "burn_scale_label": "暂不可判定",
-          "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
-        },
-        "ICON Global": {
-          "probability": null,
-          "color_score": null,
-          "burn_scale": null,
-          "burn_scale_label": "暂不可判定",
-          "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
-        },
-        "CMA GRAPES Global": {
-          "probability": null,
-          "color_score": null,
-          "burn_scale": null,
-          "burn_scale_label": "暂不可判定",
-          "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+        "ECMWF (AI)": {
+          "probability": 81.0,
+          "color_score": 44.0,
+          "burn_scale": 1.1777777777777778,
+          "fire_score_no_color": 0.9540000000000001,
+          "burn_scale_label": "小小烧",
+          "event_time": "2026-11-01T17:46:24.648960"
         }
       }
     },
@@ -132,33 +144,44 @@
       },
       "evening": {
         "ECMWF IFS 0.25°": {
-          "probability": 37.0,
-          "color_score": 7.0,
+          "probability": 73.0,
+          "color_score": 16.0,
+          "burn_scale": 0.31975308641975386,
+          "fire_score_no_color": 0.23341975308642032,
+          "burn_scale_label": "小小烧",
+          "event_time": "2026-11-02T17:45:49.872655"
+        },
+        "GFS Global": {
+          "probability": 29.0,
+          "color_score": 32.0,
           "burn_scale": 0.0,
           "fire_score_no_color": 0.0,
           "burn_scale_label": "几乎不烧",
           "event_time": "2026-11-02T17:45:49.872655"
         },
-        "GFS Global": {
-          "probability": null,
-          "color_score": null,
-          "burn_scale": null,
-          "burn_scale_label": "暂不可判定",
-          "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
-        },
         "ICON Global": {
-          "probability": null,
-          "color_score": null,
-          "burn_scale": null,
-          "burn_scale_label": "暂不可判定",
-          "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          "probability": 29.0,
+          "color_score": 20.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-02T17:45:49.872655"
         },
         "CMA GRAPES Global": {
-          "probability": null,
-          "color_score": null,
-          "burn_scale": null,
-          "burn_scale_label": "暂不可判定",
-          "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          "probability": 43.0,
+          "color_score": 14.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-02T17:45:49.872655"
+        },
+        "ECMWF (AI)": {
+          "probability": 36.0,
+          "color_score": 24.0,
+          "burn_scale": 0.20679012345679038,
+          "fire_score_no_color": 0.07444444444444454,
+          "burn_scale_label": "小小烧",
+          "event_time": "2026-11-02T17:45:49.872655"
         }
       }
     },
@@ -208,33 +231,44 @@
       },
       "evening": {
         "ECMWF IFS 0.25°": {
-          "probability": 35.0,
-          "color_score": 9.0,
+          "probability": 34.0,
+          "color_score": 7.0,
           "burn_scale": 0.0,
           "fire_score_no_color": 0.0,
           "burn_scale_label": "几乎不烧",
           "event_time": "2026-11-03T17:45:16.240985"
         },
         "GFS Global": {
-          "probability": null,
-          "color_score": null,
-          "burn_scale": null,
-          "burn_scale_label": "暂不可判定",
-          "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          "probability": 41.0,
+          "color_score": 14.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-03T17:45:16.240985"
         },
         "ICON Global": {
-          "probability": null,
-          "color_score": null,
-          "burn_scale": null,
-          "burn_scale_label": "暂不可判定",
-          "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          "probability": 20.0,
+          "color_score": 20.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-03T17:45:16.240985"
         },
         "CMA GRAPES Global": {
-          "probability": null,
-          "color_score": null,
-          "burn_scale": null,
-          "burn_scale_label": "暂不可判定",
-          "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
+          "probability": 51.0,
+          "color_score": 6.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-03T17:45:16.240985"
+        },
+        "ECMWF (AI)": {
+          "probability": 36.0,
+          "color_score": 24.0,
+          "burn_scale": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "几乎不烧",
+          "event_time": "2026-11-03T17:45:16.240985"
         }
       }
     }
