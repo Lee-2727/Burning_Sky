@@ -870,42 +870,8 @@ class FireCloudApp(tk.Tk):
                     area_coords_by_center.append(neighborhood)
                     cross_offsets_by_center.append(offsets)
                 query_coords = [pt for group in area_coords_by_center for pt in group]
-                # 独立的本地烧云规模采样：中心点 + 20–200 km、每 20 km 一环的 8 方位点。
-                # 这组采样只用于最终“小小烧/微烧/...”标签，不参与原有路径采样及评分。
-                local_scale_coords = []
-                for radius_km in range(20, 201, 20):
-                    for bearing_deg in range(0, 360, 45):
-                        local_scale_coords.append(destination_point(data["lat"], data["lon"], bearing_deg, radius_km))
-                path_location_count = len(query_coords)
-                query_coords.extend(local_scale_coords)
-                self._set_main_progress(base_progress + 22, f"{direction_name}：请求沿线天气与本地 200 km 规模采样（{len(query_coords)} 个空间点）……")
+                self._set_main_progress(base_progress + 22, f"{direction_name}：请求沿线天气采样（{len(query_coords)} 个空间点）……")
                 raw_locations = self._fetch_weather_locations(query_coords, model_id)
-                # 以中心点和 80 个本地环点计算 0–200 km 的独立云量均值。
-                local_scale_records = []
-                for loc in ([raw_locations[0]] if raw_locations else []) + raw_locations[path_location_count:]:
-                    hourly = loc.get("hourly", {})
-                    times = hourly.get("time", [])
-                    if not times:
-                        continue
-                    idx = min(range(len(times)), key=lambda i: abs((datetime.fromisoformat(times[i]) - event_utc).total_seconds()))
-                    if abs((datetime.fromisoformat(times[idx]) - event_utc).total_seconds()) > 5400:
-                        continue
-                    rec = {}
-                    for key in ("cloud_cover", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high"):
-                        series = hourly.get(key, [])
-                        val = series[idx] if idx < len(series) else None
-                        rec[key] = val if isinstance(val, (int, float)) and math.isfinite(val) else None
-                    local_scale_records.append(rec)
-                def _local_scale_avg(key):
-                    vals = [r[key] for r in local_scale_records if r.get(key) is not None]
-                    return sum(vals) / len(vals) if vals else None
-                local_scale_clouds = {
-                    "total": _local_scale_avg("cloud_cover"),
-                    "low": _local_scale_avg("cloud_cover_low"),
-                    "mid": _local_scale_avg("cloud_cover_mid"),
-                    "high": _local_scale_avg("cloud_cover_high"),
-                    "radius_km": 200, "sample_count": len(local_scale_records),
-                }
                 self._set_main_progress(base_progress + 34, f"{direction_name}：整理沿线云量与天气数据……")
                 cloud_keys = ("cloud_cover", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high",
                               "visibility", "wind_speed_10m", "precipitation_probability", "precipitation", "wind_gusts_10m")
@@ -1063,66 +1029,69 @@ class FireCloudApp(tk.Tk):
                     base_source_short = '手动值'
                 else:
                     base_source_short = '默认值' if cloud_base_mode == '自动' else base_source_raw
-                # “可染色云量占比”是启发式估算，不是气象模式直接输出的观测量。
-                # 先估算本地总云量中中/高云所占比例，再根据太阳方向云路是否存在近距离晴空缺口、
-                # 以及本地连续云区是否延伸很远进行折减。晴空缺口越远/路径云层越连续，估算占比越低。
-                local_total = inferred.get("total")
-                local_mid = inferred.get("mid")
-                local_high = inferred.get("high")
-                target_cloud = max([v for v in (local_mid, local_high) if isinstance(v, (int, float))], default=None)
-                all_gaps = boundaries.get("clear_gaps") or []
-                gap_start = min((float(g.get("start_km", 0)) for g in all_gaps), default=boundaries.get("clear_gap_start_km"))
-                gap_count = len(all_gaps)
-                total_gap_size = sum(float(g.get("size_km", 0) or 0) for g in all_gaps)
-                local_cloud_extent = boundaries.get("fire_cloud_range_km")
-                tintable_ratio = None
-                if isinstance(local_total, (int, float)) and local_total > 0 and target_cloud is not None:
-                    base_ratio = max(0.0, min(1.0, target_cloud / local_total))
-                    if isinstance(gap_start, (int, float)):
-                        # 近端云洞有利于金色表现；多个云洞的总宽度和数量也会增加潜在可染色机会。
-                        gap_factor = max(0.15, min(1.0, 1.0 - max(0.0, gap_start - 30.0) / 220.0))
-                        reach_for_ratio = boundaries.get("local_cloud_reach_km") or boundaries.get("cloud_edge_distance_km")
-                        if isinstance(reach_for_ratio, (int, float)) and reach_for_ratio > 0:
-                            gap_factor = min(1.0, gap_factor + 0.18 * min(1.0, total_gap_size / reach_for_ratio) + 0.04 * min(3, max(0, gap_count-1)))
-                    else:
-                        # 未识别到晴空间隔时，连续云路越长，越保守；数据不足也不直接判为 0。
-                        extent = float(local_cloud_extent) if isinstance(local_cloud_extent, (int, float)) else 100.0
-                        gap_factor = max(0.15, min(0.65, 0.65 - max(0.0, extent - 30.0) / 300.0))
-                    tintable_ratio = max(0, min(100, round(base_ratio * gap_factor * 100)))
-                    tintable_text = f"约 {tintable_ratio}%估算"
-                elif isinstance(local_total, (int, float)) and local_total <= 0:
-                    tintable_ratio = 0
-                    tintable_text = "0%估算（本地无云）"
+                # 新可染色云占比：以日出/日落前后 60 分钟为窗口，按中高云覆盖量、
+                # 云层高度带和沿太阳方向的距离单元加权；同时检验球形地球上的直射受光
+                # 与观测点至云层的几何视线。云洞不再通过人为距离折减系数处理，而是由
+                # 各距离单元实际的云量分布进入积分。高度带为模式低/中/高云的近似范围。
+                earth_r = 6371.0088
+                tint_num = 0.0
+                tint_den = 0.0
+                ordered = sorted(samples, key=lambda q: float(q.get("distance_km", 0)))
+                if event_dt and ordered:
+                    cells = []
+                    for si, sm in enumerate(ordered):
+                        d = float(sm.get("distance_km", 0))
+                        prev_d = float(ordered[si-1].get("distance_km", d)) if si else d
+                        next_d = float(ordered[si+1].get("distance_km", d)) if si+1 < len(ordered) else d
+                        left = max(0.0, (prev_d+d)/2.0) if si else 0.0
+                        right = (d+next_d)/2.0 if si+1 < len(ordered) else d + max(5.0, (d-prev_d)/2.0 if si else 12.5)
+                        if local_geometry and isinstance(local_geometry.get("reach_km"), (int,float)):
+                            right = min(right, float(local_geometry["reach_km"]))
+                        width = max(0.0, right-left)
+                        if width <= 0: continue
+                        for key, lo, hi in (("cloud_cover_mid",2.0,6.0),("cloud_cover_high",6.0,12.0)):
+                            cover = sm.get(key)
+                            if not isinstance(cover,(int,float)) or not math.isfinite(float(cover)) or cover <= 0: continue
+                            # 分母为全部有效中高云资源；权重按云量、层厚与距离单元面积。
+                            weight = width * (hi-lo) * float(cover) / 100.0
+                            cells.append((d,lo,hi,weight))
+                            tint_den += weight
+                    if tint_den > 0:
+                        # 逐分钟扫描事件前后半小时；任一时刻满足受光和可见条件即计入。
+                        for d, lo, hi, weight in cells:
+                            mid_h = (lo+hi)/2.0
+                            horizon_km = math.sqrt(max(0.0,(earth_r+hi)**2-earth_r**2))
+                            if d > horizon_km: continue
+                            lit_best = 0.0
+                            for minute in range(-30,31):
+                                dt = event_dt + timedelta(minutes=minute)
+                                solar_alt, _ = solar_position(dt, data["utc_offset"], data["lat"], data["lon"])
+                                # 目标云区处的局地太阳高度需修正地球曲率。
+                                local_alt = solar_alt + math.degrees(d/earth_r)
+                                def _shadow_angle(h):
+                                    return -math.degrees(math.acos(max(-1.0,min(1.0,earth_r/(earth_r+h)))))
+                                base_thr, top_thr = _shadow_angle(lo), _shadow_angle(hi)
+                                if local_alt >= base_thr: lit = 1.0
+                                elif local_alt <= top_thr: lit = 0.0
+                                else: lit = (local_alt-top_thr)/max(1e-9,base_thr-top_thr)
+                                lit_best = max(lit_best, lit)
+                                if lit_best >= 0.999: break
+                            tint_num += weight * lit_best
+                tintable_ratio = round(max(0.0,min(100.0,100.0*tint_num/tint_den))) if tint_den > 0 else (0 if ordered else None)
+                if tintable_ratio is None:
+                    tintable_text = "暂不可估"
                 else:
-                    # 可染色云量占比无法估算时按 0 计，不再因此阻断烧云规模判读。
-                    tintable_ratio = 0
-                    tintable_text = "0%估算（数据不足，按0计）"
-                # 烧云规模单独使用本地 200 km 采样；不改动路径算法的 15 km 采样与概率评分。
-                local_mid_scale = local_scale_clouds.get("mid")
-                local_high_scale = local_scale_clouds.get("high")
-                local_low_scale = local_scale_clouds.get("low")
-                burn_scale_index = None
+                    tintable_text = f"约 {tintable_ratio}%"
+                # 新的霞云规模直接采用可染色云占比，不再叠加旧的本地200 km云量公式。
+                burn_scale_index = float(tintable_ratio) if isinstance(tintable_ratio,(int,float)) else None
                 burn_scale_label = "暂不可判定"
-                if all(isinstance(v, (int, float)) and math.isfinite(float(v)) for v in (local_mid_scale, local_high_scale, local_low_scale)):
-                    local_scale_cloud_sum = float(local_low_scale) + float(local_mid_scale) + float(local_high_scale)
-                    # tintable_ratio 已在不可估时按 0 处理。
-                    ratio_for_scale = float(tintable_ratio) if isinstance(tintable_ratio, (int, float)) and math.isfinite(float(tintable_ratio)) else 0.0
-                    burn_scale_index = max(0.0, max(float(local_mid_scale), float(local_high_scale)) - float(local_low_scale)) * max(0.0, min(100.0, ratio_for_scale)) / 100.0
-                    if local_scale_cloud_sum < 10:
-                        burn_scale_label = "光板天"
-                    elif burn_scale_index <= 0:
-                        burn_scale_label = "几乎不烧"
-                    elif burn_scale_index < 10:
-                        burn_scale_label = "小小烧"
-                    elif burn_scale_index < 30:
-                        burn_scale_label = "微烧"
-                    elif burn_scale_index < 50:
-                        burn_scale_label = "小烧"
-                    elif burn_scale_index < 70:
-                        burn_scale_label = "中烧"
-                    else:
-                        burn_scale_label = "大烧"
-                inferred["local_scale_clouds"] = local_scale_clouds
+                if burn_scale_index is not None:
+                    if burn_scale_index <= 0: burn_scale_label = "几乎不烧"
+                    elif burn_scale_index < 10: burn_scale_label = "小小烧"
+                    elif burn_scale_index < 30: burn_scale_label = "微烧"
+                    elif burn_scale_index < 50: burn_scale_label = "小烧"
+                    elif burn_scale_index < 70: burn_scale_label = "中烧"
+                    else: burn_scale_label = "大烧"
                 inferred["burn_scale_index"] = burn_scale_index
                 inferred["burn_scale_label"] = burn_scale_label
                 inferred["tintable_ratio"] = tintable_ratio
@@ -1130,7 +1099,7 @@ class FireCloudApp(tk.Tk):
                 summary = (
                     f"{model_time_text}\n"
                     f"{direction_name} · {data['place']} · {data['date'].isoformat()}　{event_dt.strftime('%H:%M')} / 方位 {azimuth:.0f}°\n"
-                    f"{model_label}　|　云量 总 {self._fmt_pct(inferred['total'])} · 低 {self._fmt_pct(inferred['low'])} · 中 {self._fmt_pct(inferred['mid'])} · 高 {self._fmt_pct(inferred['high'])} · 可染色云量占比 {tintable_text}\n"
+                    f"{model_label}　|　云量 总 {self._fmt_pct(inferred['total'])} · 低 {self._fmt_pct(inferred['low'])} · 中 {self._fmt_pct(inferred['mid'])} · 高 {self._fmt_pct(inferred['high'])} · 可染色云占比 {tintable_text}\n"
                     f"潜在霞云距 {fire_range_text}　|　极限云距 {cloud_edge_text}　|　晴空间隔 {gap_text}\n"
                     f"云底 {base_short}（{base_source_short}）　|　AOD {aod_short}"
                     f"{special_summary_line}"
@@ -1140,7 +1109,7 @@ class FireCloudApp(tk.Tk):
                     f"火烧云发生概率估计：{inferred['regular_score']}%（经验估计，尚未经历史样本校准）",
                     f"有利情景上限：{inferred['upper_score']}%（表示条件理想时的潜在机会，不代表实际发生概率）",
                     f"色彩表现评分：{inferred.get('color_score', '—')}/100（{inferred.get('color_score_label', '待估')}；{inferred.get('color_score_note', '经验指数')}）",
-                    f"可染色云量占比：{tintable_text}。该值是结合本地中高云比例、太阳方向晴空间隔距离和连续云区延伸距离的启发式估算，不是模式直接输出的真实受光比例。",
+                    f"可染色云占比：{tintable_text}。基于模式云量、高度带、太阳位置、地球曲率与几何可见性估算；不是卫星实测值。",
                     model_time_text,
                     f"潜在霞云距（本地连续中高云末端）：{fire_range_text}；极限云距（几何上限）：{cloud_edge_text}；晴空间隔：{gap_text}",
                     (f"彩虹出现机会：暂不可估；{rainbow_result.get('note', '反太阳方向降水条件数据不可用。')}" if rainbow_result.get("score") is None else
@@ -1226,7 +1195,7 @@ class FireCloudApp(tk.Tk):
                                           "distances": distances, "max_reach": max_reach, "aod": effective_aod,
                                           "rainbow": rainbow_result, "dynamic_light_curve": dynamic_curve,
                                           "origin": (data["lat"], data["lon"]), "azimuth": azimuth, "event_dt": event_dt,
-                                          "boundaries": boundaries, "local_scale_clouds": local_scale_clouds,
+                                          "boundaries": boundaries,
                                           # 保存本次实际请求返回的原始天气响应，供案例复盘；不额外发起请求。
                                           "raw_weather": raw_locations}
 
@@ -3440,7 +3409,7 @@ class FireCloudApp(tk.Tk):
             for match in re.finditer(r"(?<!\S)(?:中|高)\s*\d+(?:\.\d+)?%", value):
                 start = match.start()
                 widget.tag_add("mid_high_cloud", f"1.0+{start}c", f"1.0+{match.end()}c")
-            for match in re.finditer(r"可染色云量占比：[^\n]+", value):
+            for match in re.finditer(r"可染色云占比：[^\n]+", value):
                 widget.tag_add("tintable_ratio", f"1.0+{match.start()}c", f"1.0+{match.end()}c")
             for match in re.finditer(r"(?:模型数据上线|模型数据处理完成|模式起报时间|模型数据时间)：[^\n]+", value):
                 widget.tag_add("model_time", f"1.0+{match.start()}c", f"1.0+{match.end()}c")

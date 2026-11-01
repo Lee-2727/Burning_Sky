@@ -9,4 +9,4 @@ def test_web_finalizer_for_user_reported_case():
     source = APP.read_text(encoding="utf-8")
     assert "inferred = _web_finalize_special_verdict(" in source
     assert "profile_cloud_base_below_500m_web_summary" in source
-    assert 'st.caption("特殊判定诊断（常驻显示）")' in source
+    assert 'st.caption("特殊判定诊断（常驻显示）")' not in source

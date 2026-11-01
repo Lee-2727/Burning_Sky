@@ -126,7 +126,7 @@ def _record(result):
         except (TypeError, ValueError):
             return None
     probability = numeric(inferred.get("regular_score", inferred.get("score")))
-    burn_scale = numeric(inferred.get("burn_scale_index"))
+    burn_scale = numeric(inferred.get("tintable_ratio", inferred.get("burn_scale_index")))
     # 常规概率以百分数存储；乘以规模时换算为 0–1 概率，评分仍保持 0–100 的直观范围。
     fire_score = (probability / 100.0 * burn_scale
                   if probability is not None and burn_scale is not None else None)

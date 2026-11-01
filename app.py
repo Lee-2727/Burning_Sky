@@ -402,7 +402,7 @@ if st.session_state.get("show_multi_day_overview"):
                                 "模式": _model_short[_model],
                                 "常规概率": (f"{_prob:.0f}%" if isinstance(_prob, (int, float)) else "—"),
                                 "色彩分": (f"{_v['color_score']:.0f}" if isinstance(_v.get("color_score"), (int, float)) else "—"),
-                                "霞云规模": (f"{_scale:.1f}" if isinstance(_scale, (int, float)) else "—"),
+                                "可染色云占比": (f"{_scale:.0f}%" if isinstance(_scale, (int, float)) else "—"),
                                 "火烧云评分（不考虑色彩）": (f"{_fire_score:.1f}" if _fire_score is not None else "—"),
                             })
                         _df = pd.DataFrame(_rows)
@@ -555,35 +555,21 @@ def _color_label(value):
     return "世纪"
 
 def _burn_label(inferred, summary):
-    """Local 0–200 km scale estimate; missing tintable ratio is treated as zero."""
-    local = inferred.get("local_scale_clouds") or {}
-    mid, high, low = local.get("mid"), local.get("high"), local.get("low")
-    if not all(isinstance(v, (int, float)) and math.isfinite(float(v)) for v in (mid, high, low)):
-        return "暂不可判定", None
-
-    # If the tintable-cloud ratio cannot be obtained, use 0 rather than blocking the judgment.
+    """The new cloud-scale indicator is the physically estimated tintable-cloud ratio."""
     ratio = inferred.get("tintable_ratio")
     if not isinstance(ratio, (int, float)) or not math.isfinite(float(ratio)):
-        match = re.search(r"可染色云量占比\s+(?:约\s*)?(\d+(?:\.\d+)?)%", str(summary or ""))
-        ratio = float(match.group(1)) if match else 0.0
-
-    local_cloud_sum = float(low) + float(mid) + float(high)
-    burn_index = max(0.0, max(float(mid), float(high)) - float(low)) * max(0.0, min(100.0, float(ratio))) / 100.0
-    if local_cloud_sum < 10:
-        label = "光板天"
-    elif burn_index <= 0:
-        label = "几乎不烧"
-    elif burn_index < 10:
-        label = "小小烧"
-    elif burn_index < 30:
-        label = "微烧"
-    elif burn_index < 50:
-        label = "小烧"
-    elif burn_index < 70:
-        label = "中烧"
-    else:
-        label = "大烧"
-    return label, burn_index
+        match = re.search(r"可染色云(?:量)?占比\s+(?:约\s*)?(\d+(?:\.\d+)?)%", str(summary or ""))
+        ratio = float(match.group(1)) if match else None
+    if ratio is None:
+        return "暂不可判定", None
+    value = max(0.0, min(100.0, float(ratio)))
+    if value <= 0: label = "几乎不烧"
+    elif value < 10: label = "小小烧"
+    elif value < 30: label = "微烧"
+    elif value < 50: label = "小烧"
+    elif value < 70: label = "中烧"
+    else: label = "大烧"
+    return label, value
 
 def _path_sampling_table(details):
     """Extract only the along-path sampling rows from the legacy detailed report."""
@@ -657,7 +643,7 @@ if results:
                 f'<div style="font-size:11px;font-weight:400;color:#858585;line-height:1.5;margin:0 0 12px 0;">'
                 f'常规概率：&lt;45% 小概率，45%–75% 有概率，&gt;75% 高概率；'
                 f'色彩评分：&lt;30 平平无奇，30–&lt;50 普通，50–&lt;70 绚烂，70–&lt;90 史诗，≥90 世纪；'
-                f'烧云规模：指数&lt;10 小小烧，10–&lt;30 微烧，30–&lt;50 小烧，50–&lt;70 中烧，≥70 大烧；采用本地 200 km 采样，公式为 max(中云,高云)−低云，再乘可染色云量占比。'
+                f'可染色云占比：表示沿太阳方向采样到的中高云中，满足几何受光与可见条件的加权比例。'
                 f'</div>', unsafe_allow_html=True)
             rgb = inferred.get("peak_color_rgb") or inferred.get("color_rgb")
             if isinstance(rgb, (tuple, list)) and len(rgb) >= 3:
@@ -679,23 +665,6 @@ if results:
                     st.caption(f"预测峰值时刻：事件前/后 {peak.get('minutes_from_event', 0):+.1f} 分钟；原始亮度指数 {peak.get('brightness', '—')}；相对亮度 {peak.get('relative_brightness', '—')}。")
             else:
                 st.caption(curve.get("note", "当前没有可参与动态受光估算的云层；已保留空白坐标框，不会伪造色彩曲线。"))
-            diagnostics = inferred.get("special_rule_diagnostics") or {}
-            st.caption("特殊判定诊断（常驻显示）")
-            diag_rows = [
-                {"检查项": "剖面云底离地高度 AGL", "实际值": diagnostics.get("local_base_agl_km"), "单位": "km"},
-                {"检查项": "剖面云底绝对高度 ASL", "实际值": diagnostics.get("local_base_asl_km"), "单位": "km"},
-                {"检查项": "本次规则实际采用的云底值", "实际值": diagnostics.get("profile_base_value_used_km"), "单位": "km"},
-                {"检查项": "云底比较依据", "实际值": diagnostics.get("profile_base_height_basis"), "单位": ""},
-                {"检查项": "云底来源", "实际值": diagnostics.get("local_base_source"), "单位": ""},
-                {"检查项": "是否识别为剖面云底", "实际值": diagnostics.get("profile_based"), "单位": ""},
-                {"检查项": "本地低云量", "实际值": diagnostics.get("local_low_cloud_pct"), "单位": "%"},
-                {"检查项": "本地总云量", "实际值": diagnostics.get("local_total_cloud_pct"), "单位": "%"},
-                {"检查项": "极限云距内路径平均总云量", "实际值": diagnostics.get("path_mean_total_cloud_pct"), "单位": "%"},
-                {"检查项": "晴空间隔状态", "实际值": diagnostics.get("gap_status"), "单位": ""},
-                {"检查项": "有效晴空间隔数量", "实际值": diagnostics.get("clear_gap_count"), "单位": "个"},
-                {"检查项": "最终命中规则", "实际值": inferred.get("verdict_rule", "无"), "单位": ""},
-            ]
-            st.dataframe(pd.DataFrame(diag_rows), use_container_width=True, hide_index=True)
             with st.expander(f"{title}详细采样与分析报告"):
                 path_table = _path_sampling_table(result.get("details", ""))
                 if not path_table.empty:
