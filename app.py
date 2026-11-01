@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Streamlit web client for the shared Burning Sky v1.4.67 engine."""
+"""Streamlit web client for the shared Burning Sky v1.4.67 / Web V1.6.11 engine."""
 from __future__ import annotations
 
 import os
@@ -469,6 +469,65 @@ def _styled_cloud_summary(summary):
                   r'<span style="color:#c62828;font-weight:800;">\1 \2</span>', text)
     return text.replace("\\n", "<br>")
 
+
+def _web_finalize_special_verdict(inferred, summary):
+    """Final UI safety net: derive special verdicts from the same summary shown to users.
+
+    This prevents the web client from displaying a generic burn label when the
+    engine result omitted an optional diagnostic field or special verdict.
+    """
+    import copy
+    inferred = copy.deepcopy(inferred) if isinstance(inferred, dict) else {}
+    summary = str(summary or "")
+    diag = inferred.get("special_rule_diagnostics") or {}
+
+    def _pct(pattern, fallback=None):
+        m = re.search(pattern, summary)
+        if m:
+            try: return float(m.group(1))
+            except (TypeError, ValueError): pass
+        return fallback
+
+    # The summary's displayed base is the same profile-derived absolute-height
+    # value presented in the result line. When marked as profile-derived, it is
+    # sufficient for the user's explicit <500 m hard cutoff in this web view.
+    base_match = re.search(r"云底\s*([0-9]+(?:\.[0-9]+)?)\s*km", summary)
+    base_km = float(base_match.group(1)) if base_match else None
+    is_profile = ("剖面" in summary) or ("剖面" in str(diag.get("local_base_source", "")))
+    total = _pct(r"云量\s*总\s*([0-9]+(?:\.[0-9]+)?)\s*%", inferred.get("total"))
+    low = _pct(r"低\s*([0-9]+(?:\.[0-9]+)?)\s*%", inferred.get("low"))
+
+    verdict = None
+    rule = None
+    score = inferred.get("regular_score", inferred.get("score", 0))
+    try: score = float(score)
+    except (TypeError, ValueError): score = 0.0
+
+    if is_profile and base_km is not None and base_km < 0.5:
+        score, verdict, rule = 0, "云底过底", "profile_cloud_base_below_500m_web_summary"
+    elif low is not None and low >= 90:
+        score, verdict, rule = 0, "低云遮挡过多", "local_low_cloud_at_least_90pct_web_summary"
+    elif total is not None and total < 10:
+        verdict, rule = "光板天", "local_total_cloud_below_10pct_web_summary"
+    elif score < 20:
+        verdict, rule = "机会太小，几乎不烧", "regular_probability_below_20pct_web_final"
+
+    if verdict:
+        inferred["regular_score"] = int(round(score))
+        inferred["score"] = int(round(score))
+        inferred["verdict_override"] = verdict
+        inferred["verdict_rule"] = rule
+    inferred["special_rule_diagnostics"] = {
+        **diag,
+        "web_summary_profile_base_km": base_km,
+        "web_summary_profile_based": is_profile,
+        "web_summary_local_low_cloud_pct": low,
+        "web_summary_local_total_cloud_pct": total,
+        "web_final_verdict": verdict or "未触发网页兜底规则",
+        "web_final_rule": rule or "engine_result",
+    }
+    return inferred
+
 def _probability_label(value):
     try:
         value = float(value)
@@ -564,7 +623,9 @@ if results:
     columns = st.columns(len(directions))
     for col, (key, title) in zip(columns, directions):
         result = results.get(key, {})
-        inferred = result.get("inferred", {})
+        inferred = _web_finalize_special_verdict(
+            result.get("inferred", {}), result.get("summary", ""))
+        result["inferred"] = inferred
         with col:
             st.subheader(title)
             if result.get("summary"):
@@ -618,24 +679,23 @@ if results:
                     st.caption(f"预测峰值时刻：事件前/后 {peak.get('minutes_from_event', 0):+.1f} 分钟；原始亮度指数 {peak.get('brightness', '—')}；相对亮度 {peak.get('relative_brightness', '—')}。")
             else:
                 st.caption(curve.get("note", "当前没有可参与动态受光估算的云层；已保留空白坐标框，不会伪造色彩曲线。"))
-            diagnostics = inferred.get("special_rule_diagnostics")
-            if diagnostics:
-                st.caption("特殊判定诊断（常驻显示）")
-                diag_rows = [
-                    {"检查项": "剖面云底离地高度 AGL", "实际值": diagnostics.get("local_base_agl_km"), "单位": "km"},
-                    {"检查项": "剖面云底绝对高度 ASL", "实际值": diagnostics.get("local_base_asl_km"), "单位": "km"},
-                    {"检查项": "本次规则实际采用的云底值", "实际值": diagnostics.get("profile_base_value_used_km"), "单位": "km"},
-                    {"检查项": "云底比较依据", "实际值": diagnostics.get("profile_base_height_basis"), "单位": ""},
-                    {"检查项": "云底来源", "实际值": diagnostics.get("local_base_source"), "单位": ""},
-                    {"检查项": "是否识别为剖面云底", "实际值": diagnostics.get("profile_based"), "单位": ""},
-                    {"检查项": "本地低云量", "实际值": diagnostics.get("local_low_cloud_pct"), "单位": "%"},
-                    {"检查项": "本地总云量", "实际值": diagnostics.get("local_total_cloud_pct"), "单位": "%"},
-                    {"检查项": "极限云距内路径平均总云量", "实际值": diagnostics.get("path_mean_total_cloud_pct"), "单位": "%"},
-                    {"检查项": "晴空间隔状态", "实际值": diagnostics.get("gap_status"), "单位": ""},
-                    {"检查项": "有效晴空间隔数量", "实际值": diagnostics.get("clear_gap_count"), "单位": "个"},
-                    {"检查项": "最终命中规则", "实际值": inferred.get("verdict_rule", "无"), "单位": ""},
-                ]
-                st.dataframe(pd.DataFrame(diag_rows), use_container_width=True, hide_index=True)
+            diagnostics = inferred.get("special_rule_diagnostics") or {}
+            st.caption("特殊判定诊断（常驻显示）")
+            diag_rows = [
+                {"检查项": "剖面云底离地高度 AGL", "实际值": diagnostics.get("local_base_agl_km"), "单位": "km"},
+                {"检查项": "剖面云底绝对高度 ASL", "实际值": diagnostics.get("local_base_asl_km"), "单位": "km"},
+                {"检查项": "本次规则实际采用的云底值", "实际值": diagnostics.get("profile_base_value_used_km"), "单位": "km"},
+                {"检查项": "云底比较依据", "实际值": diagnostics.get("profile_base_height_basis"), "单位": ""},
+                {"检查项": "云底来源", "实际值": diagnostics.get("local_base_source"), "单位": ""},
+                {"检查项": "是否识别为剖面云底", "实际值": diagnostics.get("profile_based"), "单位": ""},
+                {"检查项": "本地低云量", "实际值": diagnostics.get("local_low_cloud_pct"), "单位": "%"},
+                {"检查项": "本地总云量", "实际值": diagnostics.get("local_total_cloud_pct"), "单位": "%"},
+                {"检查项": "极限云距内路径平均总云量", "实际值": diagnostics.get("path_mean_total_cloud_pct"), "单位": "%"},
+                {"检查项": "晴空间隔状态", "实际值": diagnostics.get("gap_status"), "单位": ""},
+                {"检查项": "有效晴空间隔数量", "实际值": diagnostics.get("clear_gap_count"), "单位": "个"},
+                {"检查项": "最终命中规则", "实际值": inferred.get("verdict_rule", "无"), "单位": ""},
+            ]
+            st.dataframe(pd.DataFrame(diag_rows), use_container_width=True, hide_index=True)
             with st.expander(f"{title}详细采样与分析报告"):
                 path_table = _path_sampling_table(result.get("details", ""))
                 if not path_table.empty:
