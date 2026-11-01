@@ -185,185 +185,108 @@ def _publish_model_batch(model_label, status):
         _write_json_atomic(ROOT / "data" / "overview_status.json", status)
 
 
-def _publish_files(status, include_results=False):
-    """Publish live status alone, or atomically publish a completed direction batch."""
-    if os.environ.get("GITHUB_ACTIONS", "").lower() != "true":
-        return
-    branch = os.environ.get("GITHUB_REF_NAME", "main")
-    try:
-        subprocess.run(["git", "config", "user.name", "github-actions[bot]"], cwd=ROOT, check=True)
-        subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=ROOT, check=True)
-        paths = [ROOT / "data" / "overview_status.json"]
-        if include_results:
-            paths += [ROOT / "data" / "overview.json"]
-            paths += sorted((ROOT / "data").glob("overview_*.json"))
-        existing = [str(x.relative_to(ROOT)) for x in paths if x.is_file()]
-        if existing:
-            subprocess.run(["git", "add", "-f", "--", *existing], cwd=ROOT, check=True)
-        changed = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT).returncode != 0
-        if changed:
-            msg = "chore: publish completed " + status.get("direction_title", "") + " overview" if include_results else "chore: publish overview live status"
-            subprocess.run(["git", "commit", "-m", msg], cwd=ROOT, check=True)
-        subprocess.run(["git", "push", "origin", f"HEAD:{branch}"], cwd=ROOT, check=True)
-        print(f"Published {'completed direction results' if include_results else 'live status'} to {branch}", flush=True)
-    except Exception as exc:
-        print(f"WARNING: publish failed: {exc}", flush=True)
-        status["publish_error"] = str(exc)[:800]
-        _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-
-
-def _scheduled_direction(now):
-    """Push deploys initialize morning; scheduled runs follow Beijing 6-slot cycle."""
-    event = os.environ.get("GITHUB_EVENT_NAME", "")
-    forced = os.environ.get("BURNING_SKY_DIRECTION", "").strip().lower()
-    if forced in ("morning", "evening"):
-        return forced
-    if event in ("push", "workflow_dispatch"):
-        return "morning"
-    slots = {0: "morning", 4: "morning", 8: "evening", 12: "evening", 16: "evening", 20: "morning"}
-    # GitHub cron can start late; select the nearest configured slot within 90 minutes.
-    candidates = []
-    for hour, direction in slots.items():
-        delta = abs((now.hour * 60 + now.minute) - hour * 60)
-        delta = min(delta, 1440 - delta)
-        candidates.append((delta, direction, hour))
-    delta, direction, hour = min(candidates)
-    if delta > 90:
-        raise SystemExit(f"Not within a configured update window: {now:%Y-%m-%d %H:%M %Z}")
-    print(f"Scheduled slot: {hour:02d}:00 Beijing; direction={direction}", flush=True)
-    return direction
-
-
 def main():
     now = datetime.now(TZ)
-    direction = _scheduled_direction(now)
-    direction_title = "朝霞" if direction == "morning" else "晚霞"
     dates = [now.date() + timedelta(days=i) for i in range(3)]
     cities = list(CITY_CONFIG)
     models = list(engine.WEATHER_MODEL_CATALOG)
     if len(models) != 5:
         raise SystemExit(f"Expected five enabled models, found {len(models)}")
-    if cities != ["合肥", "深圳"]:
-        raise SystemExit(f"Expected only 合肥 and 深圳 in overview_cities.txt; found {cities}")
 
+    # Build per-city snapshots, preserving existing records until a model is refreshed.
     snapshots = {}
     for city, (lat, lon, elev) in CITY_CONFIG.items():
         path = ROOT / "data" / f"overview_{city}.json"
         try:
             old = json.loads(path.read_text(encoding="utf-8"))
+            if [d.get("date") for d in old.get("days", [])] == [d.isoformat() for d in dates]:
+                snapshots[city] = old
+                continue
         except Exception:
-            old = {}
-        # Preserve the last complete morning/evening data independently.
-        old_days = {d.get("date"): d for d in old.get("days", []) if isinstance(d, dict)}
-        days_payload = []
-        for day in dates:
-            old_day = old_days.get(day.isoformat(), {})
-            days_payload.append({
-                "date": day.isoformat(),
-                "morning": dict(old_day.get("morning", {})),
-                "evening": dict(old_day.get("evening", {})),
-            })
+            pass
         snapshots[city] = {
-            "schema_version": 2, "place": city, "latitude": lat, "longitude": lon,
-            "elevation_m": elev, "timezone": "Asia/Shanghai",
-            "updated_at": old.get("updated_at", "尚未更新"),
-            "direction_updated_at": dict(old.get("direction_updated_at", {})),
-            "days": days_payload,
+            "schema_version": 1, "place": city, "latitude": lat, "longitude": lon,
+            "elevation_m": elev, "timezone": "Asia/Shanghai", "updated_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            "days": [{"date": d.isoformat(), "morning": {}, "evening": {}} for d in dates], "model_errors": {},
         }
 
+    print("Updater version: model-major-batch-v2", flush=True)
+    print("Update strategy: finish all configured cities for one model, then switch models", flush=True)
+    print("Configured city order: " + " → ".join(cities), flush=True)
     status = {
-        "schema_version": 2, "state": "running", "direction": direction,
-        "direction_title": direction_title,
-        "started_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
-        "updated_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
-        "current_model": models[0]["label"], "model_index": 1,
-        "model_total": len(models), "completed_models": [],
-        "cities": cities, "city_progress": 0, "city_total": len(cities),
-        "task_progress": 0, "task_total": len(cities) * len(dates) * len(models),
-        "next_update": "北京时间每日 00:00/04:00/20:00 朝霞；08:00/12:00/16:00 晚霞",
+        "schema_version": 1, "state": "running", "started_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "updated_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"), "current_model": models[0]["label"],
+        "model_index": 1, "model_total": len(models), "completed_models": [],
+        "cities": cities, "city_progress": 0, "next_update": "每日 00:30、03:00、06:00、09:00、12:00、15:00、18:00、21:00（北京时间）",
     }
-    print("Updater version: split-direction-atomic-v1", flush=True)
-    print(f"Direction: {direction_title}; cities: {' → '.join(cities)}; models: 5; days: 3", flush=True)
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-    _publish_files(status, include_results=False)
-
+    _publish_model_batch("run-start", status)
     old_info, old_error = engine.messagebox.showinfo, engine.messagebox.showerror
     engine.messagebox.showinfo = lambda *a, **k: None
     engine.messagebox.showerror = lambda title, message, **kwargs: setattr(engine.messagebox, "last_error", (str(title), str(message)))
-    failures = []
-    task_index = 0
-    limit_hit = False
     try:
         for model_index, model in enumerate(models, 1):
             label = model["label"]
-            status.update(current_model=label, model_index=model_index,
-                          updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
+            status.update(state="running", current_model=label, model_index=model_index,
+                         city_progress=0, updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
             _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-            _publish_files(status, include_results=False)
-            print(f"\n===== MODEL {model_index}/{len(models)}: {label} · {direction_title} =====", flush=True)
-            for city_index, city in enumerate(cities, 1):
+            print(f"\n===== MODEL BATCH {model_index}/{len(models)}: {label} =====", flush=True)
+            task_count = len(cities) * len(dates)
+            task_index = 0
+            for city in cities:
                 snapshot = snapshots[city]
                 for day_index, day in enumerate(dates):
                     if task_index:
                         time.sleep(REQUEST_INTERVAL_SECONDS)
                     runner = _new_runner(city, day, label)
                     engine.messagebox.last_error = None
-                    print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: starting", flush=True)
+                    print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label}: starting", flush=True)
                     try:
-                        runner._fetch_weather_task(direction)
+                        runner._fetch_weather_task("both")
                     except Exception as exc:
                         engine.messagebox.last_error = ("Forecast error", str(exc))
-                    result = runner.direction_results.get(direction)
-                    record = _record(result) if result else None
-                    error = engine.messagebox.last_error
-                    if error or not isinstance(record, dict) or not isinstance(record.get("probability"), (int, float)):
-                        reason = str(error[1]) if error else "预测流程未返回有效概率结果"
-                        failures.append({"city": city, "date": day.isoformat(), "model": label, "error": reason[:1000]})
-                        if "Hourly API request limit exceeded" in reason or "429" in reason:
-                            limit_hit = True
-                        print(f"ERROR: {city} {day} {label} {direction_title}: {reason[:500]}", flush=True)
-                    else:
-                        snapshot["days"][day_index][direction][label] = record
+                    if engine.messagebox.last_error:
+                        snapshot["model_errors"].setdefault(label, []).append({"date": day.isoformat(), "error": str(engine.messagebox.last_error[1])[:1200]})
+                    day_entry = snapshot["days"][day_index]
+                    for direction in ("morning", "evening"):
+                        result = runner.direction_results.get(direction)
+                        day_entry[direction][label] = _record(result) if result else {
+                            "probability": None, "color_score": None, "burn_scale": None,
+                            "burn_scale_label": "暂不可判定",
+                            "error": str((engine.messagebox.last_error or [None, "无结果"])[1])[:1200],
+                        }
+                    snapshot["updated_at"] = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
                     task_index += 1
-                    status.update(task_progress=task_index, city_progress=city_index,
-                                  updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
-                                  failure_count=len(failures), last_error=(failures[-1] if failures else None))
-                    _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-                    print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: {'valid' if not error and record and isinstance(record.get('probability'), (int,float)) else 'failed'} ({task_index}/{status['task_total']})", flush=True)
-                    if limit_hit:
-                        print("Hourly API limit detected; stopping this batch early to avoid wasting further requests.", flush=True)
-                        break
-                if limit_hit:
-                    break
-            if limit_hit:
-                break
+                    status.update(city_progress=task_index, updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
+                    print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label}: finished ({task_index}/{task_count})", flush=True)
+
+            # Commit this model's results into each city file and aggregate immediately.
+            for city, snapshot in snapshots.items():
+                _write_json_atomic(ROOT / "data" / f"overview_{city}.json", snapshot)
+            aggregate = {"schema_version": 1, "updated_at": datetime.now(TZ).isoformat(timespec="seconds"),
+                        "cities": {city: snapshots[city] for city in cities}}
+            _write_json_atomic(ROOT / "data" / "overview.json", aggregate)
             status["completed_models"].append(label)
+            if model_index < len(models):
+                # Publish the next model as current in the same commit that
+                # publishes this model's results. This avoids a separate
+                # start commit for every model while keeping the page current.
+                next_label = models[model_index]["label"]
+                status.update(current_model=next_label, state="running", model_index=model_index + 1,
+                              city_progress=0, updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
+            else:
+                status.update(current_model=None, state="completed",
+                              completed_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
+                              updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
             _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-            _publish_files(status, include_results=False)
+            _publish_model_batch(label, status)
+            if model_index < len(models):
+                print(f"Model batch complete; next model: {next_label}; waiting {REQUEST_INTERVAL_SECONDS}s.", flush=True)
+                time.sleep(REQUEST_INTERVAL_SECONDS)
     finally:
         engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
 
-    if failures:
-        status.update(state="failed", failed_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
-                      failure_count=len(failures), failures=failures[:30],
-                      message=f"本轮{direction_title}有 {len(failures)} 项失败；保留上一次完整发布的数据。")
-        _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-        _publish_files(status, include_results=False)
-        raise SystemExit(f"{direction_title} batch failed ({len(failures)} failed tasks); old published data retained")
-
-    completed_at = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
-    for city, snapshot in snapshots.items():
-        snapshot["direction_updated_at"][direction] = completed_at
-        snapshot["updated_at"] = completed_at
-        _write_json_atomic(ROOT / "data" / f"overview_{city}.json", snapshot)
-    aggregate = {"schema_version": 2, "updated_at": datetime.now(TZ).isoformat(timespec="seconds"),
-                 "cities": {city: snapshots[city] for city in cities}}
-    _write_json_atomic(ROOT / "data" / "overview.json", aggregate)
-    status.update(state="completed", completed_at=completed_at, updated_at=completed_at,
-                  failure_count=0, message=f"{direction_title}五模式三日数据已完整发布。")
-    _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-    _publish_files(status, include_results=True)
-    print(f"Completed and atomically published {direction_title}: {len(cities)} cities × 5 models × 3 days", flush=True)
+    print(f"Completed model-major update for {len(cities)} cities and {len(models)} models.", flush=True)
 
 
 if __name__ == "__main__":
