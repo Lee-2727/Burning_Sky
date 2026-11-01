@@ -1810,7 +1810,7 @@ __all__ = [
     "apply_high_elevation_nearby_low_cloud_filter", "estimate_cloud_base_from_profile",
     "analyze_cloud_base_geometry", "estimate_path_cloud_boundaries", "infer_from_cloud_path",
     "analyze", "aod_score_penalties", "aod_color_quality_factor", "adjust_color_for_aod",
-    "apply_peak_cloud_color", "apply_path_score_pair", "calculate_color_performance_score",
+    "apply_peak_cloud_color", "apply_path_score_pair", "enforce_single_mode_special_verdicts", "calculate_color_performance_score",
     "has_local_low_cloud_above_ground", "apply_low_cloud_screen_constraint",
     "score_two_day_event_shared_core",
 ]
