@@ -1169,6 +1169,27 @@ class FireCloudApp(tk.Tk):
                                 if lit_best >= 0.999: break
                             tint_num += weight * lit_best
                 tintable_ratio = round(max(0.0,min(100.0,100.0*tint_num/tint_den))) if tint_den > 0 else (0 if ordered else None)
+                # 光板天硬规则：以本地 0–100 km 内有效采样点的中云+高云云量
+                # 算术平均作为近场代表值；严格小于 5% 时，强制清零概率与可染色比例。
+                near_samples = [q for q in ordered
+                                if isinstance(q.get("distance_km"), (int, float))
+                                and 0 <= float(q.get("distance_km")) <= 100
+                                and isinstance(q.get("cloud_cover_mid"), (int, float))
+                                and isinstance(q.get("cloud_cover_high"), (int, float))]
+                near_mid_high = (sum(float(q["cloud_cover_mid"]) + float(q["cloud_cover_high"])
+                                     for q in near_samples) / len(near_samples)
+                                 if near_samples else None)
+                clear_sky_rule = near_mid_high is not None and near_mid_high < 5.0
+                if clear_sky_rule:
+                    inferred["score"] = 0
+                    inferred["regular_score"] = 0
+                    inferred["upper_score"] = 0
+                    inferred["probability"] = 0
+                    inferred["tintable_ratio"] = 0
+                    inferred["verdict_override"] = "光板天"
+                    inferred.setdefault("score_notes", []).append(
+                        f"光板天规则：本地100 km内中+高云平均云量 {near_mid_high:.2f}% < 5%，常规概率及可染色云占比强制为0%。")
+                    tintable_ratio = 0
                 if tintable_ratio is None:
                     tintable_text = "暂不可估"
                 else:
