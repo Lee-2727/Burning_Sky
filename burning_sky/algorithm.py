@@ -1375,6 +1375,20 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
     inferred["score"] = score
     if verdict is None and score < 20:
         verdict, rule = "机会太小，几乎不烧", "regular_probability_below_20pct"
+    # 当路径分析明确没有潜在霞云距离时，常规分封顶20%。
+    # 这条规则只约束常规机会，不把理论距离为0误解成“远端云层仍可参与”；
+    # 低云遮挡/剖面云底等更严格的归零规则仍优先。
+    potential_range = boundaries.get("fire_cloud_range_km")
+    no_potential_range = (potential_range is None or
+                          (isinstance(potential_range, (int, float)) and potential_range <= 0))
+    strict_zero_rule = rule in ("profile_cloud_base_below_500m", "local_low_cloud_at_least_90pct")
+    preserve_verdict = verdict in ("光线难以穿透", "光板天", "机会太小，几乎不烧")
+    if no_potential_range and not strict_zero_rule and not preserve_verdict:
+        score = min(score, 20)
+        inferred["regular_score"] = score
+        inferred["score"] = score
+        verdict, rule = "潜在霞云距为0，常规概率封顶20%", "zero_potential_fire_cloud_range_cap_20pct"
+
     if verdict is not None:
         inferred["verdict_override"] = verdict
         inferred["verdict_rule"] = rule
@@ -1390,6 +1404,8 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
         "path_mean_total_cloud_pct": round(float(path_mean), 1) if isinstance(path_mean, (int, float)) else None,
         "gap_status": gap_status,
         "clear_gap_count": len(gaps),
+        "potential_fire_cloud_range_km": potential_range,
+        "zero_range_cap_applied": bool(no_potential_range and not strict_zero_rule and not preserve_verdict),
     }
     upper = inferred.get("upper_score")
     if isinstance(upper, (int, float)):
