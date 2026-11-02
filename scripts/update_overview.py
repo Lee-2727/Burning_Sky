@@ -127,13 +127,22 @@ def _record(result):
             return None
     probability = numeric(inferred.get("regular_score", inferred.get("score")))
     burn_scale = numeric(inferred.get("tintable_ratio", inferred.get("burn_scale_index")))
-    # 常规概率以百分数存储；乘以规模时换算为 0–1 概率，评分仍保持 0–100 的直观范围。
-    fire_score = (probability / 100.0 * burn_scale
-                  if probability is not None and burn_scale is not None else None)
+    local_clouds = inferred.get("local_scale_clouds") or {}
+    local_mid_cloud = numeric(local_clouds.get("mid"))
+    local_high_layer_cloud = numeric(local_clouds.get("high"))
+    # 本地高云 = 本地中云 + 本地高云；云量按百分比显示，封顶 100%。
+    local_high_cloud = (min(100.0, max(0.0, local_mid_cloud) + max(0.0, local_high_layer_cloud))
+                        if local_mid_cloud is not None and local_high_layer_cloud is not None else None)
+    # 三个百分比相乘后归一化，评分保持 0–100 的直观范围。
+    fire_score = (probability * burn_scale * local_high_cloud / 10000.0
+                  if probability is not None and burn_scale is not None and local_high_cloud is not None else None)
     return {
         "probability": probability,
         "color_score": numeric(inferred.get("color_score")),
         "burn_scale": burn_scale,
+        "local_mid_cloud": local_mid_cloud,
+        "local_high_layer_cloud": local_high_layer_cloud,
+        "local_high_cloud": local_high_cloud,
         "fire_score_no_color": fire_score,
         "burn_scale_label": inferred.get("burn_scale_label", "暂不可判定"),
         "event_time": ((result or {}).get("event_dt").isoformat()

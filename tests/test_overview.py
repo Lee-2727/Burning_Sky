@@ -37,14 +37,25 @@ class OverviewTests(unittest.TestCase):
             if old_forced is not None:
                 os.environ["BURNING_SKY_DIRECTION"] = old_forced
 
-    def test_record_extracts_three_metrics(self):
+    def test_record_extracts_overview_metrics_and_weighted_fire_score(self):
         value = update_overview._record({"inferred": {
             "regular_score": 62, "color_score": 78,
-            "burn_scale_index": 24.5, "burn_scale_label": "微烧"
+            "burn_scale_index": 24.5, "burn_scale_label": "微烧",
+            "local_scale_clouds": {"mid": 60, "high": 30}
         }})
         self.assertEqual(value["probability"], 62.0)
         self.assertEqual(value["color_score"], 78.0)
         self.assertEqual(value["burn_scale"], 24.5)
+        self.assertEqual(value["local_high_cloud"], 90.0)
+        self.assertAlmostEqual(value["fire_score_no_color"], 13.671)
+
+    def test_local_high_cloud_is_capped_at_100(self):
+        value = update_overview._record({"inferred": {
+            "regular_score": 80, "tintable_ratio": 50,
+            "local_scale_clouds": {"mid": 75, "high": 60}
+        }})
+        self.assertEqual(value["local_high_cloud"], 100.0)
+        self.assertEqual(value["fire_score_no_color"], 40.0)
 
 
 if __name__ == "__main__":

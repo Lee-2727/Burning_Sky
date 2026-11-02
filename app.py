@@ -397,13 +397,17 @@ if st.session_state.get("show_multi_day_overview"):
                             _v = _records.get(_model, {})
                             _prob = _v.get("probability")
                             _scale = _v.get("burn_scale")
-                            _fire_score = (_prob / 100.0 * _scale) if isinstance(_prob, (int, float)) and isinstance(_scale, (int, float)) else None
+                            _local_high = _v.get("local_high_cloud")
+                            # 兼容新旧概览数据：旧记录缺少本地高云时显示“—”，不伪造评分。
+                            _fire_score = (_prob * _scale * _local_high / 10000.0
+                                           if all(isinstance(x, (int, float)) for x in (_prob, _scale, _local_high)) else None)
                             _rows.append({
                                 "模式": _model_short[_model],
                                 "常规概率": (f"{_prob:.0f}%" if isinstance(_prob, (int, float)) else "—"),
                                 "色彩分": (f"{_v['color_score']:.0f}" if isinstance(_v.get("color_score"), (int, float)) else "—"),
-                                "可染色云占比": (f"{_scale:.0f}%" if isinstance(_scale, (int, float)) else "—"),
-                                "火烧云评分（不考虑色彩）": (f"{_fire_score:.1f}" if _fire_score is not None else "—"),
+                                "染色率": (f"{_scale:.0f}%" if isinstance(_scale, (int, float)) else "—"),
+                                "本地高云": (f"{_local_high:.0f}%" if isinstance(_local_high, (int, float)) else "—"),
+                                "火烧云评分": (f"{_fire_score:.1f}" if _fire_score is not None else "—"),
                             })
                         _df = pd.DataFrame(_rows)
                         def _fire_score_style(value):
@@ -422,7 +426,7 @@ if st.session_state.get("show_multi_day_overview"):
                             else:
                                 color = "#A12A83"  # 紫红色
                             return f"color: {color}; font-weight: 700;"
-                        _styled = _df.style.map(_fire_score_style, subset=["火烧云评分（不考虑色彩）"])
+                        _styled = _df.style.map(_fire_score_style, subset=["火烧云评分"])
                         st.dataframe(_styled, use_container_width=True, hide_index=True)
     _render_multi_day_overview()
     st.stop()
