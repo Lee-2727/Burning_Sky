@@ -502,6 +502,11 @@ def _web_finalize_special_verdict(inferred, summary):
     is_profile = ("剖面" in summary) or ("剖面" in str(diag.get("local_base_source", "")))
     total = _pct(r"云量\s*总\s*([0-9]+(?:\.[0-9]+)?)\s*%", inferred.get("total"))
     low = _pct(r"低\s*([0-9]+(?:\.[0-9]+)?)\s*%", inferred.get("low"))
+    local_100km_total = diag.get("local_100km_mean_total_cloud_pct")
+    try:
+        local_100km_total = float(local_100km_total) if local_100km_total is not None else None
+    except (TypeError, ValueError):
+        local_100km_total = None
 
     verdict = None
     rule = None
@@ -513,6 +518,8 @@ def _web_finalize_special_verdict(inferred, summary):
         score, verdict, rule = 0, "云底过底", "profile_cloud_base_below_500m_web_summary"
     elif low is not None and low >= 90:
         score, verdict, rule = 0, "低云遮挡过多", "local_low_cloud_at_least_90pct_web_summary"
+    elif local_100km_total is not None and local_100km_total < 5:
+        score, verdict, rule = 0, "本地100km云量不足", "local_100km_mean_total_cloud_below_5pct_web_final"
     elif total is not None and total < 10:
         verdict, rule = "光板天", "local_total_cloud_below_10pct_web_summary"
     elif score < 20:
@@ -529,6 +536,7 @@ def _web_finalize_special_verdict(inferred, summary):
         "web_summary_profile_based": is_profile,
         "web_summary_local_low_cloud_pct": low,
         "web_summary_local_total_cloud_pct": total,
+        "web_summary_local_100km_mean_total_cloud_pct": local_100km_total,
         "web_final_verdict": verdict or "未触发网页兜底规则",
         "web_final_rule": rule or "engine_result",
     }

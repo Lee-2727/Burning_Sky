@@ -1426,6 +1426,15 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
                      0 <= float(r.get("distance_km", -1)) <= float(reach))]
     path_mean = (sum(float(r["cloud_cover"]) for r in path_samples) / len(path_samples)
                  if path_samples else inferred.get("total"))
+    # 本地100 km范围的总云量均值：仅使用实际有数值的采样点，缺测不当作晴空。
+    local_100km_samples = [r for r in ordered
+                           if isinstance(r.get("distance_km"), (int, float))
+                           and 0 <= float(r["distance_km"]) <= 100
+                           and isinstance(r.get("cloud_cover"), (int, float))]
+    local_100km_mean_total = (
+        sum(float(r["cloud_cover"]) for r in local_100km_samples) / len(local_100km_samples)
+        if local_100km_samples else None
+    )
     gaps = boundaries.get("clear_gaps") or []
     gap_status = boundaries.get("gap_status", "unknown")
 
@@ -1437,6 +1446,9 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
     elif isinstance(local_low, (int, float)) and float(local_low) >= 90:
         inferred["regular_score"] = 0
         verdict, rule = "低云遮挡过多", "local_low_cloud_at_least_90pct"
+    elif isinstance(local_100km_mean_total, (int, float)) and local_100km_mean_total < 5:
+        inferred["regular_score"] = 0
+        verdict, rule = "本地100km云量不足", "local_100km_mean_total_cloud_below_5pct"
     elif (gap_status == "continuous_cloud" and not gaps and
           isinstance(path_mean, (int, float)) and float(path_mean) > 50):
         # apply_path_score_pair() may already have applied the 0.5 factor.
@@ -1457,8 +1469,9 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
     potential_range = boundaries.get("fire_cloud_range_km")
     no_potential_range = (potential_range is None or
                           (isinstance(potential_range, (int, float)) and potential_range <= 0))
-    strict_zero_rule = rule in ("profile_cloud_base_below_500m", "local_low_cloud_at_least_90pct")
-    preserve_verdict = verdict in ("光线难以穿透", "光板天", "机会太小，几乎不烧")
+    strict_zero_rule = rule in ("profile_cloud_base_below_500m", "local_low_cloud_at_least_90pct",
+                                "local_100km_mean_total_cloud_below_5pct")
+    preserve_verdict = verdict in ("光线难以穿透", "光板天", "机会太小，几乎不烧", "本地100km云量不足")
     if no_potential_range and not strict_zero_rule and not preserve_verdict:
         score = min(score, 20)
         inferred["regular_score"] = score
@@ -1477,6 +1490,8 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
         "profile_based": profile_based,
         "local_low_cloud_pct": local_low,
         "local_total_cloud_pct": local_total,
+        "local_100km_mean_total_cloud_pct": round(float(local_100km_mean_total), 1) if isinstance(local_100km_mean_total, (int, float)) else None,
+        "local_100km_total_cloud_sample_count": len(local_100km_samples),
         "path_mean_total_cloud_pct": round(float(path_mean), 1) if isinstance(path_mean, (int, float)) else None,
         "gap_status": gap_status,
         "clear_gap_count": len(gaps),

@@ -136,3 +136,34 @@ def test_final_low_cloud_rule_uses_inferred_low_if_local_sample_missing():
     result = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
     assert result['regular_score'] == 0
     assert result['verdict_override'] == '低云遮挡过多'
+
+
+def test_local_100km_mean_total_cloud_below_5_sets_regular_zero_and_special_verdict():
+    from burning_sky.algorithm import enforce_single_mode_special_verdicts
+    inferred, geometry, boundaries, samples = _inputs(
+        base_agl=1.2, base_source='手动绝对高度', local_low=0,
+        local_total=8, path_total=8, gap_status='unknown')
+    # 0–100 km samples平均总云量低于5%；100 km外的云量不参与本条规则。
+    samples = [
+        {'distance_km': 0, 'cloud_cover': 2, 'cloud_cover_low': 0, 'cloud_cover_mid': 1, 'cloud_cover_high': 1},
+        {'distance_km': 25, 'cloud_cover': 3, 'cloud_cover_low': 0, 'cloud_cover_mid': 2, 'cloud_cover_high': 1},
+        {'distance_km': 50, 'cloud_cover': 4, 'cloud_cover_low': 0, 'cloud_cover_mid': 2, 'cloud_cover_high': 2},
+        {'distance_km': 100, 'cloud_cover': 4, 'cloud_cover_low': 0, 'cloud_cover_mid': 2, 'cloud_cover_high': 2},
+        {'distance_km': 150, 'cloud_cover': 90, 'cloud_cover_low': 0, 'cloud_cover_mid': 80, 'cloud_cover_high': 10},
+    ]
+    result = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
+    assert result['regular_score'] == 0
+    assert result['verdict_override'] == '本地100km云量不足'
+    assert result['verdict_rule'] == 'local_100km_mean_total_cloud_below_5pct'
+    assert result['special_rule_diagnostics']['local_100km_mean_total_cloud_pct'] == 3.2
+
+
+def test_local_100km_cloud_rule_strictly_below_5pct():
+    from burning_sky.algorithm import enforce_single_mode_special_verdicts
+    inferred, geometry, boundaries, samples = _inputs(
+        base_agl=1.2, base_source='手动绝对高度', local_low=0,
+        local_total=5, path_total=5, gap_status='unknown')
+    for sample in samples:
+        sample['cloud_cover'] = 5
+    result = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
+    assert result['regular_score'] != 0 or result.get('verdict_rule') != 'local_100km_mean_total_cloud_below_5pct'
