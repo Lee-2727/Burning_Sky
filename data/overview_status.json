@@ -4,13 +4,14 @@
   "direction": "morning",
   "direction_title": "朝霞",
   "started_at": "2026-11-03 00:53:21 CST",
-  "updated_at": "2026-11-03 00:58:50 CST",
+  "updated_at": "2026-11-03 01:02:16 CST",
   "current_model": "ICON Global",
   "model_index": 3,
   "model_total": 5,
   "completed_models": [
     "ECMWF IFS 0.25°",
-    "GFS Global"
+    "GFS Global",
+    "ICON Global"
   ],
   "cities": [
     "合肥",
@@ -18,7 +19,7 @@
   ],
   "city_progress": 2,
   "city_total": 2,
-  "task_progress": 12,
+  "task_progress": 18,
   "task_total": 30,
   "next_update": "北京时间每日 00:00/04:00/20:00 朝霞；08:00/12:00/16:00 晚霞",
   "failure_count": 0,
