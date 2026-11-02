@@ -1906,5 +1906,6 @@ __all__ = [
     "analyze", "aod_score_penalties", "aod_color_quality_factor", "adjust_color_for_aod",
     "apply_peak_cloud_color", "apply_path_score_pair", "enforce_single_mode_special_verdicts", "calculate_color_performance_score",
     "has_local_low_cloud_above_ground", "apply_low_cloud_screen_constraint",
+    "apply_extended_gap_scan_modifier",
     "score_two_day_event_shared_core",
 ]
