@@ -37,25 +37,38 @@ class OverviewTests(unittest.TestCase):
             if old_forced is not None:
                 os.environ["BURNING_SKY_DIRECTION"] = old_forced
 
-    def test_record_extracts_overview_metrics_and_weighted_fire_score(self):
+    def test_record_reads_local_cloud_from_zero_distance_sample(self):
         value = update_overview._record({"inferred": {
             "regular_score": 62, "color_score": 78,
-            "burn_scale_index": 24.5, "burn_scale_label": "微烧",
-            "local_scale_clouds": {"mid": 60, "high": 30}
-        }})
+            "tintable_ratio": 24.5, "burn_scale_label": "微烧",
+        }, "samples": [
+            {"distance_km": 5, "cloud_cover_mid": 99, "cloud_cover_high": 99},
+            {"distance_km": 0, "cloud_cover_mid": 60, "cloud_cover_high": 30},
+        ]})
         self.assertEqual(value["probability"], 62.0)
         self.assertEqual(value["color_score"], 78.0)
         self.assertEqual(value["burn_scale"], 24.5)
+        self.assertEqual(value["local_mid_cloud"], 60.0)
+        self.assertEqual(value["local_high_layer_cloud"], 30.0)
         self.assertEqual(value["local_high_cloud"], 90.0)
         self.assertAlmostEqual(value["fire_score_no_color"], 13.671)
 
     def test_local_high_cloud_is_capped_at_100(self):
         value = update_overview._record({"inferred": {
             "regular_score": 80, "tintable_ratio": 50,
-            "local_scale_clouds": {"mid": 75, "high": 60}
-        }})
+        }, "samples": [
+            {"distance_km": 0, "cloud_cover_mid": 75, "cloud_cover_high": 60},
+        ]})
         self.assertEqual(value["local_high_cloud"], 100.0)
         self.assertEqual(value["fire_score_no_color"], 40.0)
+
+    def test_missing_local_sample_keeps_fields_present_as_null(self):
+        value = update_overview._record({"inferred": {
+            "regular_score": 80, "tintable_ratio": 50,
+        }, "samples": [{"distance_km": 10, "cloud_cover_mid": 75, "cloud_cover_high": 60}]})
+        self.assertIn("local_high_cloud", value)
+        self.assertIsNone(value["local_high_cloud"])
+        self.assertIsNone(value["fire_score_no_color"])
 
 
 if __name__ == "__main__":

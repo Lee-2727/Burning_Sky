@@ -127,9 +127,15 @@ def _record(result):
             return None
     probability = numeric(inferred.get("regular_score", inferred.get("score")))
     burn_scale = numeric(inferred.get("tintable_ratio", inferred.get("burn_scale_index")))
-    local_clouds = inferred.get("local_scale_clouds") or {}
-    local_mid_cloud = numeric(local_clouds.get("mid"))
-    local_high_layer_cloud = numeric(local_clouds.get("high"))
+    # 本地云量必须取预测结果的 distance_km == 0 原始天气采样点。
+    # inferred.local_scale_clouds 并不是当前引擎稳定输出的字段，不能依赖它。
+    samples = (result or {}).get("samples") or []
+    local_sample = next((sample for sample in samples
+                         if isinstance(sample, dict)
+                         and numeric(sample.get("distance_km")) is not None
+                         and abs(numeric(sample.get("distance_km"))) < 1e-6), None)
+    local_mid_cloud = numeric(local_sample.get("cloud_cover_mid")) if local_sample else None
+    local_high_layer_cloud = numeric(local_sample.get("cloud_cover_high")) if local_sample else None
     # 本地高云 = 本地中云 + 本地高云；云量按百分比显示，封顶 100%。
     local_high_cloud = (min(100.0, max(0.0, local_mid_cloud) + max(0.0, local_high_layer_cloud))
                         if local_mid_cloud is not None and local_high_layer_cloud is not None else None)
