@@ -3777,7 +3777,23 @@ class FireCloudApp(tk.Tk):
                 atmospheric_color_quality *= max(0.78,min(1.0,1.0-max(0.0,rh-70.0)*0.007))
             except (TypeError, ValueError):
                 pass
-        atmospheric_color_quality=max(0.0,min(1.0,atmospheric_color_quality))
+        # 空气质量仅影响色彩表现，不参与常规概率或规模计算。优先采用明确的 AQI，
+        # 缺失时再由 PM2.5/PM10 估算温和的去饱和系数；不把缺测当作污染。
+        aqi = data.get("aqi", data.get("air_quality_index"))
+        pm25 = data.get("pm2_5", data.get("pm25"))
+        pm10 = data.get("pm10")
+        air_quality_factor = 1.0
+        try:
+            if aqi is not None:
+                aq = max(0.0, float(aqi))
+                air_quality_factor = max(0.72, min(1.0, 1.0 - max(0.0, aq - 50.0) * 0.0012))
+            else:
+                particulate = max(float(pm25 or 0.0), float(pm10 or 0.0) * 0.5)
+                if particulate > 0:
+                    air_quality_factor = max(0.76, min(1.0, 1.0 - max(0.0, particulate - 15.0) * 0.003))
+        except (TypeError, ValueError):
+            air_quality_factor = 1.0
+        atmospheric_color_quality=max(0.0,min(1.0,atmospheric_color_quality * air_quality_factor))
         samples=[]
         count=int((end_dt-start_dt).total_seconds()//60)
         for minute in range(count+1):
@@ -3790,6 +3806,7 @@ class FireCloudApp(tk.Tk):
             # 旧版把此刻已处于地球阴影中的中低云也放进固定分母，导致高云仍受光时
             # 亮度被大量不发光云层稀释，出现“峰值仅 16/100”的假低值。
             eligible_weight=0.0
+            tintable_cloud_area=0.0
             for target in cloud_layers:
                 z=target["zone"]
                 dist=target["dist"]
@@ -3860,6 +3877,9 @@ class FireCloudApp(tk.Tk):
                 weighted_light += contribution*attenuation
                 color_weight += contribution
                 transmitted_color_weight += contribution*attenuation
+                # 染色云面积代理量：按有效受光、云量和遮挡后的贡献累加，
+                # 用于峰值云色选点，避免单纯按亮度峰值挑到云量很少的时刻。
+                tintable_cloud_area += contribution*attenuation
             # 亮度定义为“当前可受光云层中的受光覆盖指数”，而不是所有高度层的平均值。
             # 这样太阳落低后，未受光的低层/中层不会把仍被照亮的高云峰值压得过低。
             raw_brightness=100.0*weighted_light/max(1e-9,eligible_weight)
@@ -3879,10 +3899,13 @@ class FireCloudApp(tk.Tk):
             sat *= 0.08+0.92*color_quality
             rr,gg,bb=colorsys.hls_to_rgb(h,max(0.0,min(1.0,l)),max(0.0,min(1.0,sat)))
             color=(int(round(rr*255)),int(round(gg*255)),int(round(bb*255)))
+            geometry_valid = eligible_weight > 1e-9 and color_weight > 1e-9
             samples.append({"datetime":dt,"minutes_from_event":(dt-event_dt).total_seconds()/60.0,
                             "solar_altitude_deg":solar_alt,"solar_azimuth_deg":solar_az,
-                            # brightness 保留原始经验指数，供颜色和跨日期条件比较使用。
-                            "brightness":round(brightness,1),"color":color,
+                            # 几何无效时明确标记为断点；前端不得连接/插值跨越该点。
+                            "geometry_valid":bool(geometry_valid),
+                            "tintable_cloud_area":round(tintable_cloud_area,6),
+                            "brightness":round(brightness,1) if geometry_valid else 0.0,"color":color,
                             "optical_transmission":round(color_quality,3),
                             "atmospheric_color_quality":round(atmospheric_color_quality,3),
                             "path_transmission":round(transmission,3),
@@ -3894,7 +3917,10 @@ class FireCloudApp(tk.Tk):
             point["relative_brightness"] = round(
                 100.0 * float(point["brightness"]) / raw_peak, 1
             ) if raw_peak > 0 else 0.0
-        peak=max(samples,key=lambda x:x["brightness"]) if samples else None
+        valid_samples=[x for x in samples if x.get("geometry_valid")]
+        # 峰值云色优先取染色云面积最大的有效时刻；面积相近时再比较相对亮度。
+        peak=max(valid_samples,key=lambda x:(x.get("tintable_cloud_area",0.0),
+                                             x.get("relative_brightness",0.0))) if valid_samples else None
         return {"samples":samples,"peak":peak,"raw_peak_brightness":round(raw_peak,1),
                 "note":"逐分钟估算；brightness 是保留的原始受光覆盖经验指数，relative_brightness 是本次预测窗口内归一化的相对亮度（窗口峰值=100）。相对亮度适合观察同一次预测内的起伏，不可用于比较不同日期的绝对强弱。原始指数结合受光几何、有限的最强异层光路衰减及 AOD/能见度修正；色彩灰化与亮度衰减分开处理。它不是实测辐射亮度或真实色度预测。"}
 

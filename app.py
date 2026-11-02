@@ -157,6 +157,9 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
     if samples:
         # Use each sample's own estimated RGB for its segment, matching the desktop UI.
         for i in range(len(samples) - 1):
+            # 严格几何光路无效的样本作为断点，不跨断点连线或填充面积。
+            if not samples[i].get("geometry_valid", True) or not samples[i + 1].get("geometry_valid", True):
+                continue
             x0, x1 = x_at(i), x_at(i + 1)
             y0 = y_at(samples[i].get("relative_brightness", 0))
             y1 = y_at(samples[i + 1].get("relative_brightness", 0))
@@ -164,8 +167,10 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
             fill = tuple(int(255 * 0.08 + c[k] * 0.92) for k in range(3))
             d.polygon([(x0, bottom), (x0, y0), (x1, y1), (x1, bottom)], fill=fill)
             d.line((x0, y0, x1, y1), fill=c, width=5)
-        # Cover tiny seams between differently colored line segments.
+        # 仅绘制有效几何点；无效时段保持真实空白。
         for i, point in enumerate(samples):
+            if not point.get("geometry_valid", True):
+                continue
             x, y = x_at(i), y_at(point.get("relative_brightness", 0))
             c = rgb_of(point)
             d.ellipse((x - 2, y - 2, x + 2, y + 2), fill=c, outline=c)
@@ -397,17 +402,11 @@ if st.session_state.get("show_multi_day_overview"):
                             _v = _records.get(_model, {})
                             _prob = _v.get("probability")
                             _scale = _v.get("burn_scale")
-                            _local_high = _v.get("local_high_cloud")
-                            # 兼容新旧概览数据：旧记录缺少本地高云时显示“—”，不伪造评分。
-                            _fire_score = (_prob * _scale * _local_high / 10000.0
-                                           if all(isinstance(x, (int, float)) for x in (_prob, _scale, _local_high)) else None)
                             _rows.append({
                                 "模式": _model_short[_model],
                                 "常规概率": (f"{_prob:.0f}%" if isinstance(_prob, (int, float)) else "—"),
                                 "色彩分": (f"{_v['color_score']:.0f}" if isinstance(_v.get("color_score"), (int, float)) else "—"),
-                                "染色率": (f"{_scale:.0f}%" if isinstance(_scale, (int, float)) else "—"),
-                                "本地高云": (f"{_local_high:.0f}%" if isinstance(_local_high, (int, float)) else "—"),
-                                "火烧云评分": (f"{_fire_score:.1f}" if _fire_score is not None else "—"),
+                                "火烧云规模": (f"{_scale:.0f}%" if isinstance(_scale, (int, float)) else "—"),
                             })
                         _df = pd.DataFrame(_rows)
                         def _fire_score_style(value):
@@ -426,8 +425,7 @@ if st.session_state.get("show_multi_day_overview"):
                             else:
                                 color = "#A12A83"  # 紫红色
                             return f"color: {color}; font-weight: 700;"
-                        _styled = _df.style.map(_fire_score_style, subset=["火烧云评分"])
-                        st.dataframe(_styled, use_container_width=True, hide_index=True)
+                        st.dataframe(_df, use_container_width=True, hide_index=True)
     _render_multi_day_overview()
     st.stop()
 
@@ -652,13 +650,13 @@ if results:
             curve = result.get("dynamic_light_curve", {})
             points = curve.get("samples", []) if isinstance(curve, dict) else []
             st.subheader("云色时序")
-            st.markdown("**动态亮度—色彩曲线（曲线颜色与下方色带均使用模型逐分钟估算 RGB）**")
+            st.markdown("**染色云面积—色彩时序（几何光路不成立的时段将真实中断）**")
             st.image(_draw_dynamic_color_curve(points, curve.get("peak"), key), use_container_width=True)
             if points:
                 df = pd.DataFrame(points)
                 if curve.get("peak"):
                     peak = curve["peak"]
-                    st.caption(f"预测峰值时刻：事件前/后 {peak.get('minutes_from_event', 0):+.1f} 分钟；原始亮度指数 {peak.get('brightness', '—')}；相对亮度 {peak.get('relative_brightness', '—')}。")
+                    st.caption(f"峰值云色时刻：事件前/后 {peak.get('minutes_from_event', 0):+.1f} 分钟；按有效染色云面积优先选取，原始亮度指数 {peak.get('brightness', '—')}；相对亮度 {peak.get('relative_brightness', '—')}。")
             else:
                 st.caption(curve.get("note", "当前没有可参与动态受光估算的云层；已保留空白坐标框，不会伪造色彩曲线。"))
             with st.expander(f"{title}详细采样与分析报告"):
