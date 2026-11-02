@@ -1003,7 +1003,7 @@ class FireCloudApp(tk.Tk):
                 farthest = geometry["farthest"]
                 local_geometry = next((r for r in geometry.get("rows", []) if r.get("distance_km") == 0), None)
                 local_reach = local_geometry.get("reach_km") if local_geometry else None
-                if not isinstance(local_reach, (int, float)) or local_reach <= 0:
+                if not isinstance(local_reach, (int, float)):
                     local_reach = max_reach if max_reach > 0 else None
                 boundaries = estimate_path_cloud_boundaries(samples, local_reach)
                 inferred = apply_path_score_pair(inferred, geometry, boundaries, samples=samples)
@@ -2008,7 +2008,7 @@ class FireCloudApp(tk.Tk):
                                                      local_low_cloud_above_ground=local_low_above_ground)
                     local_geometry = next((r for r in geometry.get("rows", []) if r.get("distance_km") == 0), None)
                     reach = local_geometry.get("reach_km") if local_geometry else None
-                    if not isinstance(reach, (int, float)) or reach <= 0:
+                    if not isinstance(reach, (int, float)):
                         reach = max((r.get("reach_km") or 0 for r in geometry.get("rows", [])), default=0)
                     boundaries = estimate_path_cloud_boundaries(samples, reach)
                     inferred = apply_path_score_pair(inferred, geometry, boundaries, samples=samples)

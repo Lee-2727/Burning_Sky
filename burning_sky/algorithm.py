@@ -508,8 +508,10 @@ def estimate_path_cloud_boundaries(samples, local_cloud_reach_km=None):
 
     try:
         reach = float(local_cloud_reach_km) if local_cloud_reach_km is not None else None
-        if reach is not None and reach <= 0:
-            reach = None
+        # 0 km 表示本地有效云底没有理论照明距离；不能转换为 None，
+        # 因为 None 代表“不限制距离”，会把远端云层错误纳入光路扫描。
+        if reach is not None and reach < 0:
+            reach = 0.0
     except (TypeError, ValueError):
         reach = None
     relevant = [r for r in ordered if reach is None or float(r.get("distance_km", 0)) <= reach]
