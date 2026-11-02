@@ -5,9 +5,9 @@
   "longitude": 114.0579,
   "elevation_m": 20.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": "2026-11-03 00:41:06 CST",
+  "updated_at": "2026-11-03 01:08:12 CST",
   "direction_updated_at": {
-    "morning": "2026-11-03 00:41:06 CST",
+    "morning": "2026-11-03 01:08:12 CST",
     "evening": "2026-11-02 17:05:48 CST"
   },
   "days": [
@@ -155,7 +155,7 @@
         },
         "ICON Global": {
           "probability": 0.0,
-          "color_score": 27.0,
+          "color_score": 13.0,
           "burn_scale": 0.0,
           "local_mid_cloud": 34.44444444444444,
           "local_high_layer_cloud": 0.0,
@@ -168,9 +168,9 @@
           "probability": 0.0,
           "color_score": 11.0,
           "burn_scale": 0.0,
-          "local_mid_cloud": 0.4444444444444444,
-          "local_high_layer_cloud": 2.4444444444444446,
-          "local_high_cloud": 2.8888888888888893,
+          "local_mid_cloud": 1.3333333333333333,
+          "local_high_layer_cloud": 1.0,
+          "local_high_cloud": 2.333333333333333,
           "fire_score_no_color": 0.0,
           "burn_scale_label": "几乎不烧",
           "event_time": "2026-11-04T06:29:34.559066"
@@ -285,9 +285,9 @@
           "probability": 0.0,
           "color_score": 3.0,
           "burn_scale": 0.0,
-          "local_mid_cloud": 3.2222222222222223,
-          "local_high_layer_cloud": 2.3333333333333335,
-          "local_high_cloud": 5.555555555555555,
+          "local_mid_cloud": 3.6666666666666665,
+          "local_high_layer_cloud": 1.6666666666666667,
+          "local_high_cloud": 5.333333333333333,
           "fire_score_no_color": 0.0,
           "burn_scale_label": "几乎不烧",
           "event_time": "2026-11-05T06:30:08.243354"
