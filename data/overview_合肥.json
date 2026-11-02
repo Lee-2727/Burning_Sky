@@ -5,10 +5,10 @@
   "longitude": 117.2272,
   "elevation_m": 30.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": "2026-11-02 13:03:45 CST",
+  "updated_at": "2026-11-02 17:05:48 CST",
   "direction_updated_at": {
     "morning": "2026-11-02 10:03:35 CST",
-    "evening": "2026-11-02 13:03:45 CST"
+    "evening": "2026-11-02 17:05:48 CST"
   },
   "days": [
     {
@@ -72,13 +72,13 @@
       },
       "evening": {
         "ECMWF IFS 0.25°": {
-          "probability": 72.0,
+          "probability": 68.0,
           "color_score": 69.0,
-          "burn_scale": 50.0,
-          "local_mid_cloud": 20.555555555555557,
-          "local_high_layer_cloud": 77.66666666666667,
-          "local_high_cloud": 98.22222222222223,
-          "fire_score_no_color": 35.36,
+          "burn_scale": 56.0,
+          "local_mid_cloud": 41.44444444444444,
+          "local_high_layer_cloud": 49.44444444444444,
+          "local_high_cloud": 90.88888888888889,
+          "fire_score_no_color": 34.61048888888889,
           "burn_scale_label": "小烧",
           "event_time": "2026-11-02T17:20:57.392182"
         },
@@ -116,14 +116,14 @@
           "event_time": "2026-11-02T17:20:57.392182"
         },
         "ECMWF (AI)": {
-          "probability": 46.0,
-          "color_score": 31.0,
+          "probability": 20.0,
+          "color_score": 69.0,
           "burn_scale": 100.0,
-          "local_mid_cloud": 20.666666666666668,
-          "local_high_layer_cloud": 22.11111111111111,
-          "local_high_cloud": 42.77777777777778,
-          "fire_score_no_color": 19.677777777777777,
-          "burn_scale_label": "小烧",
+          "local_mid_cloud": 29.444444444444443,
+          "local_high_layer_cloud": 29.88888888888889,
+          "local_high_cloud": 59.33333333333333,
+          "fire_score_no_color": 11.866666666666665,
+          "burn_scale_label": "中烧",
           "event_time": "2026-11-02T17:20:57.392182"
         }
       }
@@ -190,10 +190,10 @@
       "evening": {
         "ECMWF IFS 0.25°": {
           "probability": 10.0,
-          "color_score": 36.0,
+          "color_score": 50.0,
           "burn_scale": 100.0,
           "local_mid_cloud": 100.0,
-          "local_high_layer_cloud": 67.55555555555556,
+          "local_high_layer_cloud": 34.111111111111114,
           "local_high_cloud": 100.0,
           "fire_score_no_color": 10.0,
           "burn_scale_label": "大烧",
@@ -234,10 +234,10 @@
         },
         "ECMWF (AI)": {
           "probability": 10.0,
-          "color_score": 36.0,
+          "color_score": 30.0,
           "burn_scale": 100.0,
-          "local_mid_cloud": 89.66666666666667,
-          "local_high_layer_cloud": 72.11111111111111,
+          "local_mid_cloud": 92.33333333333333,
+          "local_high_layer_cloud": 71.88888888888889,
           "local_high_cloud": 100.0,
           "fire_score_no_color": 10.0,
           "burn_scale_label": "大烧",
@@ -307,22 +307,22 @@
       "evening": {
         "ECMWF IFS 0.25°": {
           "probability": 0.0,
-          "color_score": 1.0,
+          "color_score": 0.0,
           "burn_scale": 0.0,
-          "local_mid_cloud": 43.111111111111114,
-          "local_high_layer_cloud": 20.333333333333332,
-          "local_high_cloud": 63.44444444444444,
+          "local_mid_cloud": 40.77777777777778,
+          "local_high_layer_cloud": 0.0,
+          "local_high_cloud": 40.77777777777778,
           "fire_score_no_color": 0.0,
           "burn_scale_label": "几乎不烧",
           "event_time": "2026-11-04T17:19:17.561988"
         },
         "GFS Global": {
           "probability": 0.0,
-          "color_score": 0.0,
+          "color_score": 44.0,
           "burn_scale": 0.0,
-          "local_mid_cloud": 2.2222222222222223,
-          "local_high_layer_cloud": 3.3333333333333335,
-          "local_high_cloud": 5.555555555555555,
+          "local_mid_cloud": 6.111111111111111,
+          "local_high_layer_cloud": 56.666666666666664,
+          "local_high_cloud": 62.77777777777777,
           "fire_score_no_color": 0.0,
           "burn_scale_label": "几乎不烧",
           "event_time": "2026-11-04T17:19:17.561988"
@@ -351,11 +351,11 @@
         },
         "ECMWF (AI)": {
           "probability": 0.0,
-          "color_score": 23.0,
+          "color_score": 18.0,
           "burn_scale": 0.0,
-          "local_mid_cloud": 35.666666666666664,
-          "local_high_layer_cloud": 28.444444444444443,
-          "local_high_cloud": 64.11111111111111,
+          "local_mid_cloud": 41.888888888888886,
+          "local_high_layer_cloud": 21.333333333333332,
+          "local_high_cloud": 63.222222222222214,
           "fire_score_no_color": 0.0,
           "burn_scale_label": "几乎不烧",
           "event_time": "2026-11-04T17:19:17.561988"
