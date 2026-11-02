@@ -146,6 +146,10 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
             c = (190, 125, 105)
         return tuple(max(0, min(255, int(v))) for v in c[:3])
 
+    # The vertical axis is relative brightness only. Hue is taken independently
+    # from each model sample's predicted RGB (solar-angle-based), never mapped
+    # from the Y value.
+    d.text((left, 12), "相对亮度", font=tiny, fill=(71, 85, 105), anchor="la")
     # Grid and Y axis labels.
     for val in (0, 20, 40, 60, 80, 100):
         y = y_at(val)
@@ -637,7 +641,8 @@ if results:
                 f'<div style="font-size:11px;font-weight:400;color:#858585;line-height:1.5;margin:0 0 12px 0;">'
                 f'常规概率：&lt;45% 小概率，45%–75% 有概率，&gt;75% 高概率；'
                 f'色彩评分：&lt;30 平平无奇，30–&lt;50 普通，50–&lt;70 绚烂，70–&lt;90 史诗，≥90 世纪；'
-                f'可染色云占比：表示沿太阳方向采样到的中高云中，满足几何受光与可见条件的加权比例。'
+                f'可染色云占比：沿太阳方向采样的中高云中，满足几何受光与可见条件的加权比例；'
+                f'霞云规模按（中云量+高云量）×可染色云占比估算：≤0 几乎不烧，>0–<10 小小烧，10–<30 微烧，30–<50 小烧，50–<70 中烧，≥70 大烧。'
                 f'</div>', unsafe_allow_html=True)
             rgb = inferred.get("peak_color_rgb") or inferred.get("color_rgb")
             if isinstance(rgb, (tuple, list)) and len(rgb) >= 3:
@@ -650,13 +655,9 @@ if results:
             curve = result.get("dynamic_light_curve", {})
             points = curve.get("samples", []) if isinstance(curve, dict) else []
             st.subheader("云色时序")
-            st.markdown("**染色云面积—色彩时序（几何光路不成立的时段将真实中断）**")
             st.image(_draw_dynamic_color_curve(points, curve.get("peak"), key), use_container_width=True)
             if points:
                 df = pd.DataFrame(points)
-                if curve.get("peak"):
-                    peak = curve["peak"]
-                    st.caption(f"峰值云色时刻：事件前/后 {peak.get('minutes_from_event', 0):+.1f} 分钟；按有效染色云面积优先选取，原始亮度指数 {peak.get('brightness', '—')}；相对亮度 {peak.get('relative_brightness', '—')}。")
             else:
                 st.caption(curve.get("note", "当前没有可参与动态受光估算的云层；已保留空白坐标框，不会伪造色彩曲线。"))
             with st.expander(f"{title}详细采样与分析报告"):
