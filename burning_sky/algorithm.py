@@ -599,6 +599,82 @@ def estimate_path_cloud_boundaries(samples, local_cloud_reach_km=None):
         "cloudy_count": len(cloudy),
     }
 
+
+def apply_extended_gap_scan_modifier(inferred, samples, local_reach_km, scan_limit_km=600.0):
+    """Apply the single-mode regular-score modifier from the extended solar-direction gap scan.
+
+    A gap is a contiguous run of complete low/mid/high cloud samples all <=15%,
+    spanning at least 15 km. Incomplete scan coverage is not treated as a clear path.
+    """
+    inferred = inferred if isinstance(inferred, dict) else dict(inferred or {})
+    ordered = sorted((r for r in (samples or []) if isinstance(r, dict)),
+                     key=lambda r: float(r.get("distance_km", 1e12)))
+    scan_rows = [r for r in ordered if 0 <= float(r.get("distance_km", -1)) <= scan_limit_km]
+    def layers(r):
+        vals = [r.get("cloud_cover_low"), r.get("cloud_cover_mid"), r.get("cloud_cover_high")]
+        return vals if all(isinstance(v, (int, float)) for v in vals) else None
+    complete = [r for r in scan_rows if layers(r) is not None]
+    expected = [0, 25, 50, 100, 150, 200] + list(range(250, int(scan_limit_km) + 1, 50))
+    complete_distances = {round(float(r.get("distance_km", -1)), 1) for r in complete}
+    coverage_ok = all(round(float(d), 1) in complete_distances for d in expected)
+    gaps = []
+    i = 0
+    while i < len(scan_rows):
+        vals = layers(scan_rows[i])
+        if vals is None or max(vals) > 15.0:
+            i += 1; continue
+        j = i
+        while j + 1 < len(scan_rows):
+            nxt = layers(scan_rows[j+1])
+            if nxt is None or max(nxt) > 15.0:
+                break
+            j += 1
+        start = float(scan_rows[i].get("distance_km", 0)) if i == 0 else (float(scan_rows[i-1].get("distance_km", 0))+float(scan_rows[i].get("distance_km", 0)))/2
+        end = float(scan_rows[j].get("distance_km", 0)) if j == len(scan_rows)-1 else (float(scan_rows[j].get("distance_km", 0))+float(scan_rows[j+1].get("distance_km", 0)))/2
+        if end-start >= 15.0:
+            gaps.append((max(0.0,start), min(scan_limit_km,end)))
+        i = j+1
+    before = int(round(max(0, min(100, float(inferred.get("regular_score", inferred.get("score", 0)) or 0)))))
+    try: reach = float(local_reach_km)
+    except (TypeError, ValueError): reach = 0.0
+    if not gaps and not coverage_ok:
+        inferred["extended_gap_scan_status"] = "incomplete"
+        inferred.setdefault("score_notes", []).append("600 km太阳方向云洞扫描数据覆盖不完整；未应用云洞距离硬修正，避免把缺测当作无云洞。")
+        return inferred
+    if not gaps:
+        after, factor, status = 0, 0.0, "no_readable_gap_to_600km"
+        note = "太阳方向扫描至600 km仍未形成可判读晴空间隔，常规概率直接归零。"
+    else:
+        first_gap = min(gaps, key=lambda x: x[0])[0]
+        if reach <= 0:
+            after, factor, status = 0, 0.0, "gap_with_invalid_local_reach"
+            note = f"识别到云洞（起点约{first_gap:.0f} km），但本地极限云距无效，常规概率直接归零。"
+        elif first_gap <= 2.0 * reach:
+            factor, status = 0.5, "gap_within_2x_reach"
+            after = int(round(before * factor))
+            note = f"最近可判读云洞起点约{first_gap:.0f} km，位于2倍极限云距内；常规概率乘0.5（{before}%→{after}%）。"
+        elif first_gap <= 4.0 * reach and (coverage_ok or float(complete[-1].get("distance_km", 0)) >= first_gap):
+            factor, status = 0.25, "gap_within_4x_reach"
+            after = int(round(before * factor))
+            note = f"最近可判读云洞起点约{first_gap:.0f} km，位于2–4倍极限云距内；常规概率乘0.25（{before}%→{after}%）。"
+        elif coverage_ok:
+            after, factor, status = 0, 0.0, "gap_beyond_4x_reach"
+            note = f"最近可判读云洞起点约{first_gap:.0f} km，超过4倍极限云距且在600 km扫描范围内；常规概率直接归零。"
+        else:
+            inferred["extended_gap_scan_status"] = "incomplete"
+            inferred.setdefault("score_notes", []).append("云洞超出4倍极限云距，但600 km扫描未完整覆盖；暂不应用归零判定。")
+            return inferred
+    inferred["extended_gap_scan_status"] = status
+    inferred["extended_gap_scan_first_gap_km"] = (min(gaps, key=lambda x:x[0])[0] if gaps else None)
+    inferred["extended_gap_scan_factor"] = factor
+    inferred["extended_gap_scan_pre_score"] = before
+    inferred["regular_score"] = after
+    inferred["score"] = after
+    inferred["score_notes"] = list(inferred.get("score_notes", [])) + [note]
+    if after == 0:
+        inferred["verdict_override"] = "光路条件不满足"
+    return inferred
+
 def _cloud_height_color(height_km, cloud_cover=None, relative_humidity=None):
     """按高度带给剖面云层着色；颜色深浅近似表达模式云量强弱。"""
     if height_km < 2.0:

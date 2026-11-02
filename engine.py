@@ -950,6 +950,76 @@ class FireCloudApp(tk.Tk):
                     samples.append(sample)
                     raw_details.append({"distance_km": dist, "center": coord, "records": records, "mean": sample})
 
+                # 若初始极限云距内未识别到可判读晴空间隔，则沿太阳方向补扫至600 km。
+                # 该扩展扫描仅用于云洞距离修正，不把远端云底/AOD纳入本地几何上限。
+                initial_boundaries = estimate_path_cloud_boundaries(samples, max_reach)
+                extended_scan_complete = False
+                if not (initial_boundaries.get("clear_gaps") or []):
+                    extra_distances = [d for d in range(250, 601, 50) if d not in set(distances)]
+                    if extra_distances:
+                        extra_coords = [destination_point(data["lat"], data["lon"], azimuth, d) for d in extra_distances]
+                        extra_groups = []
+                        for center_lat, center_lon in extra_coords:
+                            group = [(center_lat, center_lon)]
+                            for off in (-40.0, -25.0, -12.0, 12.0, 25.0, 40.0):
+                                bearing = (azimuth + (90.0 if off > 0 else -90.0)) % 360
+                                group.append(destination_point(center_lat, center_lon, bearing, abs(off)))
+                            group.append(destination_point(center_lat, center_lon, azimuth, 12.0))
+                            group.append(destination_point(center_lat, center_lon, (azimuth + 180.0) % 360, 12.0))
+                            extra_groups.append(group)
+                        extra_query_coords = [pt for group in extra_groups for pt in group]
+                        self._set_main_progress(base_progress + 36, f"{direction_name}：初始范围未识别云洞，扩展扫描至600 km……")
+                        extra_locations = self._fetch_weather_locations(extra_query_coords, model_id)
+                        group_size = len(extra_groups[0]) if extra_groups else 0
+                        for dist, coord, group, locs in zip(extra_distances, extra_coords, extra_groups,
+                                [extra_locations[i:i+group_size] for i in range(0, len(extra_locations), group_size)]):
+                            records = []
+                            for rec_idx, (subcoord, loc) in enumerate(zip(group, locs)):
+                                hourly = loc.get("hourly", {})
+                                times = hourly.get("time", [])
+                                if not times:
+                                    continue
+                                idx = min(range(len(times)), key=lambda i: abs((datetime.fromisoformat(times[i])-event_utc).total_seconds()))
+                                valid_dt = datetime.fromisoformat(times[idx])
+                                if abs((valid_dt-event_utc).total_seconds()) > 5400:
+                                    continue
+                                rec = {"lat": subcoord[0], "lon": subcoord[1], "time": times[idx],
+                                       "cross_track_offset_km": (None if rec_idx == 0 or rec_idx >= 7 else (-40,-25,-12,12,25,40)[rec_idx-1])}
+                                for key in cloud_keys:
+                                    series = hourly.get(key, [])
+                                    val = series[idx] if idx < len(series) else None
+                                    rec[key] = val if isinstance(val,(int,float)) and math.isfinite(val) else None
+                                dseries = hourly.get("wind_direction_10m", [])
+                                rec["wind_direction_10m"] = dseries[idx] if idx < len(dseries) and isinstance(dseries[idx],(int,float)) else None
+                                records.append(rec)
+                            if not records:
+                                continue
+                            def extra_avg(key):
+                                vals=[r[key] for r in records if r.get(key) is not None]
+                                return sum(vals)/len(vals) if vals else None
+                            cross=[r.get("cloud_cover_low") for r in records if r.get("cross_track_offset_km") is not None and r.get("cloud_cover_low") is not None]
+                            center_low=records[0].get("cloud_cover_low")
+                            wind_dirs=[r["wind_direction_10m"] for r in records if isinstance(r.get("wind_direction_10m"),(int,float))]
+                            wind_dir=(math.degrees(math.atan2(sum(math.sin(math.radians(x)) for x in wind_dirs),sum(math.cos(math.radians(x)) for x in wind_dirs)))%360) if wind_dirs else None
+                            samples.append({"distance_km":dist,"lat":coord[0],"lon":coord[1],"time":records[0]["time"],
+                                "cloud_cover":extra_avg("cloud_cover"),"cloud_cover_low":extra_avg("cloud_cover_low"),
+                                "center_cloud_cover_low":center_low,"cross_track_low_cover":cross,
+                                "cross_track_offsets_km":[r.get("cross_track_offset_km") for r in records if r.get("cross_track_offset_km") is not None],
+                                "cross_track_low_ge70_count":sum(v>=70 for v in cross),
+                                "cross_track_low_ge70_fraction":sum(v>=70 for v in cross)/len(cross) if cross else None,
+                                "cloud_cover_mid":extra_avg("cloud_cover_mid"),"cloud_cover_high":extra_avg("cloud_cover_high"),
+                                "visibility_m":extra_avg("visibility"),"wind_ms":extra_avg("wind_speed_10m"),
+                                "precipitation_probability":extra_avg("precipitation_probability"),"precipitation":extra_avg("precipitation"),
+                                "wind_direction":wind_dir,"wind_gusts":extra_avg("wind_gusts_10m"),
+                                "area_radius_km":15,"area_sample_count":len(records)})
+                            raw_details.append({"distance_km":dist,"center":coord,"records":records,"mean":samples[-1]})
+                    # 仅当0–600 km范围的数据完整覆盖时，后续才允许“无云洞直接归零”。
+                    extended_scan_complete = (len([r for r in samples if 0 <= float(r.get("distance_km",-1)) <= 600 and
+                        all(isinstance(r.get(k),(int,float)) for k in ("cloud_cover_low","cloud_cover_mid","cloud_cover_high"))]) >= 8 and
+                        max((float(r.get("distance_km",0)) for r in samples if all(isinstance(r.get(k),(int,float)) for k in ("cloud_cover_low","cloud_cover_mid","cloud_cover_high"))),default=0) >= 599)
+                else:
+                    extended_scan_complete = False
+
                 # 彩虹位于反太阳方向：只额外查询 5 个稀疏点，失败不影响霞光主预报。
                 self._set_main_progress(base_progress + 37, f"{direction_name}：估算反太阳方向彩虹条件……")
                 try:
@@ -1013,6 +1083,10 @@ class FireCloudApp(tk.Tk):
                 inferred = apply_peak_cloud_color(inferred, boundaries, samples)
                 # 结果发布前最后一道规则闸门：低云屏障、色彩处理之后重新核定特殊结论。
                 inferred = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
+                if extended_scan_complete or (initial_boundaries.get("clear_gaps") or []):
+                    inferred = apply_extended_gap_scan_modifier(inferred, samples, local_reach, 600.0)
+                else:
+                    inferred.setdefault("score_notes", []).append("太阳方向600 km扩展云洞扫描未完整覆盖；未应用该项硬修正。")
                 if elevation_filter_result.get("applied"):
                     inferred.setdefault("score_notes", []).append(
                         "高海拔近场低云过滤：" + elevation_filter_result.get("reason", "已应用") +
