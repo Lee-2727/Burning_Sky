@@ -4,14 +4,15 @@
   "direction": "evening",
   "direction_title": "晚霞",
   "started_at": "2026-11-03 08:41:15 CST",
-  "updated_at": "2026-11-03 08:49:24 CST",
+  "updated_at": "2026-11-03 08:52:07 CST",
   "current_model": "CMA GRAPES Global",
   "model_index": 4,
   "model_total": 5,
   "completed_models": [
     "ECMWF IFS 0.25°",
     "GFS Global",
-    "ICON Global"
+    "ICON Global",
+    "CMA GRAPES Global"
   ],
   "cities": [
     "合肥",
@@ -19,7 +20,7 @@
   ],
   "city_progress": 2,
   "city_total": 2,
-  "task_progress": 18,
+  "task_progress": 24,
   "task_total": 30,
   "next_update": "北京时间每日 00:00/04:00/20:00 朝霞；08:00/12:00/16:00 晚霞",
   "failure_count": 0,
