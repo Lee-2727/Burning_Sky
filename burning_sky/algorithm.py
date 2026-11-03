@@ -600,6 +600,104 @@ def estimate_path_cloud_boundaries(samples, local_cloud_reach_km=None):
     }
 
 
+def staged_cloud_hole_search(samples, theoretical_reach_km, *, clear_threshold=15.0, min_gap_km=15.0):
+    """Three-stage cloud-hole search: quick screen, angular-height intersection, fallback screen.
+
+    Layer heights are conservative model-band approximations (ASL): low 0-2 km,
+    mid 2-6 km, high 6-12 km. Cloud fraction is treated as a probabilistic
+    obstruction: <=15% is clear, >=25% contributes a cloudy angular exclusion,
+    and 15-25% is uncertain (not used to prove an exclusion).
+    """
+    ordered = sorted((r for r in (samples or []) if isinstance(r, dict)),
+                     key=lambda r: float(r.get('distance_km', 0)))
+    try: reach = max(0.0, float(theoretical_reach_km))
+    except (TypeError, ValueError): reach = 0.0
+    limit = reach + 50.0
+    fallback_lo, fallback_hi = limit, 2.0 * reach
+
+    def quick(rows, lo, hi):
+        rows = [r for r in rows if lo <= float(r.get('distance_km', -1)) <= hi]
+        gaps=[]; i=0
+        def clear(r):
+            vals=[r.get(k) for k in ('cloud_cover_low','cloud_cover_mid','cloud_cover_high')]
+            return all(isinstance(v,(int,float)) for v in vals) and max(vals)<=clear_threshold
+        while i<len(rows):
+            if not clear(rows[i]): i+=1; continue
+            j=i
+            while j+1<len(rows) and clear(rows[j+1]): j+=1
+            a=float(rows[i].get('distance_km',0)); b=float(rows[j].get('distance_km',0))
+            prev=float(rows[i-1].get('distance_km',a)) if i else a
+            nxt=float(rows[j+1].get('distance_km',b)) if j+1<len(rows) else b
+            start=a if i==0 else (prev+a)/2
+            end=b if j==len(rows)-1 else (b+nxt)/2
+            if end-start>=min_gap_km:
+                gaps.append({'start_km':round(max(lo,start),1),'end_km':round(min(hi,end),1),
+                             'size_km':round(max(0,min(hi,end)-max(lo,start)),1),
+                             'source':'quick_screen','angle_interval_deg':None})
+            i=j+1
+        return gaps
+
+    # Stage 1: normal quick screen within theoretical illumination range.
+    first=quick(ordered,0.0,reach)
+    if first:
+        return {'stage':'quick_screen','gaps':first,'fallback_factor':1.0,
+                'search_limit_km':limit,'angle_intervals_deg':[]}
+
+    # Stage 2: intersect allowed solar-elevation-angle intervals across all
+    # sampled points up to reach+50 km. Each cloudy layer removes its angular
+    # band; disconnected intersections are intentionally retained separately.
+    rows=[r for r in ordered if 0.0<=float(r.get('distance_km',-1))<=limit]
+    intervals=[(0.0,90.0)]
+    bands=(("cloud_cover_low",0.0,2.0),("cloud_cover_mid",2.0,6.0),("cloud_cover_high",6.0,12.0))
+    for r in rows:
+        d=float(r.get('distance_km',0))
+        if d<=0: continue
+        blocked=[]
+        for key,z0,z1 in bands:
+            amount=r.get(key)
+            if isinstance(amount,(int,float)) and amount>=25.0:
+                a=math.degrees(math.atan(max(0.0,z0)/d))
+                b=math.degrees(math.atan(max(0.0,z1)/d))
+                if b>a: blocked.append((a,b))
+        allowed=[(0.0,90.0)]
+        for ba,bb in sorted(blocked):
+            nxt=[]
+            for a,b in allowed:
+                if bb<=a or ba>=b: nxt.append((a,b))
+                else:
+                    if ba>a: nxt.append((a,ba))
+                    if bb<b: nxt.append((bb,b))
+            allowed=nxt
+        intersect=[]
+        for a,b in intervals:
+            for c,d2 in allowed:
+                x,y=max(a,c),min(b,d2)
+                if y-x>1e-4: intersect.append((x,y))
+        intervals=intersect
+        if not intervals: break
+    # Exclude degenerate near-vertical angles and preserve each disconnected interval.
+    intervals=[(a,b) for a,b in intervals if b-a>=0.25 and b<89.9]
+    if intervals:
+        holes=[]
+        for idx,(a,b) in enumerate(sorted(intervals),1):
+            # Angular width projected at search limit is a comparable effective width.
+            width=max(0.0,limit*(math.tan(math.radians(b))-math.tan(math.radians(a))))
+            holes.append({'start_km':0.0,'end_km':round(limit,1),'size_km':round(width,1),
+                         'source':'height_intersection','angle_interval_deg':[round(a,3),round(b,3)],
+                         'hole_index':idx})
+        return {'stage':'height_intersection','gaps':holes,'fallback_factor':1.0,
+                'search_limit_km':limit,'angle_intervals_deg':[[round(a,3),round(b,3)] for a,b in sorted(intervals)]}
+
+    # Stage 3: fallback quick screen in (reach+50, 2*reach]. Skip if inverted.
+    if fallback_lo<=fallback_hi:
+        fallback=quick(ordered,fallback_lo,fallback_hi)
+        if fallback:
+            return {'stage':'fallback_quick_screen','gaps':fallback,'fallback_factor':0.5,
+                    'search_limit_km':fallback_hi,'angle_intervals_deg':[]}
+    return {'stage':'no_cloud_hole','gaps':[],'fallback_factor':1.0,
+            'search_limit_km':limit,'angle_intervals_deg':[]}
+
+
 def apply_extended_gap_scan_modifier(inferred, samples, local_reach_km, scan_limit_km=600.0):
     """Apply the single-mode regular-score modifier from the extended solar-direction gap scan.
 

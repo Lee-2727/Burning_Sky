@@ -1127,6 +1127,22 @@ class FireCloudApp(tk.Tk):
                 if not isinstance(local_reach, (int, float)):
                     local_reach = max_reach if max_reach > 0 else None
                 boundaries = estimate_path_cloud_boundaries(samples, local_reach)
+                # Staged cloud-hole search: quick screen -> angular-height intersection -> fallback quick screen.
+                cloud_hole_search = staged_cloud_hole_search(samples, local_reach)
+                if cloud_hole_search.get("stage") != "quick_screen":
+                    staged_gaps = cloud_hole_search.get("gaps") or []
+                    boundaries["clear_gaps"] = staged_gaps
+                    boundaries["clear_gap_count"] = len(staged_gaps)
+                    largest = max(staged_gaps, key=lambda g: float(g.get("size_km", 0)), default=None)
+                    farthest_gap = max(staged_gaps, key=lambda g: float(g.get("end_km", 0)), default=None)
+                    boundaries["clear_gap_start_km"] = largest.get("start_km") if largest else None
+                    boundaries["clear_gap_end_km"] = largest.get("end_km") if largest else None
+                    boundaries["largest_gap_size_km"] = largest.get("size_km", 0) if largest else 0
+                    boundaries["farthest_gap_distance_km"] = farthest_gap.get("end_km") if farthest_gap else None
+                    boundaries["farthest_gap_start_km"] = farthest_gap.get("start_km") if farthest_gap else None
+                    boundaries["gap_status"] = "effective_gap_candidate" if staged_gaps else boundaries.get("gap_status", "unknown")
+                inferred["cloud_hole_search_stage"] = cloud_hole_search.get("stage")
+                inferred["cloud_hole_angle_intervals_deg"] = cloud_hole_search.get("angle_intervals_deg", [])
                 inferred = apply_path_score_pair(inferred, geometry, boundaries, samples=samples)
                 inferred = apply_low_cloud_screen_constraint(inferred, samples=samples, source="online_path",
                                                              max_relevant_distance_km=max_reach,
@@ -1134,10 +1150,20 @@ class FireCloudApp(tk.Tk):
                 inferred = apply_peak_cloud_color(inferred, boundaries, samples)
                 # 结果发布前最后一道规则闸门：低云屏障、色彩处理之后重新核定特殊结论。
                 inferred = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
-                if extended_scan_complete or (initial_boundaries.get("clear_gaps") or []):
-                    inferred = apply_extended_gap_scan_modifier(inferred, samples, local_reach, 600.0)
-                else:
-                    inferred.setdefault("score_notes", []).append("太阳方向600 km扩展云洞扫描未完整覆盖；未应用该项硬修正。")
+                # Fallback-stage cloud holes are weaker evidence: apply the agreed 0.5 factor.
+                # The legacy fixed 600-km modifier is intentionally bypassed to avoid double-counting.
+                if cloud_hole_search.get("stage") == "fallback_quick_screen":
+                    factor = float(cloud_hole_search.get("fallback_factor", 0.5))
+                    before = int(round(max(0, min(100, float(inferred.get("regular_score", inferred.get("score", 0)) or 0)))))
+                    after = int(round(before * factor))
+                    inferred["regular_score"] = inferred["score"] = after
+                    inferred["cloud_hole_fallback_factor"] = factor
+                    inferred.setdefault("score_notes", []).append(
+                        f"扩展快筛在理论极限云距+50 km至2倍理论极限云距范围识别到云洞；常规概率乘{factor:g}（{before}%→{after}%）。")
+                elif cloud_hole_search.get("stage") == "no_cloud_hole":
+                    inferred["cloud_hole_search_stage"] = "no_cloud_hole"
+                    inferred.setdefault("score_notes", []).append(
+                        "快筛、高度交集及扩展快筛均未识别到有效云洞；沿用现有无云洞判定规则。")
                 if elevation_filter_result.get("applied"):
                     inferred.setdefault("score_notes", []).append(
                         "高海拔近场低云过滤：" + elevation_filter_result.get("reason", "已应用") +
@@ -4596,6 +4622,26 @@ class FireCloudApp(tk.Tk):
         return os.path.join(self.case_root, f"{date_label}_{place_label}_{self._case_model_code()}")
 
     @staticmethod
+    def _restore_case_datetime_fields(value, parent_key=None):
+        """恢复案例 JSON 中的时间对象；仅转换明确的时间字段，不触碰查询日期字符串。"""
+        datetime_keys = {"datetime", "event_dt", "event_datetime", "dt", "valid_time", "time_dt"}
+        date_keys = {"date"}
+        if isinstance(value, dict):
+            return {k: FireCloudApp._restore_case_datetime_fields(v, k) for k, v in value.items()}
+        if isinstance(value, list):
+            return [FireCloudApp._restore_case_datetime_fields(v, parent_key) for v in value]
+        if isinstance(value, str) and parent_key in datetime_keys | date_keys:
+            text_value = value.strip()
+            try:
+                if parent_key in date_keys and len(text_value) == 10:
+                    return date.fromisoformat(text_value)
+                normalized = text_value.replace("Z", "+00:00")
+                return datetime.fromisoformat(normalized)
+            except (ValueError, TypeError):
+                return value
+        return value
+
+    @staticmethod
     def _json_safe(value):
         """递归把结果转为 JSON 可保存的普通 Python 数据。"""
         if isinstance(value, dict):
@@ -5168,6 +5214,9 @@ class FireCloudApp(tk.Tk):
             for key, value in state.get("cloud_base_inputs", {}).items():
                 if key in self.vars: self.vars[key].set(str(value))
             self.direction_results = state.get("direction_results", {})
+            # JSON 会把 datetime/date 对象序列化为 ISO 字符串；加载案例时恢复
+            # 分析结果中需要参与时间格式化/运算的字段，避免 str.strftime 报错。
+            self.direction_results = self._restore_case_datetime_fields(self.direction_results)
             self.loaded_case_state = state
             try:
                 with open(os.path.join(folder, "request_cache.json"), "r", encoding="utf-8") as _cf:
