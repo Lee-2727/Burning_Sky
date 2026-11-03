@@ -1143,6 +1143,9 @@ class FireCloudApp(tk.Tk):
                     boundaries["gap_status"] = "effective_gap_candidate" if staged_gaps else boundaries.get("gap_status", "unknown")
                 inferred["cloud_hole_search_stage"] = cloud_hole_search.get("stage")
                 inferred["cloud_hole_angle_intervals_deg"] = cloud_hole_search.get("angle_intervals_deg", [])
+                # Keep detection provenance on boundaries so web and desktop reports use identical labels.
+                boundaries["cloud_hole_search_stage"] = cloud_hole_search.get("stage")
+                boundaries["cloud_hole_angle_intervals_deg"] = cloud_hole_search.get("angle_intervals_deg", [])
                 inferred = apply_path_score_pair(inferred, geometry, boundaries, samples=samples)
                 inferred = apply_low_cloud_screen_constraint(inferred, samples=samples, source="online_path",
                                                              max_relevant_distance_km=max_reach,
@@ -1174,8 +1177,23 @@ class FireCloudApp(tk.Tk):
                 cloud_edge_text = '未估算' if boundaries['cloud_edge_distance_km'] is None else f"约 {boundaries['cloud_edge_distance_km']:.0f} km"
                 fire_range_text = '未识别' if boundaries['fire_cloud_range_km'] is None else f"约 {boundaries['fire_cloud_range_km']} km"
                 all_gaps = boundaries.get('clear_gaps') or []
-                gap_text = ('未形成可判读的晴空间隔' if not all_gaps else
-                            '；'.join(f"{g['start_km']:.0f}–{g['end_km']:.0f} km（{g['size_km']:.0f} km）" for g in all_gaps))
+                search_stage = cloud_hole_search.get('stage')
+                gap_ranges = '；'.join(f"{g['start_km']:.0f}–{g['end_km']:.0f} km（{g['size_km']:.0f} km）" for g in all_gaps)
+                if search_stage == 'height_intersection':
+                    # The solver stores positive elevation magnitudes; present them as negative
+                    # depression angles per the requested display convention.
+                    angle_intervals = cloud_hole_search.get('angle_intervals_deg') or []
+                    angle_text = '；'.join(
+                        f"{(-float(b)):.2f}°至{(-float(a)):.2f}°" for a, b in angle_intervals
+                    ) or '角度区间未提供'
+                    gap_display_label = '云隙透光'
+                    gap_text = f'高度角交集：{angle_text}'
+                elif search_stage == 'fallback_quick_screen':
+                    gap_display_label = '可能有云洞'
+                    gap_text = gap_ranges or '可能有云洞（扩展距离快筛）'
+                else:
+                    gap_display_label = '晴空间隔'
+                    gap_text = gap_ranges if all_gaps else '未形成可判读的晴空间隔'
                 cap_note = "已触及 600 km 采样上限；若理论深入距离更远，需进一步提高上限或采用更稀疏的远距离采样。" if sample_limit >= 600 and max_reach > 600 else ""
                 if rainbow_result.get("score") is None:
                     rainbow_summary = "彩虹出现机会：暂不可估"
@@ -1262,7 +1280,7 @@ class FireCloudApp(tk.Tk):
                     f"{model_time_text}\n"
                     f"{direction_name} · {data['place']} · {data['date'].isoformat()}　{event_dt.strftime('%H:%M')} / 方位 {azimuth:.0f}°\n"
                     f"{model_label}　|　云量 总 {self._fmt_pct(inferred['total'])} · 低 {self._fmt_pct(inferred['low'])} · 中 {self._fmt_pct(inferred['mid'])} · 高 {self._fmt_pct(inferred['high'])} · 可染色云占比 {tintable_text}\n"
-                    f"潜在霞云距 {fire_range_text}　|　极限云距 {cloud_edge_text}　|　晴空间隔 {gap_text}\n"
+                    f"潜在霞云距 {fire_range_text}　|　极限云距 {cloud_edge_text}　|　{gap_display_label} {gap_text}\n"
                     f"云底 {base_short}（{base_source_short}）　|　AOD {aod_short}"
                     f"{special_summary_line}"
                 )
@@ -1273,7 +1291,7 @@ class FireCloudApp(tk.Tk):
                     f"色彩表现评分：{inferred.get('color_score', '—')}/100（{inferred.get('color_score_label', '待估')}；{inferred.get('color_score_note', '经验指数')}）",
                     f"可染色云占比：{tintable_text}。基于模式云量、高度带、太阳位置、地球曲率与几何可见性估算；不是卫星实测值。",
                     model_time_text,
-                    f"潜在霞云距（本地连续中高云末端）：{fire_range_text}；极限云距（几何上限）：{cloud_edge_text}；晴空间隔：{gap_text}",
+                    f"潜在霞云距（本地连续中高云末端）：{fire_range_text}；极限云距（几何上限）：{cloud_edge_text}；{gap_display_label}：{gap_text}",
                     (f"彩虹出现机会：暂不可估；{rainbow_result.get('note', '反太阳方向降水条件数据不可用。')}" if rainbow_result.get("score") is None else
                      f"彩虹出现机会：{rainbow_result['label']}（经验指数 {rainbow_result['score']}/100，非统计概率）；反太阳方向采样点 {rainbow_result['distance_km']:.0f} km，降水概率 {self._fmt_pct(rainbow_result.get('precip_probability'))}，小时降水 {('—' if rainbow_result.get('precipitation') is None else format(rainbow_result['precipitation'], '.2f')+' mm/h')}"),
                     f"采样动态扩展：初始 0–200 km；粗采样最大理论距离 {max_reach:.1f} km；按约 100 km 缓冲扩展，最终采样上限 {distances[-1]} km。",
@@ -4713,6 +4731,19 @@ class FireCloudApp(tk.Tk):
         body.append('<rect x="780" y="18" width="14" height="14" fill="#509dde"/><text x="800" y="30" font-size="13" fill="#334155">低云</text><rect x="860" y="18" width="14" height="14" fill="#f4a636"/><text x="880" y="30" font-size="13" fill="#334155">中云</text><rect x="940" y="18" width="14" height="14" fill="#a678da"/><text x="960" y="30" font-size="13" fill="#334155">高云</text><path d="M1040 18 l10 10 m0 -10 l-10 10" stroke="#d83c3c" stroke-width="2"/><text x="1058" y="30" font-size="13" fill="#334155">推算云底</text>')
         self._svg_write(path, W, H, ''.join(body))
 
+    @staticmethod
+    def _format_cloud_hole_display(boundary):
+        stage = boundary.get("cloud_hole_search_stage")
+        if stage == "height_intersection":
+            intervals = boundary.get("cloud_hole_angle_intervals_deg") or []
+            angle_text = "；".join(f"{-float(b):.2f}°至{-float(a):.2f}°" for a, b in intervals) or "角度区间未提供"
+            return f"云隙透光：高度角交集 {angle_text}"
+        if stage == "fallback_quick_screen":
+            return "可能有云洞：扩展距离快筛发现候选区间"
+        start, end = boundary.get("clear_gap_start_km"), boundary.get("clear_gap_end_km")
+        return (f"晴空间隔：{start}–{end} km" if start is not None and end is not None
+                else "晴空间隔：未识别到可判读区间（不代表一定不存在）")
+
     def _save_scene_svg(self, result, direction_key, path):
         inferred = result.get("inferred", {})
         sm = next((x for x in result.get("samples", []) if x.get("distance_km") == 0), {})
@@ -4724,7 +4755,7 @@ class FireCloudApp(tk.Tk):
             (f"发生概率估计：{inferred.get('regular_score', '—')}%    有利情景上限：{inferred.get('upper_score', '—')}%", 21, "#1d4ed8", True),
             (f"本地云量：总云 {pct(sm.get('cloud_cover'))}｜低云 {pct(sm.get('cloud_cover_low'))}｜中云 {pct(sm.get('cloud_cover_mid'))}｜高云 {pct(sm.get('cloud_cover_high'))}", 18, "#334155", False),
             (f"火烧云范围：{boundary.get('fire_cloud_range_km', '未知')} km；云边距：{boundary.get('cloud_edge_distance_km', '未知')} km", 18, "#334155", False),
-            (f"晴空间隔：{boundary.get('clear_gap_start_km', '未知')}–{boundary.get('clear_gap_end_km', '未知')} km（若未识别则不能视为不存在）", 17, "#334155", False),
+            (self._format_cloud_hole_display(boundary), 17, "#334155", False),
             (f"AOD：{'缺测' if aod is None else f'{aod:.3f}'}；彩虹机会指数：{result.get('rainbow', {}).get('score', '暂不可估')}", 17, "#334155", False),
             ("说明：这是基于天气模式数据的经验性视觉预估，不是现场实拍，也不是发生概率。", 15, "#64748b", False),
         ]
@@ -4937,8 +4968,16 @@ class FireCloudApp(tk.Tk):
             lines.append(f"云量结构：低云 {pct(sm.get('cloud_cover_low'))}；中云 {pct(sm.get('cloud_cover_mid'))}；高云 {pct(sm.get('cloud_cover_high'))}；总云量 {pct(sm.get('cloud_cover'))}。")
             lines.append(f"低云遮挡：{low_reason}")
             lines.append(f"云层延伸/云边界：本地连续中高云范围 {km(b.get('fire_cloud_range_km'))}；太阳方向推算云边距 {km(b.get('cloud_edge_distance_km'))}。")
-            gap_start=b.get('clear_gap_start_km'); gap_end=b.get('clear_gap_end_km')
-            gap=(f"约 {gap_start}–{gap_end} km" if gap_start is not None and gap_end is not None else "未识别到可判读的晴空间隔（不代表一定没有）")
+            stage=b.get("cloud_hole_search_stage")
+            if stage == "height_intersection":
+                intervals=b.get("cloud_hole_angle_intervals_deg") or []
+                angle_text="；".join(f"{-float(y):.2f}°至{-float(x):.2f}°" for x,y in intervals) or "角度区间未提供"
+                gap=f"云隙透光：高度角交集 {angle_text}"
+            elif stage == "fallback_quick_screen":
+                gap="可能有云洞（扩展距离快筛候选）"
+            else:
+                gap_start=b.get('clear_gap_start_km'); gap_end=b.get('clear_gap_end_km')
+                gap=(f"晴空间隔约 {gap_start}–{gap_end} km" if gap_start is not None and gap_end is not None else "未识别到可判读的晴空间隔（不代表一定没有）")
             lines.append(f"云隙/挡光：{gap}；远端云层能否被实际照亮，还受云体厚度、云顶高度和三维云缘影响。")
             lines.append(f"云底与理论照明：本地推算云底绝对海拔 {km(g0.get('cloud_base_km'))}；理论照明距离 {km(g0.get('reach_km'))}。云底来自模式剖面推算，不是实测。")
             lines.append(f"空气透明度：AOD {'缺测' if aod is None else f'{aod:.3f}'}；沿线模式能见度均值 {'缺测' if mean_vis is None else f'{mean_vis:.1f} km'}。低能见度或较高 AOD 可能削弱远处霞光与色彩饱和度。")

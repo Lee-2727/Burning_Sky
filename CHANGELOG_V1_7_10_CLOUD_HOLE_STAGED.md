@@ -7,3 +7,9 @@
 - 三阶段均无结果时沿用既有无云洞判定。
 - 避免旧600 km修正与新分阶段流程重复计分。
 - 本地算法说明位于 docs/internal/cloud_hole_search_method.txt，不在 GUI/网页展示。
+
+
+## FIX4 terminology update
+- Quick-screen detections retain the 晴空间隔 wording.
+- Angular-height intersection detections are labeled 云隙.
+- No-detection wording follows the detection stage.
