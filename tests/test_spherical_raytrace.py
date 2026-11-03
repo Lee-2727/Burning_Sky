@@ -19,3 +19,18 @@ def test_trace_reports_layer_block_and_reason():
 def test_scan_window_has_minute_resolution():
     out=scan_window([],2,datetime(2026,6,1,18,30),8,31.8,117.2,before_minutes=2,after_minutes=2)
     assert out["scan_count"] == 5
+
+
+def test_surface_arc_ray_u_shape_and_negative_solar_angle():
+    from burning_sky.spherical_raytrace import _ray_height_km
+    h = [_ray_height_km(4.0, -1.0, d) for d in (0, 50, 100, 150, 200, 300, 400)]
+    expected = (4.0, 3.3231, 3.0389, 3.1473, 3.6483, 5.8290, 9.5837)
+    assert all(abs(a-b)<0.08 for a,b in zip(h, expected)), h
+    assert h[2] < h[1] and h[2] < h[3] and h[-1] > h[0]
+
+
+def test_earth_occlusion_cannot_recover_after_exit():
+    from burning_sky.spherical_raytrace import _earth_occluded, _ray_height_km
+    assert _earth_occluded(0.5, -2.0, 400)
+    assert not _earth_occluded(4.0, -1.0, 400)
+    assert _ray_height_km(0.5, -2.0, 500) > 0  # mathematical re-emergence is NOT sunlight

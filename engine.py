@@ -678,7 +678,8 @@ class FireCloudApp(tk.Tk):
         morning_actions = ttk.Frame(right, style="Card.TFrame")
         morning_actions.pack(fill="x", pady=(0, 10))
         ttk.Button(morning_actions, text="查看朝霞地图云层分布", command=lambda: self.show_path_cloud_map("morning")).pack(side="left")
-        ttk.Button(morning_actions, text="高度剖面", command=lambda: self.show_path_cloud_profile("morning")).pack(side="left", padx=(5, 0))
+        ttk.Button(morning_actions, text="剖面图", command=lambda: self.show_path_cloud_profile("morning")).pack(side="left", padx=(5, 0))
+        ttk.Button(morning_actions, text="二维霞云图", command=lambda: self.show_2d_illumination("morning")).pack(side="left", padx=(5, 0))
         ttk.Button(morning_actions, text="显示朝霞各采样点具体云况", command=lambda: self.show_direction_details("morning")).pack(side="right")
 
         evening_result_row = ttk.Frame(right, style="Card.TFrame")
@@ -742,7 +743,8 @@ class FireCloudApp(tk.Tk):
         evening_actions = ttk.Frame(right, style="Card.TFrame")
         evening_actions.pack(fill="x", pady=(0, 8))
         ttk.Button(evening_actions, text="查看晚霞地图云层分布", command=lambda: self.show_path_cloud_map("evening")).pack(side="left")
-        ttk.Button(evening_actions, text="高度剖面", command=lambda: self.show_path_cloud_profile("evening")).pack(side="left", padx=(5, 0))
+        ttk.Button(evening_actions, text="剖面图", command=lambda: self.show_path_cloud_profile("evening")).pack(side="left", padx=(5, 0))
+        ttk.Button(evening_actions, text="二维霞云图", command=lambda: self.show_2d_illumination("evening")).pack(side="left", padx=(5, 0))
         ttk.Button(evening_actions, text="显示晚霞各采样点具体云况", command=lambda: self.show_direction_details("evening")).pack(side="right")
         ttk.Label(right, text="采样范围根据各点推算的有效云底动态扩展；单次最远限制 600 km。具体云况默认收起，点击上方按钮查看。", style="Sub.TLabel", wraplength=620).pack(anchor="w", pady=(2, 0))
 
@@ -1136,13 +1138,25 @@ class FireCloudApp(tk.Tk):
                     try:
                         from burning_sky.spherical_raytrace import scan_window as _spherical_scan, render_schematic_map as _render_spherical_map, equivalent_gaps as _equivalent_gaps
                         _target_base = float(local_geometry.get("cloud_base_km") or cloud_base_km) if local_geometry else float(cloud_base_km)
+                        from burning_sky.sky_six import multi_target_profile as _multi_target_profile
+                        _multi_ray = _multi_target_profile(samples, profiles, event_dt,
+                            data["utc_offset"], data["lat"], data["lon"],
+                            direction=direction_key,
+                            target_limit_km=boundaries.get("fire_cloud_range_km") or 100.)
+                        inferred["multi_target_raytrace_summary"] = {
+                            "targets_checked":len(_multi_ray["targets"]),
+                            "targets_with_clear_sampled_path":_multi_ray["clear_count"],
+                            "target_limit_km":_multi_ray["target_limit_km"],
+                            "note":_multi_ray["note"]}
                         _ray_debug = _spherical_scan(samples, _target_base, event_dt, data["utc_offset"],
                                                      data["lat"], data["lon"], before_minutes=30,
-                                                     after_minutes=30, max_distance_km=None)
+                                                     after_minutes=30, max_distance_km=None,
+                                                     profiles=profiles, direction=direction_key)
                         _debug_dir = os.path.join(os.getcwd(), "debug_logs")
                         os.makedirs(_debug_dir, exist_ok=True)
                         _stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         _json_path = os.path.join(_debug_dir, f"spherical_raytrace_{direction_key}_{_stamp}.json")
+                        _ray_debug["multi_target_diagnostic"] = _multi_ray
                         with open(_json_path, "w", encoding="utf-8") as _jf:
                             json.dump(_ray_debug, _jf, ensure_ascii=False, indent=2)
                         _png_path = os.path.join(_debug_dir, f"spherical_raytrace_map_{direction_key}_{_stamp}.png")
@@ -1151,8 +1165,12 @@ class FireCloudApp(tk.Tk):
                         inferred["spherical_raytrace_debug_map"] = _png_path
                         _clear_windows = _ray_debug.get("candidate_clear_windows") or []
                         _statuses = [r.get("status") for r in _ray_debug.get("results", [])]
-                        _equiv = _equivalent_gaps(_ray_debug)
-                        if _clear_windows and _equiv:
+                        from burning_sky.sky_six import adaptive_equivalent_gaps
+                        _adaptive = adaptive_equivalent_gaps(profiles, event_dt, data['utc_offset'],
+                            data['lat'], data['lon'], direction_key, float(local_reach or 0))
+                        _ray_debug['adaptive_equivalent'] = _adaptive
+                        _equiv = _adaptive['gaps']
+                        if _equiv:
                             search_stage = "spherical_raytrace_clear"
                             _gap = max(_equiv, key=lambda g: g["size_km"])
                             cloud_hole_search.update({"stage": search_stage, "gaps": _equiv,
@@ -1167,7 +1185,7 @@ class FireCloudApp(tk.Tk):
                             boundaries["farthest_gap_start_km"] = max(_equiv, key=lambda g:g["end_km"])["start_km"]
                             boundaries["gap_status"] = "effective_gap_candidate"
                         else:
-                            _has_unresolved = any(r.get("status") == "unresolved_data" for r in _ray_debug.get("results", []))
+                            _has_unresolved = _adaptive['status']=='unresolved_data' or any(r.get("status") == "unresolved_data" for r in _ray_debug.get("results", []))
                             search_stage = "spherical_raytrace_unresolved" if _has_unresolved else "spherical_raytrace_no_clear_path"
                             cloud_hole_search.update({"stage": search_stage, "gaps": [],
                                 "clear_windows": [], "raytrace_status_counts":
@@ -1179,7 +1197,7 @@ class FireCloudApp(tk.Tk):
                             boundaries["largest_gap_size_km"] = 0.0
                             boundaries["farthest_gap_distance_km"] = None
                             boundaries["farthest_gap_start_km"] = None
-                            # No confirmed clear path => conservative continuous-cloud obstruction state.
+                            # No candidate from sampled profile; conservative screening, not physical proof.
                             boundaries["gap_status"] = "continuous_cloud"
                             inferred.setdefault("score_notes", []).append(
                                 "极限云距内未找到直接晴空区；球面光线追踪未发现数据完整且无遮挡的有效时刻，透光路径判定为无效。")
@@ -1221,12 +1239,28 @@ class FireCloudApp(tk.Tk):
                 # do not allow subsequent scoring/verdict stages to resurrect a high score.
                 if search_stage in ("spherical_raytrace_no_clear_path", "spherical_raytrace_unresolved", "spherical_raytrace_error"):
                     _before_regular = inferred.get("regular_score", inferred.get("score", 0))
-                    inferred["regular_score"] = inferred["score"] = min(20, int(round(float(_before_regular or 0))))
+                    inferred["regular_score"] = inferred["score"] = (0 if search_stage == "spherical_raytrace_no_clear_path" else min(20, int(round(float(_before_regular or 0)))))
                     inferred["upper_score"] = min(35, int(round(float(inferred.get("upper_score", 35) or 0))))
                     inferred["cloud_hole_search_stage"] = search_stage
                     inferred["verdict"] = "球面光路未证实透光"
                     inferred["score_notes"] = list(inferred.get("score_notes") or []) + [
                         "最终概率硬上限：无有效球面透光路径，常规概率≤20%，上限概率≤35%。"]
+                # Experimental cloud-beam correction: the same fixed-angle, 5-ray
+                # vertical bundle used in the three-city comparison. Do not alter
+                # the accepted cloud holes or peak-color calculations.
+                if search_stage not in ("spherical_raytrace_no_clear_path", "spherical_raytrace_unresolved", "spherical_raytrace_error"):
+                    try:
+                        from burning_sky.beam_occlusion import estimate_beam_clear_fraction
+                        beam = estimate_beam_clear_fraction(profiles)
+                        inferred["beam_occlusion"] = beam
+                        if beam.get("coefficient") is not None:
+                            raw_probability = float(inferred.get("regular_score") or 0)
+                            corrected = int(round(raw_probability * beam["coefficient"]))
+                            inferred["regular_score"] = inferred["score"] = corrected
+                            inferred.setdefault("score_notes", []).append(
+                                f"光路束遮挡实验修正：{raw_probability:.0f}% × {beam['coefficient']:.3f} = {corrected}%")
+                    except Exception as beam_error:
+                        inferred["beam_occlusion"] = {"error": str(beam_error)}
                 # Legacy height-angle intersection / fallback multiplier is intentionally disabled.
                 if elevation_filter_result.get("applied"):
                     inferred.setdefault("score_notes", []).append(
@@ -1274,6 +1308,7 @@ class FireCloudApp(tk.Tk):
                     base_source_short = '手动值'
                 else:
                     base_source_short = '默认值' if cloud_base_mode == '自动' else base_source_raw
+                # 光路结果为所有受光估算的统一几何门控，避免剖面无通道而规模仍很高。
                 # 新可染色云占比：以日出/日落前后 60 分钟为窗口，按中高云覆盖量、
                 # 云层高度带和沿太阳方向的距离单元加权；同时检验球形地球上的直射受光
                 # 与观测点至云层的几何视线。云洞不再通过人为距离折减系数处理，而是由
@@ -1323,6 +1358,20 @@ class FireCloudApp(tk.Tk):
                                 if lit_best >= 0.999: break
                             tint_num += weight * lit_best
                 tintable_ratio = round(max(0.0,min(100.0,100.0*tint_num/tint_den))) if tint_den > 0 else (0 if ordered else None)
+                # Experimental one-dimensional channel availability factor.
+                # A cloud-free gap is a LIGHT CHANNEL, not a target cloud:
+                # never require a target cloud to lie *inside* a clear gap.
+                # The longest channel dominates; smaller channels contribute
+                # only a bounded secondary amount. This is not sky-area coverage.
+                accepted_gaps = boundaries.get("clear_gaps") or cloud_hole_search.get("gaps") or []
+                if tintable_ratio is not None and accepted_gaps:
+                    reach_for_gaps = max(1., float(boundaries.get("cloud_edge_distance_km") or local_reach or 1.))
+                    widths = sorted((max(0., float(g.get("size_km",0.))) for g in accepted_gaps), reverse=True)
+                    channel_coverage = min(1., (widths[0] + .25*sum(widths[1:]))/reach_for_gaps)
+                    # Keep the original physically-lit fraction as the upper bound.
+                    tintable_ratio = round(tintable_ratio * channel_coverage)
+                if search_stage == 'spherical_raytrace_no_clear_path':
+                    tintable_ratio = 0
                 if tintable_ratio is None:
                     tintable_text = "暂不可估"
                 else:
@@ -1338,7 +1387,7 @@ class FireCloudApp(tk.Tk):
                 summary = (
                     f"{model_time_text}\n"
                     f"{direction_name} · {data['place']} · {data['date'].isoformat()}　{event_dt.strftime('%H:%M')} / 方位 {azimuth:.0f}°\n"
-                    f"{model_label}　|　云量 总 {self._fmt_pct(inferred['total'])} · 低 {self._fmt_pct(inferred['low'])} · 中 {self._fmt_pct(inferred['mid'])} · 高 {self._fmt_pct(inferred['high'])} · 可染色云占比 {tintable_text}\n"
+                    f"{model_label}　|　色彩评分 {inferred.get('color_score', '—')}/100　|　云量 总 {self._fmt_pct(inferred['total'])} · 低 {self._fmt_pct(inferred['low'])} · 中 {self._fmt_pct(inferred['mid'])} · 高 {self._fmt_pct(inferred['high'])} · 可染色云占比 {tintable_text}\n"
                     f"潜在霞云距 {fire_range_text}　|　极限云距 {cloud_edge_text}　|　{gap_display_label} {gap_text}\n"
                     f"云底 {base_short}（{base_source_short}）　|　AOD {aod_short}"
                     f"{special_summary_line}"
@@ -2729,8 +2778,116 @@ class FireCloudApp(tk.Tk):
         layer_select.bind("<<ComboboxSelected>>", draw)
         win.after(80, draw)
 
+
+    def show_2d_illumination(self, direction_key):
+        """Six observer-angle sky sectors. Draw immediately, fetch 9 side positions async."""
+        result = getattr(self, "direction_results", {}).get(direction_key)
+        if not result:
+            messagebox.showinfo("尚无数据", "请先完成朝霞或晚霞查询。")
+            return
+        from burning_sky.sky_six import grid_points, evaluate, draw
+        from datetime import datetime, timedelta
+        origin = result.get("origin")
+        event_dt = result.get("event_dt")
+        if isinstance(event_dt, str):
+            event_dt = datetime.fromisoformat(event_dt)
+        if not origin or event_dt is None:
+            messagebox.showerror("缺少参数", "结果缺少坐标或日出日落时刻。")
+            return
+        radius = (result.get("boundaries") or {}).get("fire_cloud_range_km")
+        if not isinstance(radius, (int,float)) or radius <= 0:
+            messagebox.showinfo("霞云距不足", "霞云距为零或未知，无法分析。")
+            return
+        radius = min(float(radius),350.0)
+        bearing = float(result.get("azimuth",0))
+        points = [p for p in grid_points(origin[0],origin[1],bearing,radius)
+                  if p['bearing_offset'] != 0]
+        # The centre column is reconstructed from the existing primary path samples,
+        # without another API request. The side columns use six real locations.
+        win = tk.Toplevel(self)
+        win.title("二维霞云图 · 六分区")
+        win.geometry("1210x750")
+        label = ttk.Label(win,text="已打开六分区图；中心线复用已有采样，正在准备左右6个位置……",
+                          wraplength=1100)
+        label.pack(anchor="w",padx=12,pady=8)
+        frame = ttk.Frame(win)
+        frame.pack(fill="both",expand=True)
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        from matplotlib import pyplot as plt
+        empty = {'bins':[{'state':'unknown','colors':[None]*10} for _ in range(6)]}
+        fig = draw(empty,"朝霞" if direction_key=='morning' else '晚霞')
+        canvas = FigureCanvasTkAgg(fig,master=frame)
+        canvas.get_tk_widget().pack(fill="both",expand=True)
+        win.after(10, canvas.draw_idle)
+        win.protocol('WM_DELETE_WINDOW',lambda:(plt.close(fig),win.destroy()))
+        model_label=self.vars['weather_model'].get() if 'weather_model' in self.vars else ''
+        model_id=_weather_model_id_from_label(model_label)
+        def update_label(message):
+            if win.winfo_exists():label.configure(text=message)
+        import time
+        started=time.monotonic()
+        phase={'text':'准备请求','done':False,'completed':0,'total':6,'detail':'','status':'运行中'}
+        def progress_tick():
+            if not win.winfo_exists() or phase['done']:return
+            update_label(f"二维图：{phase['text']}｜{phase['status']}｜已用时 {time.monotonic()-started:.0f} 秒"
+                         f"｜侧向数据 {phase['completed']}/{phase['total']}｜{phase['detail']}")
+            win.after(350,progress_tick)
+        win.after(100,progress_tick)
+        def worker():
+            try:
+                import urllib.parse, urllib.request
+                phase['text']='读取缓存或请求气象 API';phase['detail']='批量请求6个位置，最多约44秒（含重试）' 
+                # One small batch, with request_json disk cache and bounded timeout.
+                params={'latitude':','.join(f"{p['lat']:.5f}" for p in points),
+                        'longitude':','.join(f"{p['lon']:.5f}" for p in points),
+                        'hourly':'cloud_cover_low,cloud_cover_mid,cloud_cover_high',
+                        'models':model_id,'timezone':'UTC',
+                        'start_date':(event_dt-timedelta(hours=8)).date().isoformat(),
+                        'end_date':(event_dt+timedelta(hours=8)).date().isoformat()}
+                url='https://api.open-meteo.com/v1/forecast?'+urllib.parse.urlencode(params)
+                req=urllib.request.Request(url,headers={'User-Agent':'BurningSky-Debug18/1.0'})
+                payload=request_json(req,timeout=22,retries=1,cache_key=url)
+                records=payload if isinstance(payload,list) else [payload]
+                phase['completed']=len(records);phase['detail']='天气响应已收到，开始处理'
+                if len(records)!=len(points):
+                    raise ValueError(f"API返回{len(records)}个位置，预期{len(points)}个")
+                # The centre-column data are from the already computed primary path.
+                # A one-hour record is sufficient for evaluate's nearest-hour lookup.
+                centre=[]
+                for i,fraction in enumerate((.25,.55,.85)):
+                    desired=radius*fraction
+                    sm=min(result.get('samples') or [],key=lambda x:abs(float(x.get('distance_km',0))-desired),default={})
+                    lat0,lon0=__import__('burning_sky.spherical_raytrace',fromlist=['destination']).destination(origin[0],origin[1],bearing,desired)
+                    centre.append(({'column':1,'distance_km':desired,'bearing_offset':0,'lat':lat0,'lon':lon0},
+                        {'hourly':{'time':[(event_dt-timedelta(hours=8)).replace(minute=0,second=0,microsecond=0).isoformat()],
+                         **{k:[sm.get(k)] for k in ('cloud_cover_mid','cloud_cover_high')}}}))
+                combined=sorted(list(zip(points,records))+centre,key=lambda z:(z[0]['column'],z[0]['distance_km']))
+                phase['text']='计算六分区云色';phase['detail']='本地计算，不再请求API'
+                res=evaluate([x[0] for x in combined],[x[1] for x in combined],event_dt,8,origin[0],origin[1],direction_key,
+                             aod=result.get('aod') or .2)
+                def finish():
+                    if not win.winfo_exists():return
+                    phase['text']='绘制六分区';phase['detail']='更新图像'
+                    newfig=draw(res,'朝霞' if direction_key=='morning' else '晚霞')
+                    nonlocal fig
+                    plt.close(fig)
+                    fig=newfig
+                    canvas.figure=fig
+                    fig.set_canvas(canvas)
+                    canvas.draw()
+                    phase["done"]=True
+                    label.configure(text=f"六分区观察者天空图；半径{radius:.0f}公里，中心线复用 + 左右6个采样位置。"
+                         f"候选受光分区{res['candidate_bins']}/6。"
+                         "注意：尚未获得侧向气压层及完整上游遮挡，不能作为正式霞云规模。")
+                win.after(0,finish)
+            except Exception as exc:
+                msg=str(exc)
+                phase['done']=True;phase['status']='失败'
+                win.after(0,lambda:update_label('二维天气请求失败：'+msg+'。下方六分区空白图仍可查看。'))
+        threading.Thread(target=worker,daemon=True).start()
+
     def show_path_cloud_profile(self, direction_key):
-        """绘制沿太阳方位的距离-高度剖面；高度带着色，云量/RH决定是否绘制。"""
+        """球面光线与云量灰阶剖面，图形诊断不影响预测。"""
         result = getattr(self, "direction_results", {}).get(direction_key)
         if not result:
             messagebox.showinfo("尚无数据", "请先查询朝霞与晚霞，再绘制路径云层剖面。")
@@ -2761,31 +2918,80 @@ class FireCloudApp(tk.Tk):
         if len(valid) < 1:
             messagebox.showinfo("剖面数据不足", "本次既没有有效气压层剖面，也没有可用的低/中/高云量数据，暂时无法绘图。")
             return
-        title = "朝霞路径云层剖面" if direction_key == "morning" else "晚霞路径云层剖面"
+        title = "朝霞剖面图" if direction_key == "morning" else "晚霞剖面图"
         win = tk.Toplevel(self)
         win.title(title)
         win.geometry("1080x700")
         win.minsize(780, 500)
         outer = ttk.Frame(win, padding=10)
         outer.pack(fill="both", expand=True)
-        note = ("横轴：沿太阳方位的距离；纵轴：模式估算的离地高度。颜色表示高度带，颜色深浅近似表示云量/RH强弱。"
-                "云层块是离散数据的可视化近似，不是卫星实测云体。" +
-                ("部分点缺少气压层剖面，已用低/中/高云量的典型高度带补画，属于粗略示意。" if used_fallback else ""))
+        note = ("横轴：沿太阳方向的地表距离；纵轴：相对当地球面的高度。灰阶表示云量。"
+                "仅绘制连续有效光束的上下临界紫线，并在两线之间填充紫红散点；"
+                "被遮挡、未证实和仅用于采样的光线不显示。"
+                "使用与图中相同的气压层云块进行连续光路求交；临界线仍为分钟采样边界。" +
+                ("部分点缺少气压层剖面，已用低/中/高云量典型高度带补画。" if used_fallback else ""))
         ttk.Label(outer, text=note, wraplength=1020).pack(anchor="w", pady=(0, 6))
+        ttk.Label(outer, text=("Debug16 视野建议：以太阳方位为中心±15°、半径随云层可见性延伸至最多约300–350km；"
+                              "30km仅作为近景细采样圈。当前气象输入仍是中心线一维剖面，尚不能计算真实扇形云面积或更新常规概率。"),
+                  wraplength=1020, foreground="#7c3aed").pack(anchor="w", pady=(0, 6))
         canvas = tk.Canvas(outer, bg="#fbfcfe", highlightthickness=1, highlightbackground="#cbd5e1")
         canvas.pack(fill="both", expand=True)
-        legend = ttk.Frame(outer)
-        legend.pack(fill="x", pady=(7, 0))
-        for color, label in (("#509dde", "低云 0–2 km"), ("#f4a636", "中云 2–6 km"), ("#a678da", "高云 6 km以上"), ("#d83c3c", "推算云底")):
-            swatch = tk.Canvas(legend, width=18, height=12, highlightthickness=0, bg="#fbfcfe")
-            swatch.create_rectangle(1, 1, 17, 11, fill=color, outline=color)
-            swatch.pack(side="left", padx=(6, 3))
-            ttk.Label(legend, text=label).pack(side="left", padx=(0, 12))
+        # The raytrace debug is the source of truth for blockage labels.
+        ray_records = []
+        ray_file = (result.get("inferred") or {}).get("spherical_raytrace_debug_json")
+        if ray_file and os.path.isfile(ray_file):
+            try:
+                with open(ray_file, encoding="utf-8") as fp:
+                    ray_records = json.load(fp).get("results", [])
+            except (OSError, ValueError, TypeError):
+                pass
+        if ray_records:
+            n = min(35, len(ray_records))
+            # Include the geometric tangent and the first blocked/clear boundaries,
+            # not just evenly spaced timestamps that may all look nearly straight.
+            picked = {0, len(ray_records)-1}
+            for i in range(1, len(ray_records)):
+                if ray_records[i].get("status") != ray_records[i-1].get("status"):
+                    picked.update((i-1, i))
+            ranked = sorted(range(len(ray_records)), key=lambda i: abs(
+                float(ray_records[i].get("minimum_ray_height_km", 1e6))
+                if isinstance(ray_records[i].get("minimum_ray_height_km"),(int,float))
+                else 1e6))
+            picked.update(ranked[:2])
+            picked = sorted(picked)
+            if len(picked)>n:
+                picked = picked[:n]
+            if len(picked)<n:
+                for i in [round(j*(len(ray_records)-1)/max(1,n-1)) for j in range(n)]:
+                    picked.append(i)
+                    picked=sorted(set(picked))
+                    if len(picked)>=n:break
+            rays = [ray_records[i] for i in picked]
+        else:
+            rays = []
+            event_dt = result.get("event_dt")
+            origin = result.get("origin")
+            if event_dt is not None and origin:
+                from burning_sky.algorithm import solar_position
+                from datetime import timedelta
+                for m in (-20,-15,-10,-5,0,5,10,15,20):
+                    alt, _ = solar_position(event_dt+timedelta(minutes=m),
+                                            float(result.get("utc_offset", 8)),
+                                            origin[0], origin[1])
+                    rays.append({"solar_altitude_deg": alt, "status": "not_checked", "first_block": None})
+        target_base = rays[0].get("target_cloud_base_km") if rays else None
+        if not isinstance(target_base, (int,float)):
+            target_base = next((p.get("estimated_base_km") for p in valid
+                                if p.get("distance_km")==0 and isinstance(p.get("estimated_base_km"),(int,float))),None)
+        if not isinstance(target_base,(int,float)):
+            target_base = 4.0
+            ttk.Label(outer,text="注意：目标云底缺失，光路以 4 km 示意高度绘制，不能用于物理判定。").pack(anchor="w")
+        from burning_sky.spherical_raytrace import _ray_height_km
 
         def draw(_event=None):
             canvas.delete("all")
             width, height = canvas.winfo_width(), canvas.winfo_height()
-            left, right, top, bottom = 66, 24, 24, 54
+            left, right, top, bottom = 66, 90, 24, 54
             plot_w, plot_h = max(100, width-left-right), max(100, height-top-bottom)
             sample_by_dist = {x.get("distance_km"): x for x in samples}
             profs = sorted(valid, key=lambda p: p.get("distance_km", 0))
@@ -2794,7 +3000,7 @@ class FireCloudApp(tk.Tk):
             plot_dist = max_dist + ((distances[-1]-distances[-2])/2 if len(distances) > 1 else 0)
             all_heights = [lv.get("height_agl_km", 0) for p in profs for lv in p.get("levels", [])
                            if isinstance(lv.get("height_agl_km"), (int, float))]
-            max_h = min(18.0, max(4.0, math.ceil(max(all_heights or [10]))))
+            max_h = min(22.0, max(8.0, target_base+4, math.ceil(max(all_heights or [10]))))
             def xmap(d): return left + (d/plot_dist)*plot_w if plot_dist else left
             def ymap(h): return top + plot_h - (max(0.0, min(max_h, h))/max_h)*plot_h
             # axes and grid
@@ -2810,37 +3016,110 @@ class FireCloudApp(tk.Tk):
             canvas.create_line(left, top, left, top+plot_h, fill="#475569", width=1.5)
             canvas.create_line(left, top+plot_h, left+plot_w, top+plot_h, fill="#475569", width=1.5)
             canvas.create_text(left+plot_w/2, height-12, text="沿太阳方位距离（km）", fill="#1f2937", font=("Microsoft YaHei UI", 10))
-            canvas.create_text(16, top+plot_h/2, text="离地高度", angle=90, fill="#1f2937", font=("Microsoft YaHei UI", 10))
-            # sample cells extend halfway to adjacent samples, so irregular distances remain legible
-            for i, prof in enumerate(profs):
-                d = prof.get("distance_km", 0)
-                x0d = (distances[i-1]+d)/2 if i else max(0, d-(distances[1]-d)/2 if len(distances)>1 else 0)
-                x1d = (d+distances[i+1])/2 if i+1 < len(distances) else (d+(d-distances[i-1])/2 if i else max_dist)
-                x0, x1 = xmap(x0d), xmap(x1d)
-                levels = sorted([lv for lv in prof.get("levels", []) if isinstance(lv.get("height_agl_km"), (int, float))], key=lambda a:a["height_agl_km"])
-                for j, lv in enumerate(levels):
-                    h = lv.get("height_agl_km", 0)
-                    cc, rh = lv.get("cloud_cover"), lv.get("relative_humidity")
-                    is_cloudy = (isinstance(cc, (int, float)) and cc >= 25) or (isinstance(rh, (int, float)) and rh >= 85)
-                    if not is_cloudy:
-                        continue
-                    if j > 0:
-                        h0 = (levels[j-1].get("height_agl_km", h)+h)/2
+            canvas.create_text(16, top+plot_h/2, text="球面相对高度", angle=90, fill="#1f2937", font=("Microsoft YaHei UI", 10))
+            # Debug16: draw the EXACT cloud cells used for geometric ray blocking.
+            from burning_sky.spherical_raytrace import profile_cloud_cells
+            for cell in profile_cloud_cells(profs):
+                x0,x1=xmap(cell['start_km']),xmap(cell['end_km'])
+                h0,h1=cell['bottom_km'],cell['top_km']
+                if h1<=0 or h0>max_h:continue
+                cc=cell.get('cloud_cover')
+                if not isinstance(cc,(int,float)):cc=50.0
+                gray=int(250-205*max(0,min(100,cc))/100)
+                color=f"#{gray:02x}{gray:02x}{gray:02x}"
+                canvas.create_rectangle(x0,ymap(min(max_h,h1)),x1,ymap(max(0,h0)),fill=color,outline='#ffffff',width=.5)
+            for prof in profs:
+                base=prof.get('estimated_base_km')
+                if isinstance(base,(int,float)) and 0<=base<=max_h:
+                    d=prof['distance_km']
+                    canvas.create_oval(xmap(d)-3,ymap(base)-3,xmap(d)+3,ymap(base)+3,fill='#d83c3c',outline='white')
+            # Use one spherical formula for diagnostics and the ray tracer.
+            # Draw the full geometric curve first, then overlay verified portions.
+            # Never turn a path that intersects Earth back into a valid path.
+            from burning_sky.profile_geometry import sample_ray_curve, curve_minimum
+            from burning_sky.spherical_raytrace import _earth_occluded
+            # Debug15: construct maximal contiguous runs of clear rays. Only the
+            # TWO OUTER BOUNDARIES of each run are drawn; blocked and diagnostic
+            # rays are never rendered. No filling across missing time samples.
+            from datetime import datetime as _dt_parse
+            ordered_rays = sorted((r for r in ray_records
+                                   if isinstance(r.get('solar_altitude_deg'), (int,float))
+                                   and isinstance(r.get('time'), str)),
+                                  key=lambda r: r['time'])
+            runs = []
+            current = []
+            for ray in ordered_rays:
+                if ray.get('status') != 'clear_path':
+                    if len(current) >= 2: runs.append(current)
+                    current = []
+                    continue
+                if current:
+                    try:
+                        gap_seconds = (_dt_parse.fromisoformat(ray['time']) -
+                                       _dt_parse.fromisoformat(current[-1]['time'])).total_seconds()
+                    except (ValueError, TypeError):
+                        gap_seconds = float('inf')
+                    if not 1 <= gap_seconds <= 61:
+                        if len(current) >= 2: runs.append(current)
+                        current = []
+                current.append(ray)
+            if len(current) >= 2: runs.append(current)
+
+            def draw_curve(alt, linecolor='#7434ac', linewidth=2.8):
+                curve = sample_ray_curve(target_base, alt, plot_dist, 1201)
+                run = []
+                for d, h, earth_blocked in curve:
+                    if not earth_blocked and math.isfinite(h) and 0 <= h <= max_h:
+                        run.extend((xmap(d), ymap(h)))
                     else:
-                        h0 = max(0, h-0.35)
-                    if j+1 < len(levels):
-                        h1 = (h+levels[j+1].get("height_agl_km", h))/2
-                    else:
-                        h1 = min(max_h, h+0.35)
-                    if h1 <= 0 or h0 > max_h:
+                        if len(run) >= 4:
+                            canvas.create_line(*run, fill=linecolor, width=linewidth)
+                        run = []
+                if len(run) >= 4:
+                    canvas.create_line(*run, fill=linecolor, width=linewidth)
+
+            # Fill only BETWEEN outermost rays of each uninterrupted clear run.
+            # Interior sampling rays remain invisible; they only validate the run.
+            for group in runs:
+                alts = [float(r['solar_altitude_deg']) for r in group]
+                alt_low, alt_high = min(alts), max(alts)
+                if abs(alt_high-alt_low) < 1e-8:
+                    continue
+                for col in range(1, 241):
+                    d = plot_dist * col / 241.0
+                    if (_earth_occluded(float(target_base), alt_low, d) or
+                            _earth_occluded(float(target_base), alt_high, d)):
                         continue
-                    color = _cloud_height_color(h, cc, rh)
-                    canvas.create_rectangle(x0, ymap(min(max_h,h1)), x1, ymap(max(0,h0)), fill=color, outline="#ffffff", width=0.5)
-                # show model-estimated base as a red point; not direct observation
-                if prof.get("estimated_base_km") is not None:
-                    base = prof["estimated_base_km"]
-                    if 0 <= base <= max_h:
-                        canvas.create_oval(xmap(d)-3, ymap(base)-3, xmap(d)+3, ymap(base)+3, fill="#d83c3c", outline="white")
+                    h1 = _ray_height_km(float(target_base), alt_low, d)
+                    h2 = _ray_height_km(float(target_base), alt_high, d)
+                    if not (math.isfinite(h1) and math.isfinite(h2)):
+                        continue
+                    lower, upper = max(0.0, min(h1,h2)), min(max_h, max(h1,h2))
+                    if upper <= lower: continue
+                    x = xmap(d)
+                    for k in range(1, 9):
+                        y = ymap(lower + (upper-lower)*k/9.0)
+                        canvas.create_oval(x-0.8,y-0.8,x+0.8,y+0.8,
+                                           fill='#bb398d',outline='')
+                draw_curve(alt_low)
+                draw_curve(alt_high)
+            if not runs:
+                canvas.create_text(left+plot_w/2, top+24,
+                    text='未找到由连续有效采样光线构成的透光区间（不绘制无效光线）',
+                    fill='#8b3274',font=('Microsoft YaHei UI',10))
+            if rays and 0<=target_base<=max_h:
+                xx,yy=xmap(0),ymap(target_base)
+                canvas.create_oval(xx-5,yy-5,xx+5,yy+5,fill="#101820",outline="white")
+                canvas.create_text(xx+7,yy-8,text=f"目标云底 {target_base:.2f} km",anchor="sw",fill="#111827")
+            # Continuous grayscale cloud-cover colorbar.
+            cbx=width-68; cby=top+30; cbh=max(90,plot_h-65)
+            for k in range(100):
+                gray=int(250-205*k/100)
+                canvas.create_rectangle(cbx,cby+k*cbh/100,cbx+16,cby+(k+1)*cbh/100+1,
+                                        fill=f"#{gray:02x}{gray:02x}{gray:02x}",outline="")
+            for value in (0,25,50,75,100):
+                canvas.create_text(cbx+21,cby+value*cbh/100,text=str(value),anchor="w",fill="#334155")
+            canvas.create_text(cbx-4,cby-14,text="云量%",anchor="w",fill="#334155")
             # label the two heuristic boundaries, if they exist
             bounds = result.get("boundaries", {})
             for key, color, label, yoff in (("fire_cloud_range_km", "#0f766e", "火烧云范围", 10), ("cloud_edge_distance_km", "#b45309", "云边距", 26)):
@@ -5366,7 +5645,7 @@ class FireCloudApp(tk.Tk):
                 aod = r.get("aod")
                 getattr(self, f"{prefix}_aod_status_var").set("案例中记录：AOD 缺测" if aod is None else f"案例中记录：AOD={aod:.3f}")
             self.loaded_case_path = folder
-            messagebox.showinfo("案例已加载", f"已从本地加载案例：\n{folder}\n\n没有发起天气请求。点击‘高度剖面’可查看当前案例的剖面数据；图片文件也保存在案例目录中。")
+            messagebox.showinfo("案例已加载", f"已从本地加载案例：\n{folder}\n\n没有发起天气请求。点击‘剖面图’可查看当前案例的剖面数据；图片文件也保存在案例目录中。")
         except Exception as exc:
             messagebox.showerror("加载案例失败", f"无法读取案例状态文件：\n{exc}")
 

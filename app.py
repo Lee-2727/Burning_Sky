@@ -672,6 +672,45 @@ def _path_sampling_table(details):
     return pd.DataFrame(rows, columns=columns)
 
 
+def _web_profile_figure(result):
+    """Compact pressure-layer section; uses cached profiles, no API calls."""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+    profiles=sorted((p for p in result.get("profiles",[]) if p.get("levels") and isinstance(p.get("distance_km"),(int,float))),key=lambda p:p["distance_km"])
+    if not profiles:return None
+    fig,ax=plt.subplots(figsize=(10,3.6))
+    distances=[float(p["distance_km"]) for p in profiles]
+    for i,p in enumerate(profiles):
+        d=distances[i]
+        lo=(distances[i-1]+d)/2 if i else max(0,d-(distances[i+1]-d)/2) if len(distances)>1 else 0
+        hi=(d+distances[i+1])/2 if i+1<len(distances) else d+(d-distances[i-1])/2 if i else d+25
+        for lv in p["levels"]:
+            h=lv.get("height_agl_km");c=lv.get("cloud_cover")
+            if not isinstance(h,(int,float)) or not isinstance(c,(int,float)) or c<5:continue
+            ax.add_patch(Rectangle((lo,max(0,h-.18)),max(1,hi-lo),.36,facecolor='black',alpha=min(.85,max(.08,c/115)),edgecolor='none'))
+    # Show only accepted gap spans, without implying they are cloud objects.
+    boundaries=result.get("boundaries") or {}
+    for g in boundaries.get("clear_gaps") or []:
+        a=g.get("start_km");b=g.get("end_km")
+        if isinstance(a,(int,float)) and isinstance(b,(int,float)):
+            ax.axvspan(a,b,color='#9b59b6',alpha=.09)
+    ax.set_xlim(0,max(distances));ax.set_ylim(0,13)
+    ax.set_xlabel('Distance (km)');ax.set_ylabel('Cloud height (km)')
+    ax.grid(alpha=.12);fig.tight_layout()
+    return fig
+
+def _web_gap_text(result):
+    inferred=result.get("inferred") or {}
+    boundaries=result.get("boundaries") or {}
+    gaps=boundaries.get("clear_gaps") or []
+    if not gaps:return "可能不透光"
+    label="云洞（等效）" if inferred.get("cloud_hole_search_stage")=="spherical_raytrace_clear" else "云洞"
+    spans=[]
+    for g in gaps:
+        try:spans.append(f"{float(g['start_km']):.0f}–{float(g['end_km']):.0f} km（{float(g['size_km']):.0f} km）")
+        except (KeyError,TypeError,ValueError):continue
+    return label+"："+"；".join(spans) if spans else "可能不透光"
+
 results = st.session_state.get("fire_cloud_last_results")
 meta = st.session_state.get("fire_cloud_last_meta", {})
 if results:
@@ -713,13 +752,6 @@ if results:
                     f'<div style="font-size:24px;font-weight:800;line-height:1.5;margin:6px 0 2px 0;">'
                     f'{regular_label} <span style="color:{color_hex};">{color_class}</span>的{burn_text}</div>',
                     unsafe_allow_html=True)
-            st.markdown(
-                f'<div style="font-size:11px;font-weight:400;color:#858585;line-height:1.5;margin:0 0 12px 0;">'
-                f'常规概率：&lt;45% 小概率，45%–75% 有概率，&gt;75% 高概率；'
-                f'色彩评分：&lt;30 平平无奇，30–&lt;50 普通，50–&lt;70 绚烂，70–&lt;90 史诗，≥90 世纪；'
-                f'可染色云占比：沿太阳方向采样的中高云中，满足几何受光与可见条件的加权比例；'
-                f'霞云规模按（中云量+高云量）×可染色云占比估算：≤0 几乎不烧，>0–<10 小小烧，10–<30 微烧，30–<50 小烧，50–<70 中烧，≥70 大烧。'
-                f'</div>', unsafe_allow_html=True)
             rgb = inferred.get("peak_color_rgb") or inferred.get("color_rgb")
             if isinstance(rgb, (tuple, list)) and len(rgb) >= 3:
                 hex_color = "#%02x%02x%02x" % tuple(max(0, min(255, int(v))) for v in rgb[:3])
@@ -730,6 +762,12 @@ if results:
                 st.caption(f"彩虹机会：{rainbow.get('label', '暂不可估')}；这是经验指数，不是统计概率。")
             curve = result.get("dynamic_light_curve", {})
             points = curve.get("samples", []) if isinstance(curve, dict) else []
+            st.markdown("**" + _web_gap_text(result) + "**")
+            _profile_fig = _web_profile_figure(result)
+            if _profile_fig is not None:
+                st.pyplot(_profile_fig, use_container_width=True)
+                import matplotlib.pyplot as _plt
+                _plt.close(_profile_fig)
             st.subheader("云色时序")
             st.image(_draw_dynamic_color_curve(points, curve.get("peak"), key), use_container_width=True)
             if points:
