@@ -600,7 +600,7 @@ def estimate_path_cloud_boundaries(samples, local_cloud_reach_km=None):
     }
 
 
-def staged_cloud_hole_search(samples, theoretical_reach_km, *, clear_threshold=15.0, min_gap_km=15.0):
+def _staged_cloud_hole_search_impl(samples, theoretical_reach_km, *, clear_threshold=15.0, min_gap_km=15.0):
     """Three-stage cloud-hole search: quick screen, angular-height intersection, fallback screen.
 
     Layer heights are conservative model-band approximations (ASL): low 0-2 km,
@@ -649,6 +649,7 @@ def staged_cloud_hole_search(samples, theoretical_reach_km, *, clear_threshold=1
     rows=[r for r in ordered if 0.0<=float(r.get('distance_km',-1))<=limit]
     intervals=[(0.0,90.0)]
     bands=(("cloud_cover_low",0.0,2.0),("cloud_cover_mid",2.0,6.0),("cloud_cover_high",6.0,12.0))
+    angle_trace=[]
     for r in rows:
         d=float(r.get('distance_km',0))
         if d<=0: continue
@@ -674,19 +675,30 @@ def staged_cloud_hole_search(samples, theoretical_reach_km, *, clear_threshold=1
                 x,y=max(a,c),min(b,d2)
                 if y-x>1e-4: intersect.append((x,y))
         intervals=intersect
+        angle_trace.append({'distance_km':round(d,3),
+            'blocked_intervals_deg':[[round(x,5),round(y,5)] for x,y in sorted(blocked)],
+            'allowed_intervals_deg':[[round(x,5),round(y,5)] for x,y in allowed],
+            'intersection_intervals_deg':[[round(x,5),round(y,5)] for x,y in intervals]})
         if not intervals: break
-    # Exclude degenerate near-vertical angles and preserve each disconnected interval.
-    intervals=[(a,b) for a,b in intervals if b-a>=0.25 and b<89.9]
+    # Keep valid intervals that reach the 90-degree vertical boundary. 90 degrees
+    # is a legitimate geometric endpoint; only the projected-width calculation
+    # below needs a finite numerical cap because tan(90°) diverges.
+    intervals=[(max(0.0,a),min(90.0,b)) for a,b in intervals
+               if min(90.0,b)-max(0.0,a)>=0.25]
     if intervals:
         holes=[]
         for idx,(a,b) in enumerate(sorted(intervals),1):
             # Angular width projected at search limit is a comparable effective width.
-            width=max(0.0,limit*(math.tan(math.radians(b))-math.tan(math.radians(a))))
+            # Preserve the true interval endpoint in output, but cap the
+            # projection at 89.9° to keep its displayed width finite.
+            width_hi=min(b,89.9)
+            width=max(0.0,limit*(math.tan(math.radians(width_hi))-math.tan(math.radians(a))))
             holes.append({'start_km':0.0,'end_km':round(limit,1),'size_km':round(width,1),
                          'source':'height_intersection','angle_interval_deg':[round(a,3),round(b,3)],
                          'hole_index':idx})
         return {'stage':'height_intersection','gaps':holes,'fallback_factor':1.0,
-                'search_limit_km':limit,'angle_intervals_deg':[[round(a,3),round(b,3)] for a,b in sorted(intervals)]}
+                'search_limit_km':limit,'angle_intervals_deg':[[round(a,3),round(b,3)] for a,b in sorted(intervals)],
+                'angle_intersection_trace':angle_trace,'projection_angle_cap_deg':89.9}
 
     # Stage 3: fallback quick screen in (reach+50, 2*reach]. Skip if inverted.
     if fallback_lo<=fallback_hi:
@@ -697,6 +709,43 @@ def staged_cloud_hole_search(samples, theoretical_reach_km, *, clear_threshold=1
     return {'stage':'no_cloud_hole','gaps':[],'fallback_factor':1.0,
             'search_limit_km':limit,'angle_intervals_deg':[]}
 
+
+
+def staged_cloud_hole_search(samples, theoretical_reach_km, *, clear_threshold=15.0, min_gap_km=15.0):
+    """Debug wrapper: records cloud-hole scan inputs and decision output to a local log."""
+    import json, os, datetime
+    rows = [r for r in (samples or []) if isinstance(r, dict)]
+    result = _staged_cloud_hole_search_impl(samples, theoretical_reach_km,
+        clear_threshold=clear_threshold, min_gap_km=min_gap_km)
+    # Keep log beside the launched app/package when possible; fall back to user home.
+    candidates = [os.path.join(os.getcwd(), 'debug_logs', 'cloud_hole_search_debug.log'),
+                  os.path.join(os.path.expanduser('~'), 'BurningSky_debug_logs', 'cloud_hole_search_debug.log')]
+    log_path = candidates[0]
+    try:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        payload = {
+            'timestamp': datetime.datetime.now().astimezone().isoformat(timespec='seconds'),
+            'theoretical_reach_km': theoretical_reach_km,
+            'clear_threshold': clear_threshold, 'min_gap_km': min_gap_km,
+            'input_sample_count': len(rows),
+            'samples': [{k:r.get(k) for k in ('distance_km','cloud_cover_low','cloud_cover_mid','cloud_cover_high',
+                'cloud_base_low_m','cloud_base_mid_m','cloud_base_high_m')} if isinstance(r,dict) else r for r in rows],
+            'decision': result,
+        }
+        file_writer = getattr(__import__('builtins'), 'open')
+        with file_writer(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(payload, ensure_ascii=False, default=str) + '\n')
+    except Exception:
+        try:
+            log_path = candidates[1]
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            file_writer = getattr(__import__('builtins'), 'open')
+            with file_writer(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({'timestamp': datetime.datetime.now().astimezone().isoformat(),
+                    'theoretical_reach_km': theoretical_reach_km, 'decision': result}, ensure_ascii=False, default=str)+'\n')
+        except Exception:
+            pass
+    return result
 
 def apply_extended_gap_scan_modifier(inferred, samples, local_reach_km, scan_limit_km=600.0):
     """Apply the single-mode regular-score modifier from the extended solar-direction gap scan.
