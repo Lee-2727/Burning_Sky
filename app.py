@@ -675,41 +675,10 @@ def _path_sampling_table(details):
 
 
 def _web_profile_figure(result):
-    """Dependency-free pressure-layer profile using Pillow (no matplotlib)."""
-    from PIL import Image, ImageDraw
-    profiles = sorted((p for p in result.get("profiles", []) if p.get("levels") and isinstance(p.get("distance_km"), (int, float))), key=lambda p: p["distance_km"])
-    if not profiles:
-        return None
-    w, h = 1200, 430
-    img = Image.new("RGB", (w, h), "white")
-    d = ImageDraw.Draw(img)
-    left, right, top, bottom = 75, w - 30, 24, h - 52
-    maxdist = max(1.0, max(float(p["distance_km"]) for p in profiles))
-    def x(v): return left + (right-left)*max(0, min(maxdist, v))/maxdist
-    def y(v): return bottom - (bottom-top)*max(0, min(14, v))/14
-    for km in range(0,15,2):
-        yy = y(km);d.line((left,yy,right,yy),fill="#e4e8ef",width=1)
-        d.text((10,yy-7),f"{km} km",fill="#455468")
-    for i,p in enumerate(profiles):
-        distance = float(p["distance_km"])
-        lo = (float(profiles[i-1]["distance_km"])+distance)/2 if i else 0
-        hi = (distance+float(profiles[i+1]["distance_km"]))/2 if i+1<len(profiles) else maxdist
-        for lv in p["levels"]:
-            height,cover=lv.get("height_agl_km"),lv.get("cloud_cover")
-            if not isinstance(height,(int,float)) or not isinstance(cover,(int,float)) or cover<5:continue
-            gray=int(248-min(0.9,cover/110)*175)
-            d.rectangle((x(lo),y(height+0.18),x(hi),y(height-0.18)),fill=(gray,gray,gray))
-    for g in (result.get("boundaries") or {}).get("clear_gaps") or []:
-        try:
-            a,b=float(g["start_km"]),float(g["end_km"])
-            d.line((x(a),bottom+7,x(b),bottom+7),fill="#7b3fb2",width=5)
-        except (KeyError,ValueError,TypeError):pass
-    d.line((left,top,left,bottom),fill="#667085",width=2)
-    d.line((left,bottom,right,bottom),fill="#667085",width=2)
-    for km in range(0,int(maxdist)+1,100):
-        d.text((x(km)-10,bottom+15),str(km),fill="#455468")
-    d.text((w//2-55,h-20),"Distance (km)",fill="#455468")
-    return img
+    """Render the same spherical-ray cross section as the desktop view."""
+    from burning_sky.profile_image import render_profile
+    return render_profile(result)
+
 
 def _web_gap_text(result):
     inferred=result.get("inferred") or {}
