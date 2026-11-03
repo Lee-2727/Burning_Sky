@@ -1127,46 +1127,107 @@ class FireCloudApp(tk.Tk):
                 if not isinstance(local_reach, (int, float)):
                     local_reach = max_reach if max_reach > 0 else None
                 boundaries = estimate_path_cloud_boundaries(samples, local_reach)
-                # Staged cloud-hole search: quick screen -> angular-height intersection -> fallback quick screen.
+                # Cloud-hole decision order: direct clear-gap quick screen first;
+                # if none exists, spherical ray tracing is the sole geometric fallback.
                 cloud_hole_search = staged_cloud_hole_search(samples, local_reach)
-                if cloud_hole_search.get("stage") != "quick_screen":
-                    staged_gaps = cloud_hole_search.get("gaps") or []
-                    boundaries["clear_gaps"] = staged_gaps
-                    boundaries["clear_gap_count"] = len(staged_gaps)
-                    largest = max(staged_gaps, key=lambda g: float(g.get("size_km", 0)), default=None)
-                    farthest_gap = max(staged_gaps, key=lambda g: float(g.get("end_km", 0)), default=None)
-                    boundaries["clear_gap_start_km"] = largest.get("start_km") if largest else None
-                    boundaries["clear_gap_end_km"] = largest.get("end_km") if largest else None
-                    boundaries["largest_gap_size_km"] = largest.get("size_km", 0) if largest else 0
-                    boundaries["farthest_gap_distance_km"] = farthest_gap.get("end_km") if farthest_gap else None
-                    boundaries["farthest_gap_start_km"] = farthest_gap.get("start_km") if farthest_gap else None
-                    boundaries["gap_status"] = "effective_gap_candidate" if staged_gaps else boundaries.get("gap_status", "unknown")
-                inferred["cloud_hole_search_stage"] = cloud_hole_search.get("stage")
-                inferred["cloud_hole_angle_intervals_deg"] = cloud_hole_search.get("angle_intervals_deg", [])
-                # Keep detection provenance on boundaries so web and desktop reports use identical labels.
-                boundaries["cloud_hole_search_stage"] = cloud_hole_search.get("stage")
-                boundaries["cloud_hole_angle_intervals_deg"] = cloud_hole_search.get("angle_intervals_deg", [])
+                search_stage = cloud_hole_search.get("stage")
+                _ray_debug = None
+                if search_stage != "quick_screen":
+                    try:
+                        from burning_sky.spherical_raytrace import scan_window as _spherical_scan, render_schematic_map as _render_spherical_map, equivalent_gaps as _equivalent_gaps
+                        _target_base = float(local_geometry.get("cloud_base_km") or cloud_base_km) if local_geometry else float(cloud_base_km)
+                        _ray_debug = _spherical_scan(samples, _target_base, event_dt, data["utc_offset"],
+                                                     data["lat"], data["lon"], before_minutes=30,
+                                                     after_minutes=30, max_distance_km=None)
+                        _debug_dir = os.path.join(os.getcwd(), "debug_logs")
+                        os.makedirs(_debug_dir, exist_ok=True)
+                        _stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        _json_path = os.path.join(_debug_dir, f"spherical_raytrace_{direction_key}_{_stamp}.json")
+                        with open(_json_path, "w", encoding="utf-8") as _jf:
+                            json.dump(_ray_debug, _jf, ensure_ascii=False, indent=2)
+                        _png_path = os.path.join(_debug_dir, f"spherical_raytrace_map_{direction_key}_{_stamp}.png")
+                        _render_spherical_map(_ray_debug, _png_path)
+                        inferred["spherical_raytrace_debug_json"] = _json_path
+                        inferred["spherical_raytrace_debug_map"] = _png_path
+                        _clear_windows = _ray_debug.get("candidate_clear_windows") or []
+                        _statuses = [r.get("status") for r in _ray_debug.get("results", [])]
+                        _equiv = _equivalent_gaps(_ray_debug)
+                        if _clear_windows and _equiv:
+                            search_stage = "spherical_raytrace_clear"
+                            _gap = max(_equiv, key=lambda g: g["size_km"])
+                            cloud_hole_search.update({"stage": search_stage, "gaps": _equiv,
+                                "clear_windows": _clear_windows, "raytrace_status_counts":
+                                {k:_statuses.count(k) for k in sorted(set(_statuses))}})
+                            boundaries["clear_gaps"] = _equiv
+                            boundaries["clear_gap_count"] = len(_equiv)
+                            boundaries["clear_gap_start_km"] = _gap["start_km"]
+                            boundaries["clear_gap_end_km"] = _gap["end_km"]
+                            boundaries["largest_gap_size_km"] = _gap["size_km"]
+                            boundaries["farthest_gap_distance_km"] = max(g["end_km"] for g in _equiv)
+                            boundaries["farthest_gap_start_km"] = max(_equiv, key=lambda g:g["end_km"])["start_km"]
+                            boundaries["gap_status"] = "effective_gap_candidate"
+                        else:
+                            _has_unresolved = any(r.get("status") == "unresolved_data" for r in _ray_debug.get("results", []))
+                            search_stage = "spherical_raytrace_unresolved" if _has_unresolved else "spherical_raytrace_no_clear_path"
+                            cloud_hole_search.update({"stage": search_stage, "gaps": [],
+                                "clear_windows": [], "raytrace_status_counts":
+                                {k:_statuses.count(k) for k in sorted(set(_statuses))}})
+                            boundaries["clear_gaps"] = []
+                            boundaries["clear_gap_count"] = 0
+                            boundaries["clear_gap_start_km"] = None
+                            boundaries["clear_gap_end_km"] = None
+                            boundaries["largest_gap_size_km"] = 0.0
+                            boundaries["farthest_gap_distance_km"] = None
+                            boundaries["farthest_gap_start_km"] = None
+                            # No confirmed clear path => conservative continuous-cloud obstruction state.
+                            boundaries["gap_status"] = "continuous_cloud"
+                            inferred.setdefault("score_notes", []).append(
+                                "极限云距内未找到直接晴空区；球面光线追踪未发现数据完整且无遮挡的有效时刻，透光路径判定为无效。")
+                    except Exception as _ray_exc:
+                        search_stage = "spherical_raytrace_error"
+                        cloud_hole_search.update({"stage": search_stage, "gaps": []})
+                        boundaries["clear_gaps"] = []
+                        boundaries["clear_gap_count"] = 0
+                        boundaries["gap_status"] = "continuous_cloud"
+                        inferred["spherical_raytrace_debug_error"] = str(_ray_exc)
+                        inferred.setdefault("score_notes", []).append(
+                            "球面光线追踪执行失败，未将未知状态当作透光证据；按无有效透光路径保守处理。")
+                else:
+                    _quick_gaps = cloud_hole_search.get("gaps") or []
+                    if _quick_gaps:
+                        _largest = max(_quick_gaps, key=lambda g: float(g.get("size_km", 0)))
+                        _farthest = max(_quick_gaps, key=lambda g: float(g.get("end_km", 0)))
+                        boundaries["clear_gaps"] = _quick_gaps
+                        boundaries["clear_gap_count"] = len(_quick_gaps)
+                        boundaries["clear_gap_start_km"] = _largest.get("start_km")
+                        boundaries["clear_gap_end_km"] = _largest.get("end_km")
+                        boundaries["largest_gap_size_km"] = _largest.get("size_km", 0)
+                        boundaries["farthest_gap_distance_km"] = _farthest.get("end_km")
+                        boundaries["farthest_gap_start_km"] = _farthest.get("start_km")
+                        boundaries["gap_status"] = "effective_gap_candidate"
+                    inferred.setdefault("score_notes", []).append(
+                        "极限云距内已通过直接采样识别晴空区；本次不调用球面追踪，旧高度角求交集已停用。")
+                inferred["cloud_hole_search_stage"] = search_stage
+                inferred["cloud_hole_angle_intervals_deg"] = []
+                boundaries["cloud_hole_search_stage"] = search_stage
+                boundaries["cloud_hole_angle_intervals_deg"] = []
                 inferred = apply_path_score_pair(inferred, geometry, boundaries, samples=samples)
                 inferred = apply_low_cloud_screen_constraint(inferred, samples=samples, source="online_path",
                                                              max_relevant_distance_km=max_reach,
                                                              local_low_cloud_above_ground=local_low_above_ground)
                 inferred = apply_peak_cloud_color(inferred, boundaries, samples)
-                # 结果发布前最后一道规则闸门：低云屏障、色彩处理之后重新核定特殊结论。
                 inferred = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
-                # Fallback-stage cloud holes are weaker evidence: apply the agreed 0.5 factor.
-                # The legacy fixed 600-km modifier is intentionally bypassed to avoid double-counting.
-                if cloud_hole_search.get("stage") == "fallback_quick_screen":
-                    factor = float(cloud_hole_search.get("fallback_factor", 0.5))
-                    before = int(round(max(0, min(100, float(inferred.get("regular_score", inferred.get("score", 0)) or 0)))))
-                    after = int(round(before * factor))
-                    inferred["regular_score"] = inferred["score"] = after
-                    inferred["cloud_hole_fallback_factor"] = factor
-                    inferred.setdefault("score_notes", []).append(
-                        f"扩展快筛在理论极限云距+50 km至2倍理论极限云距范围识别到云洞；常规概率乘{factor:g}（{before}%→{after}%）。")
-                elif cloud_hole_search.get("stage") == "no_cloud_hole":
-                    inferred["cloud_hole_search_stage"] = "no_cloud_hole"
-                    inferred.setdefault("score_notes", []).append(
-                        "快筛、高度交集及扩展快筛均未识别到有效云洞；沿用现有无云洞判定规则。")
+                # Hard guard: if the spherical fallback found no verified clear path,
+                # do not allow subsequent scoring/verdict stages to resurrect a high score.
+                if search_stage in ("spherical_raytrace_no_clear_path", "spherical_raytrace_unresolved", "spherical_raytrace_error"):
+                    _before_regular = inferred.get("regular_score", inferred.get("score", 0))
+                    inferred["regular_score"] = inferred["score"] = min(20, int(round(float(_before_regular or 0))))
+                    inferred["upper_score"] = min(35, int(round(float(inferred.get("upper_score", 35) or 0))))
+                    inferred["cloud_hole_search_stage"] = search_stage
+                    inferred["verdict"] = "球面光路未证实透光"
+                    inferred["score_notes"] = list(inferred.get("score_notes") or []) + [
+                        "最终概率硬上限：无有效球面透光路径，常规概率≤20%，上限概率≤35%。"]
+                # Legacy height-angle intersection / fallback multiplier is intentionally disabled.
                 if elevation_filter_result.get("applied"):
                     inferred.setdefault("score_notes", []).append(
                         "高海拔近场低云过滤：" + elevation_filter_result.get("reason", "已应用") +
@@ -1179,15 +1240,13 @@ class FireCloudApp(tk.Tk):
                 all_gaps = boundaries.get('clear_gaps') or []
                 search_stage = cloud_hole_search.get('stage')
                 gap_ranges = '；'.join(f"{g['start_km']:.0f}–{g['end_km']:.0f} km（{g['size_km']:.0f} km）" for g in all_gaps)
-                if search_stage == 'height_intersection':
-                    # The solver stores positive elevation magnitudes; present them as negative
-                    # depression angles per the requested display convention.
-                    angle_intervals = cloud_hole_search.get('angle_intervals_deg') or []
-                    angle_text = '；'.join(
-                        f"{(-float(b)):.2f}°至{(-float(a)):.2f}°" for a, b in angle_intervals
-                    ) or '角度区间未提供'
-                    gap_display_label = '云隙透光'
-                    gap_text = f'高度角交集：{angle_text}'
+                if search_stage == 'spherical_raytrace_clear':
+                    gap_display_label = '云洞（等效）'
+                    _best_gap = max(all_gaps, key=lambda g: float(g.get('size_km', 0))) if all_gaps else None
+                    gap_text = (f"距离 {_best_gap['start_km']:.0f}–{_best_gap['end_km']:.0f} km，大小 {_best_gap['size_km']:.0f} km（仅已采样范围）" if _best_gap else '尚未确定')
+                elif search_stage in ('spherical_raytrace_no_clear_path', 'spherical_raytrace_unresolved', 'spherical_raytrace_error'):
+                    gap_display_label = '球面光路未证实透光'
+                    gap_text = '未找到有效无遮挡光路'
                 elif search_stage == 'fallback_quick_screen':
                     gap_display_label = '可能有云洞'
                     gap_text = gap_ranges or '可能有云洞（扩展距离快筛）'
@@ -2451,9 +2510,16 @@ class FireCloudApp(tk.Tk):
         win.minsize(760, 540)
         outer = ttk.Frame(win, padding=10)
         outer.pack(fill="both", expand=True)
-        note = ("俯视云图：低云保持蓝色；中高云使用橙→紫连续色带，颜色由中云/高云相对占比决定。"
-                "无明显云层不着色。底图为经纬网和采样位置，不是卫星云图；圆形覆盖仅为稀疏采样示意。")
+        note = ("采样云图：蓝色低云、紫色中云、橙色高云；云量越高越浓。"
+                "只在已采样的约30 km走廊内平滑插值，外侧透明；不代表 Windy 连续模式网格或卫星实况。")
         ttk.Label(outer, text=note, wraplength=1080).pack(anchor="w", pady=(0, 6))
+        controls = ttk.Frame(outer)
+        controls.pack(fill="x", pady=(0, 5))
+        ttk.Label(controls, text="云图图层：").pack(side="left")
+        layer_var = tk.StringVar(value="综合")
+        layer_select = ttk.Combobox(controls, textvariable=layer_var, values=("综合", "低云", "中云", "高云"), width=10, state="readonly")
+        layer_select.pack(side="left", padx=(0, 12))
+        ttk.Label(controls, text="云图仅在采样点约30 km内插值，未采样区域透明；不增加 API 请求。", foreground="#64748b").pack(side="left")
         map_row = ttk.Frame(outer)
         map_row.pack(fill="both", expand=True)
         canvas = tk.Canvas(map_row, bg="#f4f7f5", highlightthickness=1, highlightbackground="#cbd5e1")
@@ -2516,6 +2582,14 @@ class FireCloudApp(tk.Tk):
         azimuth = result.get("azimuth", 0.0)
         bounds = result.get("boundaries", {})
 
+        _map_cache = {"photo": None, "image": None}
+        def save_png():
+            if _map_cache["image"] is None:
+                return
+            filename = filedialog.asksaveasfilename(parent=win, defaultextension=".png", filetypes=[("PNG image", "*.png")], initialfile="BurningSky_CloudMap_" + direction_key + ".png")
+            if filename:
+                _map_cache["image"].save(filename)
+        ttk.Button(controls, text="保存云图 PNG", command=save_png).pack(side="right")
         def draw(_event=None):
             canvas.delete("all")
             w, h = canvas.winfo_width(), canvas.winfo_height()
@@ -2548,6 +2622,32 @@ class FireCloudApp(tk.Tk):
                 canvas.create_line(x,y1,x,y2,fill="#d8e0df",dash=(2,4))
                 canvas.create_text(x,top+ph+16,text=f"{v:.2f}°",anchor="n",fill="#52616b",font=("Microsoft YaHei UI",8))
                 v += lon_step
+            # Offline geography: coastlines / borders from bundled Natural Earth simplified geometry.
+            try:
+                _coast_file = os.path.join(os.path.dirname(__file__), "burning_sky", "world_coast_simplified.json")
+                with open(_coast_file, encoding="utf-8") as _f:
+                    _shapes = json.load(_f)
+                for _shape in _shapes:
+                    _polys = _shape["coordinates"] if _shape["type"] == "MultiPolygon" else [_shape["coordinates"]]
+                    for _poly in _polys:
+                        _ring = _poly[0]
+                        if not _ring: continue
+                        if max(q[0] for q in _ring)<min_lon or min(q[0] for q in _ring)>max_lon or max(q[1] for q in _ring)<min_lat or min(q[1] for q in _ring)>max_lat:continue
+                        _coords = [xy(q[1],q[0]) for q in _ring]
+                        canvas.create_line(*[v for pt in _coords for v in pt],fill="#9aa9a4",width=1)
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+            # Smooth cloud field only within measured corridor. Outside is transparent.
+            if Image is not None:
+                try:
+                    from PIL import ImageTk
+                    from burning_sky.cloud_map_view import cloud_overlay
+                    _overlay = cloud_overlay(records,(min_lat,max_lat,min_lon,max_lon),max(1,int(used_w)),max(1,int(used_h)),layer_var.get())
+                    _map_cache["image"] = _overlay
+                    _map_cache["photo"] = ImageTk.PhotoImage(_overlay,master=win)
+                    canvas.create_image(xoff,yoff,anchor="nw",image=_map_cache["photo"])
+                except Exception as exc:
+                    canvas.create_text(left+8,top+12,text=f"云图绘制失败：{exc}",anchor="nw",fill="#a33")
             # 绘制采样路径（中心点连线），仅表示采样方向，不是光线的三维轨迹。
             center_samples = sorted(result.get("samples", []), key=lambda r: r.get("distance_km", 0))
             path_points = [xy(r["lat"], r["lon"]) for r in center_samples if isinstance(r.get("lat"), (int, float)) and isinstance(r.get("lon"), (int, float))]
@@ -2603,31 +2703,6 @@ class FireCloudApp(tk.Tk):
                 label = city_name if off_km <= 12 else f"{city_name}（偏离路径约{off_km:.0f}km）"
                 canvas.create_text(cx+5, cy-5, text=label, anchor="sw", fill="#263548",
                                    font=("Microsoft YaHei UI", 8, "bold"), tags=("citylabel", city_name))
-            # 低云单独蓝色；中高云使用连续混合色。颜色反映中云/高云的相对占比，不是精确云高。
-            def _blend_rgb(a, b, t):
-                t = max(0.0, min(1.0, t))
-                rgb = tuple(round(a[i] * (1.0-t) + b[i] * t) for i in range(3))
-                return "#%02x%02x%02x" % rgb
-            mid_rgb, high_rgb = (246, 189, 96), (139, 101, 189)
-            for rec in records:
-                x, y = xy(rec["lat"], rec["lon"])
-                radius = max(3.0, min(22.0, 12.0 * scale / 111.0))
-                low = rec.get("cloud_cover_low")
-                mid = rec.get("cloud_cover_mid")
-                high = rec.get("cloud_cover_high")
-                if isinstance(low, (int, float)) and low >= 25:
-                    rr = radius * (0.55 + 0.45 * min(100.0, low) / 100.0)
-                    canvas.create_oval(x-rr, y-rr, x+rr, y+rr, fill="#8ec5ed", outline="", stipple="gray50")
-                mid_v = float(mid) if isinstance(mid, (int, float)) else 0.0
-                high_v = float(high) if isinstance(high, (int, float)) else 0.0
-                nonlow_total = mid_v + high_v
-                if nonlow_total >= 25:
-                    ratio_high = high_v / nonlow_total if nonlow_total > 0 else 0.0
-                    fill = _blend_rgb(mid_rgb, high_rgb, ratio_high)
-                    amount = min(100.0, nonlow_total / 2.0)
-                    rr = radius * (0.55 + 0.45 * amount / 100.0)
-                    stipple = "gray50" if nonlow_total < 65 else "gray25"
-                    canvas.create_oval(x-rr, y-rr, x+rr, y+rr, fill=fill, outline="", stipple=stipple)
             # 绘制观测点与太阳方位箭头
             ox,oy = xy(origin[0],origin[1])
             canvas.create_oval(ox-5,oy-5,ox+5,oy+5,fill="#d94841",outline="white",width=1.5)
@@ -2651,6 +2726,7 @@ class FireCloudApp(tk.Tk):
                 canvas.create_text(x+7,y+8,text=f"{label} {d}km",anchor="nw",fill=color,font=("Microsoft YaHei UI",8,"bold"))
             canvas.create_text(left+pw-4,top+4,text="北 ↑",anchor="ne",fill="#334155",font=("Microsoft YaHei UI",10,"bold"))
         canvas.bind("<Configure>", draw)
+        layer_select.bind("<<ComboboxSelected>>", draw)
         win.after(80, draw)
 
     def show_path_cloud_profile(self, direction_key):
@@ -4734,10 +4810,10 @@ class FireCloudApp(tk.Tk):
     @staticmethod
     def _format_cloud_hole_display(boundary):
         stage = boundary.get("cloud_hole_search_stage")
-        if stage == "height_intersection":
-            intervals = boundary.get("cloud_hole_angle_intervals_deg") or []
-            angle_text = "；".join(f"{-float(b):.2f}°至{-float(a):.2f}°" for a, b in intervals) or "角度区间未提供"
-            return f"云隙透光：高度角交集 {angle_text}"
+        if stage == "spherical_raytrace_clear":
+            return "球面光路透光：追踪发现无遮挡时段"
+        if stage in ("spherical_raytrace_no_clear_path", "spherical_raytrace_error"):
+            return "球面光路未证实透光"
         if stage == "fallback_quick_screen":
             return "可能有云洞：扩展距离快筛发现候选区间"
         start, end = boundary.get("clear_gap_start_km"), boundary.get("clear_gap_end_km")
@@ -4969,10 +5045,10 @@ class FireCloudApp(tk.Tk):
             lines.append(f"低云遮挡：{low_reason}")
             lines.append(f"云层延伸/云边界：本地连续中高云范围 {km(b.get('fire_cloud_range_km'))}；太阳方向推算云边距 {km(b.get('cloud_edge_distance_km'))}。")
             stage=b.get("cloud_hole_search_stage")
-            if stage == "height_intersection":
-                intervals=b.get("cloud_hole_angle_intervals_deg") or []
-                angle_text="；".join(f"{-float(y):.2f}°至{-float(x):.2f}°" for x,y in intervals) or "角度区间未提供"
-                gap=f"云隙透光：高度角交集 {angle_text}"
+            if stage == "spherical_raytrace_clear":
+                gap="球面光路透光（追踪发现无遮挡时段）"
+            elif stage in ("spherical_raytrace_no_clear_path", "spherical_raytrace_error"):
+                gap="球面光路未证实透光"
             elif stage == "fallback_quick_screen":
                 gap="可能有云洞（扩展距离快筛候选）"
             else:
