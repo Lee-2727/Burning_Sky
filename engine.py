@@ -27,6 +27,7 @@ import re
 import csv
 import hashlib
 import threading
+import zipfile
 # Tkinter is optional at import time so the same runtime can serve desktop and web.
 try:
     import tkinter as tk
@@ -209,7 +210,7 @@ def _write_disk_cache(url, payload, signature):
         pass
 
 
-def request_json(req, timeout=20, retries=3, cache_key=None, cache_ttl=None):
+def _request_json_impl(req, timeout=20, retries=3, cache_key=None, cache_ttl=None):
     """带内存/磁盘缓存的 HTTP 请求；对明确指定的 Open-Meteo 模型按最新数据上线时间判缓存。"""
     now = time.time()
     url = getattr(req, "full_url", "")
@@ -309,14 +310,25 @@ def request_json(req, timeout=20, retries=3, cache_key=None, cache_ttl=None):
         _HTTP_REQUEST_LOCK.release()
 
 
+# 案例请求缓存：按完整 URL 精确匹配，保证日期/坐标/模式不匹配时不会误用数据。
+_CASE_REQUEST_CONTEXT = None
+_CASE_REQUEST_CONTEXT_LOCK = threading.RLock()
 
-
-
-
-
-
-
-
+def request_json(req, timeout=20, retries=3, cache_key=None, cache_ttl=None):
+    url = getattr(req, "full_url", "")
+    with _CASE_REQUEST_CONTEXT_LOCK:
+        context = _CASE_REQUEST_CONTEXT
+        if context and context.get("mode") == "replay":
+            cache = context.get("cache", {})
+            if url not in cache:
+                raise RuntimeError("案例缓存缺少本次查询所需的天气/AOD/云底数据。请关闭‘从案例缓存读取’重新联网查询，或加载包含该日期、模式和方向数据的案例。")
+            return cache[url]
+    payload = _request_json_impl(req, timeout=timeout, retries=retries, cache_key=cache_key, cache_ttl=cache_ttl)
+    with _CASE_REQUEST_CONTEXT_LOCK:
+        context = _CASE_REQUEST_CONTEXT
+        if context and context.get("mode") == "capture":
+            context.setdefault("cache", {})[url] = payload
+    return payload
 
 
 
@@ -405,6 +417,9 @@ class FireCloudApp(tk.Tk):
         self.direction_results = {}
         self.fetch_in_progress = False
         self.loaded_case_path = None
+        self.case_cache_var = tk.BooleanVar(value=False)
+        self.case_request_cache = {}
+        self.loaded_case_state = None
         self.case_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "案例数据")
         self._build_ui()
 
@@ -503,6 +518,8 @@ class FireCloudApp(tk.Tk):
         ttk.Button(case_buttons, text="加载案例", command=self.load_case).pack(side="left", fill="x", expand=True, padx=(0, 3))
         ttk.Button(case_buttons, text="保存案例", command=self.save_case).pack(side="left", fill="x", expand=True, padx=3)
         ttk.Button(case_buttons, text="记录现场实况", command=self.record_field_observation).pack(side="left", fill="x", expand=True, padx=(3, 0))
+        ttk.Button(left, text="导出案例 ZIP（供网页加载）", command=self.export_case_zip).pack(fill="x", pady=(0, 8))
+        ttk.Checkbutton(left, text="从案例缓存读取（不请求天气 API）", variable=self.case_cache_var).pack(anchor="w", pady=(0, 8))
         ttk.Button(left, text="实况模拟（读取 Excel）", style="Accent.TButton", command=self.run_live_simulation).pack(fill="x", pady=(0, 10))
         ttk.Label(left, text="预报设置", style="Section.TLabel").pack(anchor="w", pady=(0, 10))
         form = ttk.Frame(left, style="Card.TFrame")
@@ -766,9 +783,43 @@ class FireCloudApp(tk.Tk):
             pass
 
         def worker():
+            global _CASE_REQUEST_CONTEXT
             try:
+                model_code = self._case_model_code()
+                date_text = self.vars["date"].get().strip()
+                if self.case_cache_var.get():
+                    if not self.loaded_case_path or not self.loaded_case_state:
+                        raise RuntimeError("请先加载案例，再勾选‘从案例缓存读取’。")
+                    st = self.loaded_case_state
+                    if st.get("date") != date_text or st.get("model_code") != model_code:
+                        raise RuntimeError(f"案例数据不匹配：案例日期/模式为 {st.get('date')} / {st.get('model_code')}，当前查询为 {date_text} / {model_code}。请加载正确案例或取消缓存勾选。")
+                    cached_dirs = set((st.get("direction_results") or {}).keys())
+                    requested = {"morning", "evening"} if direction_key == "both" else {direction_key}
+                    missing = requested - cached_dirs
+                    if missing:
+                        names = "、".join("朝霞" if x == "morning" else "晚霞" for x in sorted(missing))
+                        raise RuntimeError(f"案例缺少{names}数据，请加载包含该方向的案例。")
+                    cache_path = os.path.join(self.loaded_case_path, "request_cache.json")
+                    with open(cache_path, "r", encoding="utf-8") as f:
+                        cache = json.load(f)
+                    _CASE_REQUEST_CONTEXT = {"mode": "replay", "cache": cache}
+                else:
+                    self.case_request_cache = {}
+                    _target_case_folder = self._case_folder_for_current()
+                    _existing_cache_path = os.path.join(_target_case_folder, "request_cache.json")
+                    if os.path.isfile(_existing_cache_path):
+                        try:
+                            with open(_existing_cache_path, "r", encoding="utf-8") as _ecf:
+                                _old_cache = json.load(_ecf)
+                            if isinstance(_old_cache, dict): self.case_request_cache.update(_old_cache)
+                        except Exception:
+                            pass
+                    _CASE_REQUEST_CONTEXT = {"mode": "capture", "cache": self.case_request_cache}
                 self._fetch_weather_task(direction_key)
+            except Exception as exc:
+                messagebox.showerror("案例缓存/查询失败", str(exc))
             finally:
+                _CASE_REQUEST_CONTEXT = None
                 try:
                     self.after(0, self._finish_fetch_weather)
                 except Exception:
@@ -795,7 +846,7 @@ class FireCloudApp(tk.Tk):
 
             fetched_at = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
             # 读取 Open-Meteo 模型元数据：起报时间与数据上线时间，均不是本机查询时间。
-            model_meta = _get_model_metadata_signature(model_id)
+            model_meta = None if (_CASE_REQUEST_CONTEXT and _CASE_REQUEST_CONTEXT.get("mode") == "replay") else _get_model_metadata_signature(model_id)
             def _fmt_model_epoch(value):
                 try:
                     return datetime.fromtimestamp(float(value), tz=timezone.utc).astimezone(
@@ -1169,27 +1220,6 @@ class FireCloudApp(tk.Tk):
                                 if lit_best >= 0.999: break
                             tint_num += weight * lit_best
                 tintable_ratio = round(max(0.0,min(100.0,100.0*tint_num/tint_den))) if tint_den > 0 else (0 if ordered else None)
-                # 光板天硬规则：以本地 0–100 km 内有效采样点的中云+高云云量
-                # 算术平均作为近场代表值；严格小于 5% 时，强制清零概率与可染色比例。
-                near_samples = [q for q in ordered
-                                if isinstance(q.get("distance_km"), (int, float))
-                                and 0 <= float(q.get("distance_km")) <= 100
-                                and isinstance(q.get("cloud_cover_mid"), (int, float))
-                                and isinstance(q.get("cloud_cover_high"), (int, float))]
-                near_mid_high = (sum(float(q["cloud_cover_mid"]) + float(q["cloud_cover_high"])
-                                     for q in near_samples) / len(near_samples)
-                                 if near_samples else None)
-                clear_sky_rule = near_mid_high is not None and near_mid_high < 5.0
-                if clear_sky_rule:
-                    inferred["score"] = 0
-                    inferred["regular_score"] = 0
-                    inferred["upper_score"] = 0
-                    inferred["probability"] = 0
-                    inferred["tintable_ratio"] = 0
-                    inferred["verdict_override"] = "光板天"
-                    inferred.setdefault("score_notes", []).append(
-                        f"光板天规则：本地100 km内中+高云平均云量 {near_mid_high:.2f}% < 5%，常规概率及可染色云占比强制为0%。")
-                    tintable_ratio = 0
                 if tintable_ratio is None:
                     tintable_text = "暂不可估"
                 else:
@@ -5041,6 +5071,8 @@ class FireCloudApp(tk.Tk):
                    for k, v in self.direction_results.items()}
             with open(os.path.join(folder, "weather_raw.json"), "w", encoding="utf-8") as f:
                 json.dump(self._json_safe(raw), f, ensure_ascii=False, indent=2)
+            with open(os.path.join(folder, "request_cache.json"), "w", encoding="utf-8") as f:
+                json.dump(self._json_safe(self.case_request_cache), f, ensure_ascii=False, indent=2)
             with open(os.path.join(folder, "analysis_report.csv"), "w", encoding="utf-8-sig", newline="") as f:
                 w = csv.writer(f)
                 w.writerow(["方向", "分析项目", "结果", "直白解释", "数据/推断属性"])
@@ -5095,6 +5127,27 @@ class FireCloudApp(tk.Tk):
         except Exception as exc:
             messagebox.showerror("保存案例失败", f"保存过程中发生错误：\n{exc}")
 
+    def export_case_zip(self):
+        folder = getattr(self, "loaded_case_path", None)
+        if not folder or not os.path.isfile(os.path.join(folder, "analysis_state.json")):
+            folder = self._case_folder_for_current()
+        if not os.path.isfile(os.path.join(folder, "analysis_state.json")):
+            messagebox.showinfo("尚无案例", "请先保存案例，再导出 ZIP。")
+            return
+        base_name = os.path.basename(folder.rstrip(os.sep)) + ".zip"
+        output = filedialog.asksaveasfilename(title="导出案例 ZIP", initialdir=os.path.dirname(folder), initialfile=base_name, defaultextension=".zip", filetypes=[("ZIP 文件", "*.zip")])
+        if not output:
+            return
+        try:
+            with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zf:
+                for root, _, files in os.walk(folder):
+                    for name in files:
+                        path = os.path.join(root, name)
+                        zf.write(path, os.path.relpath(path, folder))
+            messagebox.showinfo("案例已导出", f"案例 ZIP 已导出：\n{output}\n\n可在网页版‘加载案例 ZIP’中上传。")
+        except Exception as exc:
+            messagebox.showerror("导出案例失败", str(exc))
+
     def load_case(self):
         folder = filedialog.askdirectory(title="选择要加载的案例文件夹", initialdir=self.case_root if os.path.isdir(self.case_root) else os.path.dirname(os.path.abspath(__file__)))
         if not folder:
@@ -5115,6 +5168,12 @@ class FireCloudApp(tk.Tk):
             for key, value in state.get("cloud_base_inputs", {}).items():
                 if key in self.vars: self.vars[key].set(str(value))
             self.direction_results = state.get("direction_results", {})
+            self.loaded_case_state = state
+            try:
+                with open(os.path.join(folder, "request_cache.json"), "r", encoding="utf-8") as _cf:
+                    self.case_request_cache = json.load(_cf)
+            except Exception:
+                self.case_request_cache = {}
             # 旧案例兼容：旧版保存的结果没有统一低云颜色系数时，按当前规则补算；不联网。
             for _direction_key, _saved_result in self.direction_results.items():
                 _inf = _saved_result.get("inferred", {}) if isinstance(_saved_result, dict) else {}

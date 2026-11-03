@@ -5,6 +5,9 @@ from __future__ import annotations
 import os
 import re
 import math
+import io
+import json
+import zipfile
 import importlib.util
 import sys
 from datetime import date
@@ -289,6 +292,30 @@ with st.sidebar:
     st.subheader("晚霞参数")
     evening_cloud_base = st.number_input("晚霞手动云底/回退值（km）", 0.1, 15.0, 2.0, 0.1)
     evening_aod_text = st.text_input("晚霞手动 AOD（留空自动获取）", "")
+    st.divider()
+    st.subheader("案例缓存")
+    case_upload = st.file_uploader("加载案例 ZIP（桌面端保存的案例文件夹压缩包）", type=["zip"], key="case_zip_upload")
+    if case_upload is not None:
+        try:
+            with zipfile.ZipFile(case_upload) as _zf:
+                _names = set(_zf.namelist())
+                _state_name = next((n for n in _names if n.endswith("analysis_state.json")), None)
+                _cache_name = next((n for n in _names if n.endswith("request_cache.json")), None)
+                if not _state_name or not _cache_name:
+                    st.session_state["case_bundle_state"] = None
+                    st.session_state["case_bundle_cache"] = None
+                    st.warning("该案例 ZIP 缺少 analysis_state.json 或 request_cache.json，不能用于缓存重算。")
+                else:
+                    st.session_state["case_bundle_state"] = json.loads(_zf.read(_state_name).decode("utf-8"))
+                    st.session_state["case_bundle_cache"] = json.loads(_zf.read(_cache_name).decode("utf-8"))
+                    st.success(f"案例已加载：{st.session_state['case_bundle_state'].get('date')} · {st.session_state['case_bundle_state'].get('model_code')}。")
+        except Exception as _exc:
+            st.error(f"案例 ZIP 读取失败：{_exc}")
+    use_case_cache = st.checkbox("从案例读取数据（不请求天气 API）", value=False, key="use_case_cache")
+    _case_state = st.session_state.get("case_bundle_state")
+    if use_case_cache and not _case_state:
+        st.warning("请先上传并加载包含原始请求缓存的案例 ZIP。")
+
     morning_col, evening_col = st.columns(2)
     with morning_col:
         run_morning = st.button("查询朝霞", use_container_width=True)
@@ -451,8 +478,32 @@ if run:
     }
     runner = WebForecastEngine(values)
     _direction_text = "朝霞与晚霞" if query_direction == "all" else ("朝霞" if query_direction == "morning" else "晚霞")
-    with st.spinner(f"正在获取天气、云层剖面与 CAMS AOD，并计算{_direction_text}……这可能需要几分钟。"):
-        runner._fetch_weather_task("both" if query_direction == "all" else query_direction)
+    _query_dir = "both" if query_direction == "all" else query_direction
+    _case_state = st.session_state.get("case_bundle_state")
+    if use_case_cache:
+        _expected_model = {"ecmwf_ifs025": "EC", "ncep_gfs_global": "GFS", "icon_global": "ICON", "ecmwf_aifs025_single": "AIFS", "cma_grapes_global": "CMA_GRAPES"}.get(engine._weather_model_id_from_label(model_label), "EC")
+        _dirs = set((_case_state or {}).get("direction_results", {}).keys())
+        _required_dirs = {"morning", "evening"} if _query_dir == "both" else {_query_dir}
+        _missing_dirs = _required_dirs - _dirs
+        if not _case_state or _case_state.get("date") != forecast_date.isoformat() or _case_state.get("model_code") != _expected_model or _missing_dirs:
+            _why = []
+            if not _case_state: _why.append("未加载案例")
+            elif _case_state.get("date") != forecast_date.isoformat(): _why.append(f"案例日期为 {_case_state.get('date')}，当前为 {forecast_date.isoformat()}")
+            if _case_state and _case_state.get("model_code") != _expected_model: _why.append(f"案例模式为 {_case_state.get('model_code')}，当前为 {_expected_model}")
+            if _missing_dirs: _why.append("案例缺少方向：" + "、".join("朝霞" if x == "morning" else "晚霞" for x in _missing_dirs))
+            st.error("案例数据不匹配，已停止查询：" + "；".join(_why) + "。请加载正确案例或取消缓存勾选。")
+            st.stop()
+        engine._CASE_REQUEST_CONTEXT = {"mode": "replay", "cache": st.session_state.get("case_bundle_cache") or {}}
+    else:
+        _web_case_cache = {}
+        if _case_state and _case_state.get("date") == forecast_date.isoformat() and _case_state.get("model_code") == {"ecmwf_ifs025": "EC", "ncep_gfs_global": "GFS", "icon_global": "ICON", "ecmwf_aifs025_single": "AIFS", "cma_grapes_global": "CMA_GRAPES"}.get(engine._weather_model_id_from_label(model_label), "EC"):
+            _web_case_cache.update(st.session_state.get("case_bundle_cache") or {})
+        engine._CASE_REQUEST_CONTEXT = {"mode": "capture", "cache": _web_case_cache}
+    try:
+        with st.spinner(f"{'正在读取案例缓存' if use_case_cache else '正在获取天气、云层剖面与 CAMS AOD'}，并计算{_direction_text}……"):
+            runner._fetch_weather_task(_query_dir)
+    finally:
+        engine._CASE_REQUEST_CONTEXT = None
     if engine.messagebox.last_error:
         st.error(f"{engine.messagebox.last_error[0]}：{engine.messagebox.last_error[1]}")
     elif not runner.direction_results:
@@ -466,6 +517,23 @@ if run:
             "query_direction": query_direction,
         }
         st.success("查询完成。")
+        _combined_results = dict((_case_state or {}).get("direction_results", {}))
+        _combined_results.update(runner.direction_results)
+        _case_state_out = {
+                "schema_version": 1, "app_version": "Burning Sky", "saved_at": __import__("datetime").datetime.now().astimezone().isoformat(),
+                "place": place, "date": forecast_date.isoformat(), "latitude": f"{lat:.6f}", "longitude": f"{lon:.6f}", "elevation_m": elevation,
+                "weather_model": model_label, "model_code": {"ecmwf_ifs025": "EC", "ncep_gfs_global": "GFS", "icon_global": "ICON", "ecmwf_aifs025_single": "AIFS", "cma_grapes_global": "CMA_GRAPES"}.get(engine._weather_model_id_from_label(model_label), "EC"),
+                "cloud_base_mode": cloud_base_mode, "aod_inputs": {"morning_aod": morning_aod_text, "evening_aod": evening_aod_text},
+                "cloud_base_inputs": {"morning_cloud_base_km": morning_cloud_base, "evening_cloud_base_km": evening_cloud_base},
+                "last_fetch_time": runner.last_fetch_time or (_case_state or {}).get("last_fetch_time"), "direction_results": engine.FireCloudApp._json_safe({k: {kk: vv for kk, vv in v.items() if kk != "raw_weather"} for k, v in _combined_results.items()}),
+                "last_report": runner.last_report or (_case_state or {}).get("last_report", ""),
+            }
+        _bundle = io.BytesIO()
+        with zipfile.ZipFile(_bundle, "w", zipfile.ZIP_DEFLATED) as _zf:
+            _zf.writestr("analysis_state.json", json.dumps(_case_state_out, ensure_ascii=False, indent=2))
+            _zf.writestr("request_cache.json", json.dumps(engine.FireCloudApp._json_safe(_web_case_cache if not use_case_cache else (st.session_state.get("case_bundle_cache") or {})), ensure_ascii=False))
+            _zf.writestr("weather_raw.json", json.dumps(engine.FireCloudApp._json_safe({k: {"raw_weather": v.get("raw_weather", []), "samples": v.get("samples", []), "profiles": v.get("profiles", []), "raw_details": v.get("raw_details", [])} for k, v in _combined_results.items()}), ensure_ascii=False))
+        st.download_button("保存当前查询案例 ZIP", data=_bundle.getvalue(), file_name=f"BurningSky_{forecast_date.isoformat()}_{place}_{_case_state_out['model_code']}.zip", mime="application/zip")
 
 def _styled_cloud_summary(summary):
     """Display-only styling: emphasize mid/high cloud percentages without changing values."""
