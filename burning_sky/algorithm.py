@@ -2020,5 +2020,6 @@ __all__ = [
     "apply_peak_cloud_color", "apply_path_score_pair", "enforce_single_mode_special_verdicts", "calculate_color_performance_score",
     "has_local_low_cloud_above_ground", "apply_low_cloud_screen_constraint",
     "apply_extended_gap_scan_modifier",
+    "staged_cloud_hole_search",
     "score_two_day_event_shared_core",
 ]
