@@ -1470,7 +1470,8 @@ class FireCloudApp(tk.Tk):
                 curve_data = {"direction": direction_key, "date": data["date"], "lat": data["lat"], "lon": data["lon"],
                               "utc_offset": data["utc_offset"], "aod": effective_aod,
                               "visibility_km": (sum(visibility_values)/len(visibility_values) if visibility_values else None)}
-                dynamic_curve = self._build_dynamic_light_curve(curve_data, curve_zones, (event_dt, azimuth), single_mode=True) if curve_zones else {"samples": [], "peak": None, "note": "缺少可用云量采样，未生成动态曲线。"}
+                dynamic_curve = self._build_dynamic_light_curve(curve_data, curve_zones, (event_dt, azimuth), single_mode=True,
+                                            accepted_gaps=boundaries.get("clear_gaps") or []) if curve_zones else {"samples": [], "peak": None, "note": "缺少可用云量采样，未生成动态曲线。"}
                 # 峰值云色与动态曲线峰值时刻对齐：使用所有有效距离段共同计算出的峰值时刻色彩，
                 # 避免 GUI 色块只由第一个云洞的距离规则决定；色相仍属于示意估算。
                 dynamic_peak = dynamic_curve.get("peak")
@@ -4238,7 +4239,7 @@ class FireCloudApp(tk.Tk):
             return blend(red, dark_red, (-2.0-alt)/2.5)
         return blend(dark_red, night, min(1.0,(-4.5-alt)/3.0))
 
-    def _build_dynamic_light_curve(self, data, zones, sun_event, single_mode=False):
+    def _build_dynamic_light_curve(self, data, zones, sun_event, single_mode=False, accepted_gaps=None):
         """按分钟扫描日出/日落前后动态受光，输出 0–100 亮度指数与示意色。
 
         单次单模式与 Excel 实况模拟共用同一套计算：球形地球地平线几何、距离权重、受光比例、
@@ -4264,6 +4265,13 @@ class FireCloudApp(tk.Tk):
                 seg_start=z["start"]+width*seg_i/n
                 seg_end=z["start"]+width*(seg_i+1)/n
                 dist=(seg_start+seg_end)/2.0
+                # Restrict the time series to actual accepted cloud-hole distance
+                # intervals. A gap is a candidate corridor, not guaranteed illumination.
+                if accepted_gaps is not None and not any(
+                    float(g.get("start_km", 0)) <= dist <= float(g.get("end_km", 0))
+                    for g in accepted_gaps if isinstance(g, dict)
+                ):
+                    continue
                 seg_width=max(0.1,seg_end-seg_start)
                 for lo,hi in z["layers"]:
                     if hi <= 1500 or hi <= lo:
@@ -4396,7 +4404,7 @@ class FireCloudApp(tk.Tk):
                 strongest_opacity=max(zone_opacity.values(), default=0.0)
                 # 两种模式统一采用实况模拟原有的有限异层遮挡衰减，避免同一曲线在不同入口下
                 # 一边考虑光路遮挡、一边完全忽略遮挡。只取最强一处，不对多个采样区间连乘。
-                attenuation = max(0.55, 1.0-strongest_opacity)
+                attenuation = max(0.0, 1.0-strongest_opacity)
                 contribution=target["weight"]*(target["cover"]/100.0)*lit_fraction
                 weighted_light += contribution*attenuation
                 color_weight += contribution
@@ -4423,7 +4431,10 @@ class FireCloudApp(tk.Tk):
             sat *= 0.08+0.92*color_quality
             rr,gg,bb=colorsys.hls_to_rgb(h,max(0.0,min(1.0,l)),max(0.0,min(1.0,sat)))
             color=(int(round(rr*255)),int(round(gg*255)),int(round(bb*255)))
-            geometry_valid = eligible_weight > 1e-9 and color_weight > 1e-9
+            # Only the pre-sunrise morning / post-sunset evening segment is
+            # eligible for this fire-cloud timeline.
+            in_twilight = dt < event_dt if is_morning else dt > event_dt
+            geometry_valid = in_twilight and eligible_weight > 1e-9 and transmitted_color_weight > 1e-9
             samples.append({"datetime":dt,"minutes_from_event":(dt-event_dt).total_seconds()/60.0,
                             "solar_altitude_deg":solar_alt,"solar_azimuth_deg":solar_az,
                             # 几何无效时明确标记为断点；前端不得连接/插值跨越该点。

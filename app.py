@@ -165,7 +165,7 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
         # Use each sample's own estimated RGB for its segment, matching the desktop UI.
         for i in range(len(samples) - 1):
             # 严格几何光路无效的样本作为断点，不跨断点连线或填充面积。
-            if not samples[i].get("geometry_valid", True) or not samples[i + 1].get("geometry_valid", True):
+            if not samples[i].get("geometry_valid", False) or not samples[i + 1].get("geometry_valid", False):
                 continue
             x0, x1 = x_at(i), x_at(i + 1)
             y0 = y_at(samples[i].get("relative_brightness", 0))
@@ -176,7 +176,7 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
             d.line((x0, y0, x1, y1), fill=c, width=5)
         # 仅绘制有效几何点；无效时段保持真实空白。
         for i, point in enumerate(samples):
-            if not point.get("geometry_valid", True):
+            if not point.get("geometry_valid", False):
                 continue
             x, y = x_at(i), y_at(point.get("relative_brightness", 0))
             c = rgb_of(point)
@@ -204,7 +204,8 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
                 else:
                     pi = min(range(len(samples)), key=lambda i: abs(float(samples[i].get("minutes_from_event", 0)) - float(peak.get("minutes_from_event", 0))))
                 px, py = x_at(pi), y_at(samples[pi].get("relative_brightness", 0))
-                d.ellipse((px - 7, py - 7, px + 7, py + 7), fill=(255, 255, 255), outline=rgb_of(samples[pi]), width=3)
+                if samples[pi].get("geometry_valid", False):
+                    d.ellipse((px - 7, py - 7, px + 7, py + 7), fill=(255, 255, 255), outline=rgb_of(samples[pi]), width=3)
             except Exception:
                 pass
     else:
@@ -217,7 +218,8 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
         for i, point in enumerate(samples):
             xa = int(x_at(i))
             xb = int(x_at(i + 1)) if i + 1 < len(samples) else right
-            d.rectangle((xa, strip_y0, max(xa + 1, xb), strip_y1), fill=rgb_of(point))
+            if point.get("geometry_valid", False):
+                d.rectangle((xa, strip_y0, max(xa + 1, xb), strip_y1), fill=rgb_of(point))
     else:
         d.rectangle((left, strip_y0, right, strip_y1), fill=(235, 235, 235))
     d.text((left, 492), "Estimated color by time (model RGB; no extra saturation enhancement)", font=small, fill=(71, 85, 105))
@@ -673,31 +675,41 @@ def _path_sampling_table(details):
 
 
 def _web_profile_figure(result):
-    """Compact pressure-layer section; uses cached profiles, no API calls."""
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
-    profiles=sorted((p for p in result.get("profiles",[]) if p.get("levels") and isinstance(p.get("distance_km"),(int,float))),key=lambda p:p["distance_km"])
-    if not profiles:return None
-    fig,ax=plt.subplots(figsize=(10,3.6))
-    distances=[float(p["distance_km"]) for p in profiles]
+    """Dependency-free pressure-layer profile using Pillow (no matplotlib)."""
+    from PIL import Image, ImageDraw
+    profiles = sorted((p for p in result.get("profiles", []) if p.get("levels") and isinstance(p.get("distance_km"), (int, float))), key=lambda p: p["distance_km"])
+    if not profiles:
+        return None
+    w, h = 1200, 430
+    img = Image.new("RGB", (w, h), "white")
+    d = ImageDraw.Draw(img)
+    left, right, top, bottom = 75, w - 30, 24, h - 52
+    maxdist = max(1.0, max(float(p["distance_km"]) for p in profiles))
+    def x(v): return left + (right-left)*max(0, min(maxdist, v))/maxdist
+    def y(v): return bottom - (bottom-top)*max(0, min(14, v))/14
+    for km in range(0,15,2):
+        yy = y(km);d.line((left,yy,right,yy),fill="#e4e8ef",width=1)
+        d.text((10,yy-7),f"{km} km",fill="#455468")
     for i,p in enumerate(profiles):
-        d=distances[i]
-        lo=(distances[i-1]+d)/2 if i else max(0,d-(distances[i+1]-d)/2) if len(distances)>1 else 0
-        hi=(d+distances[i+1])/2 if i+1<len(distances) else d+(d-distances[i-1])/2 if i else d+25
+        distance = float(p["distance_km"])
+        lo = (float(profiles[i-1]["distance_km"])+distance)/2 if i else 0
+        hi = (distance+float(profiles[i+1]["distance_km"]))/2 if i+1<len(profiles) else maxdist
         for lv in p["levels"]:
-            h=lv.get("height_agl_km");c=lv.get("cloud_cover")
-            if not isinstance(h,(int,float)) or not isinstance(c,(int,float)) or c<5:continue
-            ax.add_patch(Rectangle((lo,max(0,h-.18)),max(1,hi-lo),.36,facecolor='black',alpha=min(.85,max(.08,c/115)),edgecolor='none'))
-    # Show only accepted gap spans, without implying they are cloud objects.
-    boundaries=result.get("boundaries") or {}
-    for g in boundaries.get("clear_gaps") or []:
-        a=g.get("start_km");b=g.get("end_km")
-        if isinstance(a,(int,float)) and isinstance(b,(int,float)):
-            ax.axvspan(a,b,color='#9b59b6',alpha=.09)
-    ax.set_xlim(0,max(distances));ax.set_ylim(0,13)
-    ax.set_xlabel('Distance (km)');ax.set_ylabel('Cloud height (km)')
-    ax.grid(alpha=.12);fig.tight_layout()
-    return fig
+            height,cover=lv.get("height_agl_km"),lv.get("cloud_cover")
+            if not isinstance(height,(int,float)) or not isinstance(cover,(int,float)) or cover<5:continue
+            gray=int(248-min(0.9,cover/110)*175)
+            d.rectangle((x(lo),y(height+0.18),x(hi),y(height-0.18)),fill=(gray,gray,gray))
+    for g in (result.get("boundaries") or {}).get("clear_gaps") or []:
+        try:
+            a,b=float(g["start_km"]),float(g["end_km"])
+            d.line((x(a),bottom+7,x(b),bottom+7),fill="#7b3fb2",width=5)
+        except (KeyError,ValueError,TypeError):pass
+    d.line((left,top,left,bottom),fill="#667085",width=2)
+    d.line((left,bottom,right,bottom),fill="#667085",width=2)
+    for km in range(0,int(maxdist)+1,100):
+        d.text((x(km)-10,bottom+15),str(km),fill="#455468")
+    d.text((w//2-55,h-20),"Distance (km)",fill="#455468")
+    return img
 
 def _web_gap_text(result):
     inferred=result.get("inferred") or {}
@@ -765,9 +777,7 @@ if results:
             st.markdown("**" + _web_gap_text(result) + "**")
             _profile_fig = _web_profile_figure(result)
             if _profile_fig is not None:
-                st.pyplot(_profile_fig, use_container_width=True)
-                import matplotlib.pyplot as _plt
-                _plt.close(_profile_fig)
+                st.image(_profile_fig, use_container_width=True)
             st.subheader("云色时序")
             st.image(_draw_dynamic_color_curve(points, curve.get("peak"), key), use_container_width=True)
             if points:
