@@ -1401,7 +1401,7 @@ class FireCloudApp(tk.Tk):
                     model_time_text,
                     f"潜在霞云距（本地连续中高云末端）：{fire_range_text}；极限云距（几何上限）：{cloud_edge_text}；{gap_display_label}：{gap_text}",
                     (f"彩虹出现机会：暂不可估；{rainbow_result.get('note', '反太阳方向降水条件数据不可用。')}" if rainbow_result.get("score") is None else
-                     f"彩虹出现机会：{rainbow_result['label']}（经验指数 {rainbow_result['score']}/100，非统计概率）；反太阳方向采样点 {rainbow_result['distance_km']:.0f} km，降水概率 {self._fmt_pct(rainbow_result.get('precip_probability'))}，小时降水 {('—' if rainbow_result.get('precipitation') is None else format(rainbow_result['precipitation'], '.2f')+' mm/h')}"),
+                     f"彩虹出现机会：{rainbow_result['label']}（实验指数 {rainbow_result['score']}/100）；受光：{rainbow_result.get('light_method','未验证')}；弧段采样覆盖：{rainbow_result.get('sector_coverage_pct',0)}%（不是完整度）"),
                     f"采样动态扩展：初始 0–200 km；粗采样最大理论距离 {max_reach:.1f} km；按约 100 km 缓冲扩展，最终采样上限 {distances[-1]} km。",
                     "距离 | 中心坐标 | 总云/低云/中云/高云 | 能见度 | 风速 | 云底绝对海拔 | 有效云底绝对海拔 | 理论深入距离 | 几何筛选",
                 ]
@@ -1568,59 +1568,34 @@ class FireCloudApp(tk.Tk):
 
     @staticmethod
     def _estimate_rainbow_opportunity(lat, lon, sun_azimuth, event_utc, model_id, local_sample=None):
-        """用反太阳方向稀疏降水采样估算彩虹机会指数；不是校准后的发生概率。"""
-        distances = (0, 25, 50, 100, 150)
-        anti_azimuth = (float(sun_azimuth) + 180.0) % 360.0
-        coords = [destination_point(lat, lon, anti_azimuth, d) for d in distances]
-        locations = FireCloudApp._fetch_weather_locations(coords, model_id)
-        candidates = []
-        for profile_index, (dist, coord, loc) in enumerate(zip(distances, coords, locations)):
-            hourly = loc.get("hourly", {})
-            times = hourly.get("time", [])
-            if not times:
-                continue
-            idx = min(range(len(times)), key=lambda i: abs((datetime.fromisoformat(times[i]) - event_utc).total_seconds()))
-            if abs((datetime.fromisoformat(times[idx]) - event_utc).total_seconds()) > 5400:
-                continue
-            def value(key):
-                arr = hourly.get(key, [])
-                try:
-                    v = arr[idx]
-                    return float(v) if v is not None and math.isfinite(float(v)) else None
-                except (IndexError, TypeError, ValueError):
-                    return None
-            prob, amount, cloud = value("precipitation_probability"), value("precipitation"), value("cloud_cover")
-            if prob is None and amount is None:
-                continue
-            candidates.append({"distance_km": dist, "lat": coord[0], "lon": coord[1],
-                               "precip_probability": prob, "precipitation": amount, "cloud_cover": cloud})
-        if not candidates:
-            return {"score": None, "label": "暂不可估", "distance_km": None,
-                    "precip_probability": None, "precipitation": None,
-                    "note": "反太阳方向没有接近事件时刻的有效降水数据。"}
-        def rain_signal(row):
-            prob = row["precip_probability"] or 0.0
-            amount = row["precipitation"] or 0.0
-            amount_signal = min(100.0, amount / 0.8 * 100.0) if amount > 0 else 0.0
-            return max(prob, amount_signal * 0.75)
-        best = max(candidates, key=rain_signal)
-        raw = rain_signal(best)
-        distance_factor = {0: 1.0, 25: 1.0, 50: 0.95, 100: 0.85, 150: 0.75}.get(best["distance_km"], 0.75)
-        local_cloud = (local_sample or {}).get("cloud_cover")
-        solar_visibility_factor = 1.0 if local_cloud is None else max(0.45, 1.0 - max(0.0, local_cloud - 45.0) * 0.011)
-        score = int(round(max(0.0, min(100.0, raw * distance_factor * solar_visibility_factor))))
-        if score < 20:
-            label = "较低"
-        elif score < 45:
-            label = "偏低"
-        elif score < 70:
-            label = "中等"
-        else:
-            label = "较高"
-        return {"score": score, "label": label, "distance_km": best["distance_km"],
-                "precip_probability": best["precip_probability"], "precipitation": best["precipitation"],
-                "cloud_cover": best["cloud_cover"], "anti_solar_azimuth": anti_azimuth,
-                "note": "经验指数，未校准为真实发生概率。"}
+        """Scan rain sectors and solar paths with rainbow-specific strict geometry."""
+        from burning_sky.rainbow_geometry import RAIN_DISTANCES, RAIN_BEARING_OFFSETS, SUN_DISTANCES, evaluate
+        from burning_sky.algorithm import solar_position
+        # Use real solar azimuth for every candidate time, not sunset azimuth.
+        # The narrow sampling corridor is centered on the event's anti-solar axis;
+        # time-dependent azimuth drift is a documented spatial approximation.
+        anti_az=(float(sun_azimuth)+180.)%360.
+        sites=[];coords=[]
+        for dist in RAIN_DISTANCES:
+            for offset in RAIN_BEARING_OFFSETS:
+                rlat,rlon=destination_point(lat,lon,(anti_az+offset)%360,dist)
+                sites.append((dist,offset,rlat,rlon));coords.append((rlat,rlon))
+                # Solar-path samples for rain droplets at each site, not fire-cloud target base.
+                for sd in SUN_DISTANCES:
+                    slat,slon=destination_point(rlat,rlon,float(sun_azimuth),sd)
+                    coords.append((slat,slon))
+        locations=FireCloudApp._fetch_weather_locations(coords,model_id)
+        rain_sites=[];paths=[];pos=0
+        for dist,offset,rlat,rlon in sites:
+            rain_sites.append((dist,offset,rlat,rlon,locations[pos].get('hourly',{})))
+            paths.append([locations[pos+1+j].get('hourly',{}) for j in range(len(SUN_DISTANCES))])
+            pos+=1+len(SUN_DISTANCES)
+        result=evaluate(lat,lon,event_utc,rain_sites,paths)
+        result['anti_solar_azimuth']=anti_az
+        result['distance_km']=None
+        result['precip_probability']=None
+        result['precipitation']=None
+        return result
 
     @staticmethod
     def _fetch_weather_locations(coords, model_id):
@@ -1632,7 +1607,7 @@ class FireCloudApp(tk.Tk):
             params = {
                 "latitude": ",".join(f"{x[0]:.5f}" for x in batch),
                 "longitude": ",".join(f"{x[1]:.5f}" for x in batch),
-                "hourly": "cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation_probability,precipitation,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+                "hourly": "cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation_probability,precipitation,relative_humidity_2m,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
                 "models": model_id, "timezone": "UTC", "forecast_days": _weather_model_config(model_id)["forecast_days"], "past_hours": 36,
                 "wind_speed_unit": "ms", "timeformat": "iso8601",
             }

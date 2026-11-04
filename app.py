@@ -740,9 +740,26 @@ if results:
                 st.markdown(f'<div style="height:34px;border-radius:8px;background:{hex_color};border:1px solid #888"></div>', unsafe_allow_html=True)
             rainbow = result.get("rainbow", {})
             if rainbow:
-                st.caption(f"彩虹机会：{rainbow.get('label', '暂不可估')}；这是经验指数，不是统计概率。")
+                st.caption(f"彩虹机会：{rainbow.get('label', '暂不可估')}（实验指数 {rainbow.get('score', '—')}/100）；{rainbow.get('light_method', '光路待验证')}；不是统计概率。")
+                if rainbow.get('time'):
+                    st.caption(f"候选峰值时间（UTC）：{rainbow['time']}；弧段采样覆盖 {rainbow.get('sector_coverage_pct', 0)}%（非彩虹完整度）。")
+                if rainbow.get('rainbow_completeness'):
+                    st.caption(f"彩虹完整度：{rainbow['rainbow_completeness']}")
             curve = result.get("dynamic_light_curve", {})
             points = curve.get("samples", []) if isinstance(curve, dict) else []
+            from burning_sky.cloud_genus import identify_cloud_genera
+            cloud_genera = identify_cloud_genera(result.get("profiles", []))
+            st.markdown("**预测云属（实验识别）**")
+            if cloud_genera:
+                counts = {"低云": 0, "中云": 0, "高云": 0}
+                for item in cloud_genera:
+                    band = item["layer"]
+                    counts[band] += 1
+                    suffix = str(counts[band]) if counts[band] > 1 else ""
+                    st.markdown(f"{band}云属{suffix}：**{item['genus']} · 云量约 {item['cloud_cover']}%**")
+                st.caption("百分比为对应气压层的平均预测云量近似值，不是云属独立覆盖率；无法可靠拆分的云属合并显示，暂未加入温度、露点和稳定度判据。")
+            else:
+                st.caption("当前气压层资料不足，暂无法识别云属。")
             st.markdown("**" + _web_gap_text(result) + "**")
             _profile_fig = _web_profile_figure(result)
             if _profile_fig is not None:
