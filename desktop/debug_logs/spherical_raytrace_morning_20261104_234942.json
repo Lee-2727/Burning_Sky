@@ -1,0 +1,4265 @@
+{
+  "scan_count": 31,
+  "results": [
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:22:41.794849",
+      "solar_altitude_deg": -7.5149058314353,
+      "solar_azimuth_deg": 103.47309126820987,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -3.1172809279369176,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 103.47309126820987,
+        "local_solar_altitude_deg": -7.5149058314353,
+        "minimum_ray_height_km": -3.1172809279369176,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -3.1172809279369176,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.47309126820987,
+          "local_solar_altitude_deg": -7.5149058314353,
+          "minimum_ray_height_km": -3.1172809279369176,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -6.2632992143626325,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.47309126820987,
+          "local_solar_altitude_deg": -7.5149058314353,
+          "minimum_ray_height_km": -6.2632992143626325,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -12.25252696440748,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.47309126820987,
+          "local_solar_altitude_deg": -7.5149058314353,
+          "minimum_ray_height_km": -12.25252696440748,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -17.839559695638854,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.47309126820987,
+          "local_solar_altitude_deg": -7.5149058314353,
+          "minimum_ray_height_km": -17.839559695638854,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -23.026144034429308,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.47309126820987,
+          "local_solar_altitude_deg": -7.5149058314353,
+          "minimum_ray_height_km": -23.026144034429308,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:23:41.794849",
+      "solar_altitude_deg": -7.290933582448744,
+      "solar_azimuth_deg": 103.56324066910477,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -3.018002647362664,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 103.56324066910477,
+        "local_solar_altitude_deg": -7.290933582448744,
+        "minimum_ray_height_km": -3.018002647362664,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -3.018002647362664,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.56324066910477,
+          "local_solar_altitude_deg": -7.290933582448744,
+          "minimum_ray_height_km": -3.018002647362664,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -6.064937233810269,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.56324066910477,
+          "local_solar_altitude_deg": -7.290933582448744,
+          "minimum_ray_height_km": -6.064937233810269,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -11.856549164274838,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.56324066910477,
+          "local_solar_altitude_deg": -7.290933582448744,
+          "minimum_ray_height_km": -11.856549164274838,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -17.246648321180146,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.56324066910477,
+          "local_solar_altitude_deg": -7.290933582448744,
+          "minimum_ray_height_km": -17.246648321180146,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -22.236918030683228,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.56324066910477,
+          "local_solar_altitude_deg": -7.290933582448744,
+          "minimum_ray_height_km": -22.236918030683228,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:24:41.794849",
+      "solar_altitude_deg": -7.067046632753616,
+      "solar_azimuth_deg": 103.65355942305023,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -2.918858286628165,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 103.65355942305023,
+        "local_solar_altitude_deg": -7.067046632753616,
+        "minimum_ray_height_km": -2.918858286628165,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -2.918858286628165,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.65355942305023,
+          "local_solar_altitude_deg": -7.067046632753616,
+          "minimum_ray_height_km": -2.918858286628165,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -5.866836663868526,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.65355942305023,
+          "local_solar_altitude_deg": -7.067046632753616,
+          "minimum_ray_height_km": -5.866836663868526,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -11.461068615273689,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.65355942305023,
+          "local_solar_altitude_deg": -7.067046632753616,
+          "minimum_ray_height_km": -11.461068615273689,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -16.654444745960973,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.65355942305023,
+          "local_solar_altitude_deg": -7.067046632753616,
+          "minimum_ray_height_km": -16.654444745960973,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -21.44858533633942,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.65355942305023,
+          "local_solar_altitude_deg": -7.067046632753616,
+          "minimum_ray_height_km": -21.44858533633942,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:25:41.794849",
+      "solar_altitude_deg": -6.843245701376745,
+      "solar_azimuth_deg": 103.74404997441907,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -2.8198448928114885,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 103.74404997441907,
+        "local_solar_altitude_deg": -6.843245701376745,
+        "minimum_ray_height_km": -2.8198448928114885,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -2.8198448928114885,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.74404997441907,
+          "local_solar_altitude_deg": -6.843245701376745,
+          "minimum_ray_height_km": -2.8198448928114885,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -5.668991628705044,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.74404997441907,
+          "local_solar_altitude_deg": -6.843245701376745,
+          "minimum_ray_height_km": -5.668991628705044,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -11.066073681005037,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.74404997441907,
+          "local_solar_altitude_deg": -6.843245701376745,
+          "minimum_ray_height_km": -11.066073681005037,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -16.062931678828136,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.74404997441907,
+          "local_solar_altitude_deg": -6.843245701376745,
+          "minimum_ray_height_km": -16.062931678828136,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -20.66112310203789,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.74404997441907,
+          "local_solar_altitude_deg": -6.843245701376745,
+          "minimum_ray_height_km": -20.66112310203789,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:26:41.794849",
+      "solar_altitude_deg": -6.619531512633728,
+      "solar_azimuth_deg": 103.83471477370661,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -2.7209595330368757,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 103.83471477370661,
+        "local_solar_altitude_deg": -6.619531512633728,
+        "minimum_ray_height_km": -2.7209595330368757,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -2.7209595330368757,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.83471477370661,
+          "local_solar_altitude_deg": -6.619531512633728,
+          "minimum_ray_height_km": -2.7209595330368757,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -5.4713962917858225,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.83471477370661,
+          "local_solar_altitude_deg": -6.619531512633728,
+          "minimum_ray_height_km": -5.4713962917858225,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -10.67155280051611,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.83471477370661,
+          "local_solar_altitude_deg": -6.619531512633728,
+          "minimum_ray_height_km": -10.67155280051611,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -15.472091937153891,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.83471477370661,
+          "local_solar_altitude_deg": -6.619531512633728,
+          "minimum_ray_height_km": -15.472091937153891,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -19.874508617039282,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.83471477370661,
+          "local_solar_altitude_deg": -6.619531512633728,
+          "minimum_ray_height_km": -19.874508617039282,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:27:41.794849",
+      "solar_altitude_deg": -6.395904796199574,
+      "solar_azimuth_deg": 103.92555627776652,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -2.6221992941409553,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 103.92555627776652,
+        "local_solar_altitude_deg": -6.395904796199574,
+        "minimum_ray_height_km": -2.6221992941409553,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -2.6221992941409553,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.92555627776652,
+          "local_solar_altitude_deg": -6.395904796199574,
+          "minimum_ray_height_km": -2.6221992941409553,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -5.274044855212196,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.92555627776652,
+          "local_solar_altitude_deg": -6.395904796199574,
+          "minimum_ray_height_km": -5.274044855212196,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -10.277494487006152,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.92555627776652,
+          "local_solar_altitude_deg": -6.395904796199574,
+          "minimum_ray_height_km": -10.277494487006152,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -14.881908444953297,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.92555627776652,
+          "local_solar_altitude_deg": -6.395904796199574,
+          "minimum_ray_height_km": -14.881908444953297,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -19.088719306781968,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 103.92555627776652,
+          "local_solar_altitude_deg": -6.395904796199574,
+          "minimum_ray_height_km": -19.088719306781968,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:28:41.794849",
+      "solar_altitude_deg": -6.172366287177695,
+      "solar_azimuth_deg": 104.0165769500403,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -2.523561282344417,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 104.0165769500403,
+        "local_solar_altitude_deg": -6.172366287177695,
+        "minimum_ray_height_km": -2.523561282344417,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -2.523561282344417,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.0165769500403,
+          "local_solar_altitude_deg": -6.172366287177695,
+          "minimum_ray_height_km": -2.523561282344417,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -5.076931559063269,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.0165769500403,
+          "local_solar_altitude_deg": -6.172366287177695,
+          "minimum_ray_height_km": -5.076931559063269,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -9.88388732655585,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.0165769500403,
+          "local_solar_altitude_deg": -6.172366287177695,
+          "minimum_ray_height_km": -9.88388732655585,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -14.292364231024294,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.0165769500403,
+          "local_solar_altitude_deg": -6.172366287177695,
+          "minimum_ray_height_km": -14.292364231024294,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -18.30373273046189,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.0165769500403,
+          "local_solar_altitude_deg": -6.172366287177695,
+          "minimum_ray_height_km": -18.30373273046189,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:29:41.794849",
+      "solar_altitude_deg": -5.948916726169642,
+      "solar_azimuth_deg": 104.10777926078687,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -2.425042622919136,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 104.10777926078687,
+        "local_solar_altitude_deg": -5.948916726169642,
+        "minimum_ray_height_km": -2.425042622919136,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -2.425042622919136,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.10777926078687,
+          "local_solar_altitude_deg": -5.948916726169642,
+          "minimum_ray_height_km": -2.425042622919136,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -4.880050680761087,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.10777926078687,
+          "local_solar_altitude_deg": -5.948916726169642,
+          "minimum_ray_height_km": -4.880050680761087,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -9.490719976883156,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.10777926078687,
+          "local_solar_altitude_deg": -5.948916726169642,
+          "minimum_ray_height_km": -9.490719976883156,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -13.703442427123264,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.10777926078687,
+          "local_solar_altitude_deg": -5.948916726169642,
+          "minimum_ray_height_km": -13.703442427123264,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -17.519526578663317,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.10777926078687,
+          "local_solar_altitude_deg": -5.948916726169642,
+          "minimum_ray_height_km": -17.519526578663317,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:30:41.794849",
+      "solar_altitude_deg": -5.725556859401564,
+      "solar_azimuth_deg": 104.19916568744775,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -2.326640459902592,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 104.19916568744775,
+        "local_solar_altitude_deg": -5.725556859401564,
+        "minimum_ray_height_km": -2.326640459902592,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -2.326640459902592,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.19916568744775,
+          "local_solar_altitude_deg": -5.725556859401564,
+          "minimum_ray_height_km": -2.326640459902592,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -4.683396534487656,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.19916568744775,
+          "local_solar_altitude_deg": -5.725556859401564,
+          "minimum_ray_height_km": -4.683396534487656,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -9.097981166208228,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.19916568744775,
+          "local_solar_altitude_deg": -5.725556859401564,
+          "minimum_ray_height_km": -9.097981166208228,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -13.115126266319749,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.19916568744775,
+          "local_solar_altitude_deg": -5.725556859401564,
+          "minimum_ray_height_km": -13.115126266319749,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -16.73607867121609,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.19916568744775,
+          "local_solar_altitude_deg": -5.725556859401564,
+          "minimum_ray_height_km": -16.73607867121609,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:31:41.794849",
+      "solar_altitude_deg": -5.502287438574442,
+      "solar_azimuth_deg": 104.2907387143393,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -2.228351955683138,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 104.2907387143393,
+        "local_solar_altitude_deg": -5.502287438574442,
+        "minimum_ray_height_km": -2.228351955683138,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -2.228351955683138,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.2907387143393,
+          "local_solar_altitude_deg": -5.502287438574442,
+          "minimum_ray_height_km": -2.228351955683138,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -4.486963470370938,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.2907387143393,
+          "local_solar_altitude_deg": -5.502287438574442,
+          "minimum_ray_height_km": -4.486963470370938,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -8.705659691661822,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.2907387143393,
+          "local_solar_altitude_deg": -5.502287438574442,
+          "minimum_ray_height_km": -8.705659691661822,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -12.5273990806445,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.2907387143393,
+          "local_solar_altitude_deg": -5.502287438574442,
+          "minimum_ray_height_km": -12.5273990806445,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -15.95336695412152,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.2907387143393,
+          "local_solar_altitude_deg": -5.502287438574442,
+          "minimum_ray_height_km": -15.95336695412152,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:32:41.794849",
+      "solar_altitude_deg": -5.279109221265998,
+      "solar_azimuth_deg": 104.38250083368308,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -2.130174290829018,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 104.38250083368308,
+        "local_solar_altitude_deg": -5.279109221265998,
+        "minimum_ray_height_km": -2.130174290829018,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -2.130174290829018,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.38250083368308,
+          "local_solar_altitude_deg": -5.279109221265998,
+          "minimum_ray_height_km": -2.130174290829018,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -4.290745874161075,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.38250083368308,
+          "local_solar_altitude_deg": -5.279109221265998,
+          "minimum_ray_height_km": -4.290745874161075,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -8.313744418670467,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.38250083368308,
+          "local_solar_altitude_deg": -5.279109221265998,
+          "minimum_ray_height_km": -8.313744418670467,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -11.940244300218183,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.38250083368308,
+          "local_solar_altitude_deg": -5.279109221265998,
+          "minimum_ray_height_km": -11.940244300218183,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -15.171369498454624,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.38250083368308,
+          "local_solar_altitude_deg": -5.279109221265998,
+          "minimum_ray_height_km": -15.171369498454624,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:33:41.794849",
+      "solar_altitude_deg": -5.056022970783928,
+      "solar_azimuth_deg": 104.47445454530134,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -2.0321046637063773,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 104.47445454530134,
+        "local_solar_altitude_deg": -5.056022970783928,
+        "minimum_ray_height_km": -2.0321046637063773,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -2.0321046637063773,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.47445454530134,
+          "local_solar_altitude_deg": -5.056022970783928,
+          "minimum_ray_height_km": -2.0321046637063773,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -4.094738166450043,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.47445454530134,
+          "local_solar_altitude_deg": -5.056022970783928,
+          "minimum_ray_height_km": -4.094738166450043,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -7.922224279417605,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.47445454530134,
+          "local_solar_altitude_deg": -5.056022970783928,
+          "minimum_ray_height_km": -7.922224279417605,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -11.353645450977638,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.47445454530134,
+          "local_solar_altitude_deg": -5.056022970783928,
+          "minimum_ray_height_km": -11.353645450977638,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -14.390064497370986,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.47445454530134,
+          "local_solar_altitude_deg": -5.056022970783928,
+          "minimum_ray_height_km": -14.390064497370986,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:34:41.794849",
+      "solar_altitude_deg": -4.833029456294952,
+      "solar_azimuth_deg": 104.56660235698087,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -1.9341402901873153,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 104.56660235698087,
+        "local_solar_altitude_deg": -4.833029456294952,
+        "minimum_ray_height_km": -1.9341402901873153,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -1.9341402901873153,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.56660235698087,
+          "local_solar_altitude_deg": -4.833029456294952,
+          "minimum_ray_height_km": -1.9341402901873153,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -3.8989348021195838,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.56660235698087,
+          "local_solar_altitude_deg": -4.833029456294952,
+          "minimum_ray_height_km": -3.8989348021195838,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -7.531088271779481,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.56660235698087,
+          "local_solar_altitude_deg": -4.833029456294952,
+          "minimum_ray_height_km": -7.531088271779481,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -10.767586153137017,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.56660235698087,
+          "local_solar_altitude_deg": -4.833029456294952,
+          "minimum_ray_height_km": -10.767586153137017,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -13.609430264116781,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.56660235698087,
+          "local_solar_altitude_deg": -4.833029456294952,
+          "minimum_ray_height_km": -13.609430264116781,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:35:41.794849",
+      "solar_altitude_deg": -4.610129452896942,
+      "solar_azimuth_deg": 104.65894678469547,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -1.8362784033652133,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 104.65894678469547,
+        "local_solar_altitude_deg": -4.610129452896942,
+        "minimum_ray_height_km": -1.8362784033652133,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -1.8362784033652133,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.65894678469547,
+          "local_solar_altitude_deg": -4.610129452896942,
+          "minimum_ray_height_km": -1.8362784033652133,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -3.703330269771868,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.65894678469547,
+          "local_solar_altitude_deg": -4.610129452896942,
+          "minimum_ray_height_km": -3.703330269771868,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -7.140325458208281,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.65894678469547,
+          "local_solar_altitude_deg": -4.610129452896942,
+          "minimum_ray_height_km": -7.140325458208281,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -10.182050119531596,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.65894678469547,
+          "local_solar_altitude_deg": -4.610129452896942,
+          "minimum_ray_height_km": -10.182050119531596,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -12.829445229875091,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.65894678469547,
+          "local_solar_altitude_deg": -4.610129452896942,
+          "minimum_ray_height_km": -12.829445229875091,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:36:41.794849",
+      "solar_altitude_deg": -4.387323741694033,
+      "solar_azimuth_deg": 104.75149035283577,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -1.7385162532718823,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 104.75149035283577,
+        "local_solar_altitude_deg": -4.387323741694033,
+        "minimum_ray_height_km": -1.7385162532718823,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -1.7385162532718823,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.75149035283577,
+          "local_solar_altitude_deg": -4.387323741694033,
+          "minimum_ray_height_km": -1.7385162532718823,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -3.5079190911555997,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.75149035283577,
+          "local_solar_altitude_deg": -4.387323741694033,
+          "minimum_ray_height_km": -3.5079190911555997,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -6.749924964613456,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.75149035283577,
+          "local_solar_altitude_deg": -4.387323741694033,
+          "minimum_ray_height_km": -6.749924964613456,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -9.597021154004324,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.75149035283577,
+          "local_solar_altitude_deg": -4.387323741694033,
+          "minimum_ray_height_km": -9.597021154004324,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -12.050087941657694,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.75149035283577,
+          "local_solar_altitude_deg": -4.387323741694033,
+          "minimum_ray_height_km": -12.050087941657694,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:37:41.794849",
+      "solar_altitude_deg": -4.164613109873116,
+      "solar_azimuth_deg": 104.84423559443803,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -1.6408511065801576,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 104.84423559443803,
+        "local_solar_altitude_deg": -4.164613109873116,
+        "minimum_ray_height_km": -1.6408511065801576,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -1.6408511065801576,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.84423559443803,
+          "local_solar_altitude_deg": -4.164613109873116,
+          "minimum_ray_height_km": -1.6408511065801576,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -3.312695820611225,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.84423559443803,
+          "local_solar_altitude_deg": -4.164613109873116,
+          "minimum_ray_height_km": -3.312695820611225,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -6.35987597928397,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.84423559443803,
+          "local_solar_altitude_deg": -4.164613109873116,
+          "minimum_ray_height_km": -6.35987597928397,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -9.01248314980603,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.84423559443803,
+          "local_solar_altitude_deg": -4.164613109873116,
+          "minimum_ray_height_km": -9.01248314980603,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -11.27133706022596,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.84423559443803,
+          "local_solar_altitude_deg": -4.164613109873116,
+          "minimum_ray_height_km": -11.27133706022596,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:38:41.794849",
+      "solar_altitude_deg": -3.9419983507795138,
+      "solar_azimuth_deg": 104.93718505141133,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -1.5432802463437838,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 104.93718505141133,
+        "local_solar_altitude_deg": -3.9419983507795138,
+        "minimum_ray_height_km": -1.5432802463437838,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -1.5432802463437838,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.93718505141133,
+          "local_solar_altitude_deg": -3.9419983507795138,
+          "minimum_ray_height_km": -1.5432802463437838,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -3.117655044521598,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.93718505141133,
+          "local_solar_altitude_deg": -3.9419983507795138,
+          "minimum_ray_height_km": -3.117655044521598,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -5.970167751807821,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.93718505141133,
+          "local_solar_altitude_deg": -3.9419983507795138,
+          "minimum_ray_height_km": -5.970167751807821,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -8.428420088031999,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.93718505141133,
+          "local_solar_altitude_deg": -3.9419983507795138,
+          "minimum_ray_height_km": -8.428420088031999,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -10.493171358055406,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 104.93718505141133,
+          "local_solar_altitude_deg": -3.9419983507795138,
+          "minimum_ray_height_km": -10.493171358055406,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:39:41.794849",
+      "solar_altitude_deg": -3.719480263992949,
+      "solar_azimuth_deg": 105.0303412747621,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -1.4458009717109235,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 105.0303412747621,
+        "local_solar_altitude_deg": -3.719480263992949,
+        "minimum_ray_height_km": -1.4458009717109235,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -1.4458009717109235,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.0303412747621,
+          "local_solar_altitude_deg": -3.719480263992949,
+          "minimum_ray_height_km": -1.4458009717109235,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -2.9227913807735604,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.0303412747621,
+          "local_solar_altitude_deg": -3.719480263992949,
+          "minimum_ray_height_km": -2.9227913807735604,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -5.580789592032488,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.0303412747621,
+          "local_solar_altitude_deg": -3.719480263992949,
+          "minimum_ray_height_km": -5.580789592032488,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -7.844816036080374,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.0303412747621,
+          "local_solar_altitude_deg": -3.719480263992949,
+          "minimum_ray_height_km": -7.844816036080374,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -9.71556971732025,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.0303412747621,
+          "local_solar_altitude_deg": -3.719480263992949,
+          "minimum_ray_height_km": -9.71556971732025,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:40:41.794849",
+      "solar_altitude_deg": -3.497059655406048,
+      "solar_azimuth_deg": 105.12370682482235,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -1.3484105976640421,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 105.12370682482235,
+        "local_solar_altitude_deg": -3.497059655406048,
+        "minimum_ray_height_km": -1.3484105976640421,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -1.3484105976640421,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.12370682482235,
+          "local_solar_altitude_deg": -3.497059655406048,
+          "minimum_ray_height_km": -1.3484105976640421,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -2.728099478225886,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.12370682482235,
+          "local_solar_altitude_deg": -3.497059655406048,
+          "minimum_ray_height_km": -2.728099478225886,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -5.191730869019921,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.12370682482235,
+          "local_solar_altitude_deg": -3.497059655406048,
+          "minimum_ray_height_km": -5.191730869019921,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -7.261655146137855,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.12370682482235,
+          "local_solar_altitude_deg": -3.497059655406048,
+          "minimum_ray_height_km": -7.261655146137855,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -8.938511127928905,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.12370682482235,
+          "local_solar_altitude_deg": -3.497059655406048,
+          "minimum_ray_height_km": -8.938511127928905,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:41:41.794849",
+      "solar_altitude_deg": -3.274737337359511,
+      "solar_azimuth_deg": 105.21728427161149,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -1.251106454780711,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 105.21728427161149,
+        "local_solar_altitude_deg": -3.274737337359511,
+        "minimum_ray_height_km": -1.251106454780711,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -1.251106454780711,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.21728427161149,
+          "local_solar_altitude_deg": -3.274737337359511,
+          "minimum_ray_height_km": -1.251106454780711,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -2.5335740162454385,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.21728427161149,
+          "local_solar_altitude_deg": -3.274737337359511,
+          "minimum_ray_height_km": -2.5335740162454385,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -4.802981010140684,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.21728427161149,
+          "local_solar_altitude_deg": -3.274737337359511,
+          "minimum_ray_height_km": -4.802981010140684,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -6.678921653846373,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.21728427161149,
+          "local_solar_altitude_deg": -3.274737337359511,
+          "minimum_ray_height_km": -6.678921653846373,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -8.161974685780478,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.21728427161149,
+          "local_solar_altitude_deg": -3.274737337359511,
+          "minimum_ray_height_km": -8.161974685780478,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:42:41.794849",
+      "solar_altitude_deg": -3.05251412849411,
+      "solar_azimuth_deg": 105.31107619452807,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -1.1538858888679897,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 105.31107619452807,
+        "local_solar_altitude_deg": -3.05251412849411,
+        "minimum_ray_height_km": -1.1538858888679897,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -1.1538858888679897,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.31107619452807,
+          "local_solar_altitude_deg": -3.05251412849411,
+          "minimum_ray_height_km": -1.1538858888679897,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -2.3392097039914006,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.31107619452807,
+          "local_solar_altitude_deg": -3.05251412849411,
+          "minimum_ray_height_km": -2.3392097039914006,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -4.4145294996715165,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.31107619452807,
+          "local_solar_altitude_deg": -3.05251412849411,
+          "minimum_ray_height_km": -4.4145294996715165,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -6.0965998762421805,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.31107619452807,
+          "local_solar_altitude_deg": -3.05251412849411,
+          "minimum_ray_height_km": -6.0965998762421805,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -7.38593959006721,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.31107619452807,
+          "local_solar_altitude_deg": -3.05251412849411,
+          "minimum_ray_height_km": -7.38593959006721,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:43:41.794849",
+      "solar_altitude_deg": -2.8303908541695506,
+      "solar_azimuth_deg": 105.40508518337397,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -1.0567462608687492,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 105.40508518337397,
+        "local_solar_altitude_deg": -2.8303908541695506,
+        "minimum_ray_height_km": -1.0567462608687492,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -1.0567462608687492,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.40508518337397,
+          "local_solar_altitude_deg": -2.8303908541695506,
+          "minimum_ray_height_km": -1.0567462608687492,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -2.1450012802133642,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.40508518337397,
+          "local_solar_altitude_deg": -2.8303908541695506,
+          "minimum_ray_height_km": -2.1450012802133642,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -4.0263658784178915,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.40508518337397,
+          "local_solar_altitude_deg": -2.8303908541695506,
+          "minimum_ray_height_km": -4.0263658784178915,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -5.514674211210149,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.40508518337397,
+          "local_solar_altitude_deg": -2.8303908541695506,
+          "minimum_ray_height_km": -5.514674211210149,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -6.61038514259144,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.40508518337397,
+          "local_solar_altitude_deg": -2.8303908541695506,
+          "minimum_ray_height_km": -6.61038514259144,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:44:41.794849",
+      "solar_altitude_deg": -2.6083683463219245,
+      "solar_azimuth_deg": 105.49931383805573,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -0.9596849465078776,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 105.49931383805573,
+        "local_solar_altitude_deg": -2.6083683463219245,
+        "minimum_ray_height_km": -0.9596849465078776,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -0.9596849465078776,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.49931383805573,
+          "local_solar_altitude_deg": -2.6083683463219245,
+          "minimum_ray_height_km": -0.9596849465078776,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -1.9509435125628443,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.49931383805573,
+          "local_solar_altitude_deg": -2.6083683463219245,
+          "minimum_ray_height_km": -1.9509435125628443,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -3.6384797423597774,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.49931383805573,
+          "local_solar_altitude_deg": -2.6083683463219245,
+          "minimum_ray_height_km": -3.6384797423597774,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -4.93312913549471,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.49931383805573,
+          "local_solar_altitude_deg": -2.6083683463219245,
+          "minimum_ray_height_km": -4.93312913549471,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -5.835290745144448,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.49931383805573,
+          "local_solar_altitude_deg": -2.6083683463219245,
+          "minimum_ray_height_km": -5.835290745144448,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:45:41.794849",
+      "solar_altitude_deg": -2.3864474435982146,
+      "solar_azimuth_deg": 105.59376476893601,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -0.8626993360740016,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 105.59376476893601,
+        "local_solar_altitude_deg": -2.3864474435982146,
+        "minimum_ray_height_km": -0.8626993360740016,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -0.8626993360740016,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.59376476893601,
+          "local_solar_altitude_deg": -2.3864474435982146,
+          "minimum_ray_height_km": -0.8626993360740016,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -1.7570311971630872,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.59376476893601,
+          "local_solar_altitude_deg": -2.3864474435982146,
+          "minimum_ray_height_km": -1.7570311971630872,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -3.250860741796714,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.59376476893601,
+          "local_solar_altitude_deg": -2.3864474435982146,
+          "minimum_ray_height_km": -3.250860741796714,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -4.351949203451113,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.59376476893601,
+          "local_solar_altitude_deg": -2.3864474435982146,
+          "minimum_ray_height_km": -4.351949203451113,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -5.0606358978875505,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.59376476893601,
+          "local_solar_altitude_deg": -2.3864474435982146,
+          "minimum_ray_height_km": -5.0606358978875505,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:46:41.794849",
+      "solar_altitude_deg": -2.164628991440665,
+      "solar_azimuth_deg": 105.68844059706544,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -0.7657868341748326,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 105.68844059706544,
+        "local_solar_altitude_deg": -2.164628991440665,
+        "minimum_ray_height_km": -0.7657868341748326,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -0.7657868341748326,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.68844059706544,
+          "local_solar_altitude_deg": -2.164628991440665,
+          "minimum_ray_height_km": -0.7657868341748326,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -1.5632591581243105,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.68844059706544,
+          "local_solar_altitude_deg": -2.164628991440665,
+          "minimum_ray_height_km": -1.5632591581243105,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -2.863498580425585,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.68844059706544,
+          "local_solar_altitude_deg": -2.164628991440665,
+          "minimum_ray_height_km": -2.863498580425585,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -3.7711190456875556,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.68844059706544,
+          "local_solar_altitude_deg": -2.164628991440665,
+          "minimum_ray_height_km": -3.7711190456875556,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -4.286400197581315,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.68844059706544,
+          "local_solar_altitude_deg": -2.164628991440665,
+          "minimum_ray_height_km": -4.286400197581315,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:47:41.794849",
+      "solar_altitude_deg": -1.9429138421696734,
+      "solar_azimuth_deg": 105.78334395440838,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -0.6689448595088834,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 105.78334395440838,
+        "local_solar_altitude_deg": -1.9429138421696734,
+        "minimum_ray_height_km": -0.6689448595088834,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -0.6689448595088834,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.78334395440838,
+          "local_solar_altitude_deg": -1.9429138421696734,
+          "minimum_ray_height_km": -0.6689448595088834,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -1.3696222470880457,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.78334395440838,
+          "local_solar_altitude_deg": -1.9429138421696734,
+          "minimum_ray_height_km": -1.3696222470880457,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -2.476383014437488,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.78334395440838,
+          "local_solar_altitude_deg": -1.9429138421696734,
+          "minimum_ray_height_km": -2.476383014437488,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -3.1906233677409546,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.78334395440838,
+          "local_solar_altitude_deg": -1.9429138421696734,
+          "minimum_ray_height_km": -3.1906233677409546,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -3.5125633358557025,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.78334395440838,
+          "local_solar_altitude_deg": -1.9429138421696734,
+          "minimum_ray_height_km": -3.5125633358557025,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:48:41.794849",
+      "solar_altitude_deg": -1.7213028550675773,
+      "solar_azimuth_deg": 105.87847748406973,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -0.5721708446308185,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 105.87847748406973,
+        "local_solar_altitude_deg": -1.7213028550675773,
+        "minimum_ray_height_km": -0.5721708446308185,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -0.5721708446308185,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.87847748406973,
+          "local_solar_altitude_deg": -1.7213028550675773,
+          "minimum_ray_height_km": -0.5721708446308185,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -1.1761153427669342,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.87847748406973,
+          "local_solar_altitude_deg": -1.7213028550675773,
+          "minimum_ray_height_km": -1.1761153427669342,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -2.089503851619156,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.87847748406973,
+          "local_solar_altitude_deg": -1.7213028550675773,
+          "minimum_ray_height_km": -2.089503851619156,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -2.6104469487590904,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.87847748406973,
+          "local_solar_altitude_deg": -1.7213028550675773,
+          "minimum_ray_height_km": -2.6104469487590904,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -2.7391050974893005,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.87847748406973,
+          "local_solar_altitude_deg": -1.7213028550675773,
+          "minimum_ray_height_km": -2.7449064674419787,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:49:41.794849",
+      "solar_altitude_deg": -1.499796896464531,
+      "solar_azimuth_deg": 105.9738438405248,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -0.47546223572226154,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 105.9738438405248,
+        "local_solar_altitude_deg": -1.499796896464531,
+        "minimum_ray_height_km": -0.47546223572226154,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -0.47546223572226154,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.9738438405248,
+          "local_solar_altitude_deg": -1.499796896464531,
+          "minimum_ray_height_km": -0.47546223572226154,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -0.9827333504954368,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.9738438405248,
+          "local_solar_altitude_deg": -1.499796896464531,
+          "minimum_ray_height_km": -0.9827333504954368,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -1.7028509504762042,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.9738438405248,
+          "local_solar_altitude_deg": -1.499796896464531,
+          "minimum_ray_height_km": -1.7028509504762042,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -2.03057464021731,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.9738438405248,
+          "local_solar_altitude_deg": -1.499796896464531,
+          "minimum_ray_height_km": -2.03057464021731,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -1.9660053587349466,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 105.9738438405248,
+          "local_solar_altitude_deg": -1.499796896464531,
+          "minimum_ray_height_km": -2.052638988787294,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:50:41.794849",
+      "solar_altitude_deg": -1.278396839822335,
+      "solar_azimuth_deg": 106.06944568984109,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -0.37881649237715465,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 106.06944568984109,
+        "local_solar_altitude_deg": -1.278396839822335,
+        "minimum_ray_height_km": -0.37881649237715465,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -0.37881649237715465,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.06944568984109,
+          "local_solar_altitude_deg": -1.278396839822335,
+          "minimum_ray_height_km": -0.37881649237715465,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -0.7894712017941856,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.06944568984109,
+          "local_solar_altitude_deg": -1.278396839822335,
+          "minimum_ray_height_km": -0.7894712017941856,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -1.3164142193809312,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.06944568984109,
+          "local_solar_altitude_deg": -1.278396839822335,
+          "minimum_ray_height_km": -1.3164142193809312,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -1.4509913646661516,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.06944568984109,
+          "local_solar_altitude_deg": -1.278396839822335,
+          "minimum_ray_height_km": -1.455824654954995,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -1.1932440856835456,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.06944568984109,
+          "local_solar_altitude_deg": -1.278396839822335,
+          "minimum_ray_height_km": -1.455824654954995,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:51:41.794849",
+      "solar_altitude_deg": -1.057103565823951,
+      "solar_azimuth_deg": 106.1652857099133,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -0.282231087375294,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 106.1652857099133,
+        "local_solar_altitude_deg": -1.057103565823951,
+        "minimum_ray_height_km": -0.282231087375294,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -0.282231087375294,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.1652857099133,
+          "local_solar_altitude_deg": -1.057103565823951,
+          "minimum_ray_height_km": -0.282231087375294,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -0.596323853938884,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.1652857099133,
+          "local_solar_altitude_deg": -1.057103565823951,
+          "minimum_ray_height_km": -0.596323853938884,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -0.9301836157255821,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.1652857099133,
+          "local_solar_altitude_deg": -1.057103565823951,
+          "minimum_ray_height_km": -0.9301836157255821,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -0.8716821144862479,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.1652857099133,
+          "local_solar_altitude_deg": -1.057103565823951,
+          "minimum_ray_height_km": -0.9543377117388445,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": -0.4208013326388027,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.1652857099133,
+          "local_solar_altitude_deg": -1.057103565823951,
+          "minimum_ray_height_km": -0.9543377117388445,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    },
+    {
+      "geometry_source": "pressure_profile_cells",
+      "time": "2026-11-04T06:52:41.794849",
+      "solar_altitude_deg": -0.8359179624588648,
+      "solar_azimuth_deg": 106.26136659068615,
+      "target_cloud_base_km": 0.13,
+      "status": "blocked",
+      "first_block": {
+        "distance_km": 25.0,
+        "lat": 22.75387239395374,
+        "lon": 108.60055069106932,
+        "ray_height_km": -0.18570350647496525,
+        "cloud_cover_low": 95.11111111111111,
+        "cloud_cover_mid": 27.666666666666668,
+        "cloud_cover_high": 0.0,
+        "intersected_layers": [
+          "pressure_profile"
+        ],
+        "blocked": true,
+        "layer_data_complete": true,
+        "local_solar_azimuth_deg": 106.26136659068615,
+        "local_solar_altitude_deg": -0.8359179624588648,
+        "minimum_ray_height_km": -0.18570350647496525,
+        "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+      },
+      "path": [
+        {
+          "distance_km": 0.0,
+          "lat": 22.817,
+          "lon": 108.36649999999997,
+          "ray_height_km": 0.13000000000010914,
+          "cloud_cover_low": 90.22222222222223,
+          "cloud_cover_mid": 34.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [],
+          "blocked": false,
+          "layer_data_complete": true,
+          "reason": "本地目标云点，不作为上游遮挡物"
+        },
+        {
+          "distance_km": 25.0,
+          "lat": 22.75387239395374,
+          "lon": 108.60055069106932,
+          "ray_height_km": -0.18570350647496525,
+          "cloud_cover_low": 95.11111111111111,
+          "cloud_cover_mid": 27.666666666666668,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.26136659068615,
+          "local_solar_altitude_deg": -0.8359179624588648,
+          "minimum_ray_height_km": -0.18570350647496525,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 50.0,
+          "lat": 22.690404093943226,
+          "lon": 108.83438458779335,
+          "ray_height_km": -0.4032862895328435,
+          "cloud_cover_low": 83.77777777777777,
+          "cloud_cover_mid": 28.0,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.26136659068615,
+          "local_solar_altitude_deg": -0.8359179624588648,
+          "minimum_ray_height_km": -0.4032862895328435,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 100.0,
+          "lat": 22.56245090537774,
+          "lon": 109.30140086854988,
+          "ray_height_km": -0.5441491450983449,
+          "cloud_cover_low": 56.666666666666664,
+          "cloud_cover_mid": 22.11111111111111,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.26136659068615,
+          "local_solar_altitude_deg": -0.8359179624588648,
+          "minimum_ray_height_km": -0.5480495277688533,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 150.0,
+          "lat": 22.433151451554707,
+          "lon": 109.76754674303118,
+          "ray_height_km": -0.2926319506814252,
+          "cloud_cover_low": 83.33333333333333,
+          "cloud_cover_mid": 9.88888888888889,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.26136659068615,
+          "local_solar_altitude_deg": -0.8359179624588648,
+          "minimum_ray_height_km": -0.5480495277688533,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        },
+        {
+          "distance_km": 200.0,
+          "lat": 22.302516796957928,
+          "lon": 110.23282036667229,
+          "ray_height_km": 0.3513427594598397,
+          "cloud_cover_low": 68.33333333333333,
+          "cloud_cover_mid": 17.444444444444443,
+          "cloud_cover_high": 0.0,
+          "intersected_layers": [
+            "pressure_profile"
+          ],
+          "blocked": true,
+          "layer_data_complete": true,
+          "local_solar_azimuth_deg": 106.26136659068615,
+          "local_solar_altitude_deg": -0.8359179624588648,
+          "minimum_ray_height_km": -0.5480495277688533,
+          "reason": "球面光路穿过地球曲面；气压层云块 0km / 0.00-0.39km"
+        }
+      ],
+      "checked_to_km": 200.0,
+      "upstream_unverified": true,
+      "model_note": "仅确认已有采样距离内的遮挡状态；采样终点以远至太阳未覆盖，不能宣称全光路无遮挡。"
+    }
+  ],
+  "candidate_clear_windows": [],
+  "model_note": "clear_path仅代表已采样路径未命中遮挡阈值；不代表直至太阳无遮挡。",
+  "multi_target_diagnostic": {
+    "targets": [
+      {
+        "distance_km": 0.0,
+        "height_km": 16.595,
+        "cover": 100.0,
+        "elevation_deg": 90.0,
+        "latitude": 22.817,
+        "longitude": 108.36649999999997,
+        "illuminated": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "any_illuminated": false
+      },
+      {
+        "distance_km": 25.0,
+        "height_km": 16.565,
+        "cover": 100.0,
+        "elevation_deg": 33.38174014732157,
+        "latitude": 22.75387239395374,
+        "longitude": 108.60055069106932,
+        "illuminated": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "any_illuminated": false
+      },
+      {
+        "distance_km": 50.0,
+        "height_km": 16.566,
+        "cover": 100.0,
+        "elevation_deg": 18.0839354484367,
+        "latitude": 22.690404093943226,
+        "longitude": 108.83438458779335,
+        "illuminated": [
+          false,
+          false,
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
+          false,
+          false
+        ],
+        "any_illuminated": true
+      },
+      {
+        "distance_km": 100.0,
+        "height_km": 16.578,
+        "cover": 100.0,
+        "elevation_deg": 8.951023892032104,
+        "latitude": 22.56245090537774,
+        "longitude": 109.30140086854988,
+        "illuminated": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "any_illuminated": true
+      }
+    ],
+    "times": [
+      "2026-11-04T06:22:41.794849",
+      "2026-11-04T06:25:41.794849",
+      "2026-11-04T06:28:41.794849",
+      "2026-11-04T06:31:41.794849",
+      "2026-11-04T06:34:41.794849",
+      "2026-11-04T06:37:41.794849",
+      "2026-11-04T06:40:41.794849",
+      "2026-11-04T06:43:41.794849",
+      "2026-11-04T06:46:41.794849",
+      "2026-11-04T06:49:41.794849"
+    ],
+    "clear_count": 2,
+    "target_limit_km": 100.0,
+    "profile_end_km": 200.0,
+    "note": "一维多目标气压层光路；仅验证已有剖面范围，不代表完整三维遮挡或太阳方向以外的云。"
+  }
+}

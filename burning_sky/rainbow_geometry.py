@@ -107,6 +107,38 @@ def _light_status(cloud_hourlies, indices, alt, target_height_km=1.0):
     return '球面云隙直射（150km粗层近似）',1.0
 
 
+def _arc_visibility(alt, angle):
+    """Visible angular portion of a rainbow circle above an unobstructed horizon.
+
+    This is a geometry-only photographic-visibility factor, not the physical
+    probability that droplets form a rainbow. The near-horizon rim is heavily
+    penalized; the full upper half becomes visible as the sun approaches 0 deg.
+    """
+    if alt >= angle:
+        return 0.0
+    if alt <= 0:
+        return 1.0
+    top = max(0., angle-alt)
+    # Strongly discourage tiny arcs, without falsely declaring them impossible.
+    return min(1., (top / angle) ** 0.75)
+
+
+def _regional_score(details, key):
+    """Weighted multi-site regional evidence; never use a lone lucky pixel as
+    the full regional opportunity. Keep strong local candidates visible, but
+    report their limited spatial support in the resulting score.
+    """
+    values = sorted((max(0., float(d.get(key, 0))) for d in details), reverse=True)
+    if not values:
+        return 0.
+    # Top sites carry most of the signal, while support from other independent
+    # sites matters. No assumption of statistically independent probabilities.
+    strongest = values[0]
+    top = sum(values[:min(4,len(values))]) / min(4,len(values))
+    support = min(1., len(values)/5.)
+    return (0.55*strongest+0.45*top) * (0.45+0.55*support)
+
+
 def evaluate(lat,lon,event_utc,rain_sites,light_paths,environment=None,minute_range=(-240,90)):
     """Regional rainbow opportunity: no fixed-viewer rainbow-arc exclusion.
 
@@ -150,9 +182,9 @@ def evaluate(lat,lon,event_utc,rain_sites,light_paths,environment=None,minute_ra
             for h in (0.3,1.0,2.0):
                 status,trans=_light_status(path,indices,alt,target_height_km=h)
                 trials.append({'target_height_km':h,'status':status,'transmission_proxy':trans})
-            light=max(x['transmission_proxy'] for x in trials)
+            light=sum(x['transmission_proxy']*w for x,w in zip(trials,(0.45,0.35,0.20)))
             detail['light_trials']=trials
-            detail['light']=max(trials,key=lambda x:x['transmission_proxy'])['status']
+            detail['light']='高度敏感性加权直射' if light>0 else trials[0]['status']
             if light<=0:
                 row['rejections']['no_direct_sun']+=1;detail['reason']='没有证实太阳直射';row['details'].append(detail);continue
             wind=_at(hourly,'wind_speed_10m',idx)
@@ -180,12 +212,12 @@ def evaluate(lat,lon,event_utc,rain_sites,light_paths,environment=None,minute_ra
             equivalent_rain_mm=(max(0.,amount) if amount is not None else None)
             if equivalent_rain_mm is None and pop is not None:
                 equivalent_rain_mm=round(.25*max(0.,min(1.,pop/100.)),3)
-            rain_factor=min(1.,.55+.45*math.sqrt(max(0.,equivalent_rain_mm or 0.)/.5))
+            rain_factor=min(1.,.25+.75*math.sqrt(max(0.,equivalent_rain_mm or 0.)/1.5))
             pop_factor=1. if pop is None else (.78+.22*max(0.,min(1.,pop/85.)))
             humidity_factor=1. if humidity is None else max(.72,min(1.,.78+.22*(humidity/85.)))
             # Visibility under rainfall cannot distinguish aerosol extinction from precipitation.
             # Penalize only very low visibility; missing visibility is UNKNOWN, not an automatic penalty.
-            visibility_factor=1. if vis is None else max(.55,min(1.,vis/8000.))
+            visibility_factor=.88 if vis is None else max(.45,min(1.,vis/10000.))
             wind_factor=1. if wind is None else max(.70,1.-max(0.,wind-7.)*.025)
             # Hourly PM is NOT a WHO daily health assessment. It is an aerosol proxy.
             # Apply small bounded penalties only when a measured/predicted field exists.
@@ -198,15 +230,15 @@ def evaluate(lat,lon,event_utc,rain_sites,light_paths,environment=None,minute_ra
             # Conditional occurrence proxy, not an empirically calibrated probability.
             # Use a saturating union of partly independent evidences instead of multiplying
             # every factor and accidentally treating a confirmed sun path as only 65% light.
-            existence=min(1.,.40*evidence_factor+.28*rain_factor+.18*pop_factor+.14*humidity_factor)
+            existence=min(1.,.55*evidence_factor+.25*rain_factor+.12*pop_factor+.08*humidity_factor)
             probability_proxy=existence*light*visibility_factor*wind_factor*aerosol_factor
             sun_primary=max(0.,min(1.,(42.-alt)/25.))
             sun_secondary=max(0.,min(1.,(51.-alt)/30.))
-            primary=probability_proxy*(.78+.22*sun_primary) if alt<42. else 0.
+            primary=probability_proxy*_arc_visibility(alt,42.) if alt<42. else 0.
             # Secondary requires more contrast; distinguish formation potential from visual quality.
-            secondary=primary*(.36+.20*sun_secondary)*(.90 if vis is None else max(.55,min(1.,vis/12000.))) if alt<51. else 0.
+            secondary=probability_proxy*_arc_visibility(alt,51.)*(.36+.20*sun_secondary)*(.90 if vis is None else max(.55,min(1.,vis/12000.))) if alt<51. else 0.
             if evidence['state']!='current_rain': secondary*=.80
-            quality=min(1.,(.40*rain_factor+.30*visibility_factor+.30*light)*wind_factor*aerosol_factor)
+            quality=min(1.,(.45*rain_factor+.35*visibility_factor+.20*light)*wind_factor*aerosol_factor)*(.50+.50*evidence_factor)
             secondary_quality=quality*(.50+.20*sun_secondary)
             detail.update({'primary_index':round(primary*100,1),'secondary_index':round(secondary*100,1),
                            'primary_quality':round(quality*100,1),'secondary_quality':round(secondary_quality*100,1),
@@ -216,7 +248,7 @@ def evaluate(lat,lon,event_utc,rain_sites,light_paths,environment=None,minute_ra
                              'precip_probability':round(pop_factor,3),'humidity':round(humidity_factor,3),
                              'light':round(light,3),'visibility':round(visibility_factor,3),
                              'wind':round(wind_factor,3),'aerosol':round(aerosol_factor,3),'existence_proxy':round(existence,3),
-                             'solar_primary':round(sun_primary,3),'solar_secondary':round(sun_secondary,3)},
+                             'solar_primary':round(_arc_visibility(alt,42.),3),'solar_secondary':round(_arc_visibility(alt,51.),3)},
                            'uncertainty_flags':(['visibility_missing'] if vis is None else [])+
                              (['precip_amount_missing'] if amount is None else [])+
                              (['pm_aod_missing'] if pm25 is None and pm10 is None and aod is None else [])+
@@ -233,10 +265,10 @@ def evaluate(lat,lon,event_utc,rain_sites,light_paths,environment=None,minute_ra
         row['candidate_area_fraction_pct']=round(100*len(valid)/max(1,len(rain_sites)))
         row['illuminated_candidate_count']=len(valid)
         row['candidate_bearing_offsets_deg']=[k for k,v in sector_values.items() if v]
-        row['primary_index']=round(100*max(primary_candidates,default=0))
-        row['primary_quality']=round(max((d['primary_quality'] for d in valid),default=0))
-        row['secondary_quality']=round(max((d['secondary_quality'] for d in valid),default=0))
-        row['secondary_index']=round(100*max(secondary_candidates,default=0))
+        row['primary_index']=round(_regional_score(valid,'primary_index'))
+        row['primary_quality']=round(_regional_score(valid,'primary_quality'))
+        row['secondary_quality']=round(_regional_score(valid,'secondary_quality'))
+        row['secondary_index']=round(_regional_score(valid,'secondary_index'))
         row['double_rainbow_index']=min(row['primary_index'],row['secondary_index'])
         row['score']=row['primary_index']
         row['sector_coverage_pct']=None  # Cannot infer actual arc coverage from this grid.
@@ -264,4 +296,4 @@ def evaluate(lat,lon,event_utc,rain_sites,light_paths,environment=None,minute_ra
             'double_rainbow_index':winner.get('double_rainbow_index',0),
             'light_method':'逐候选雨区太阳方向粗层球面光路；0.3/1/2km高度敏感性测试',
             'timeline':timeline,
-            'note':'Debug33：概率式启发分值，未经实况校准；通过的粗层光路给满分，缺失能见度不惩罚；能见度受雨雾和气溶胶共同影响，不能等同空气纯净度。质量分独立输出；未计算真实虹弧完整度。'}
+            'note':'Debug41：启发式机会指数，非统计概率；加入太阳高度角对应的可见虹弧规模、雨区空间支持和高度敏感性加权；缺失能见度保守折减；未计算真实虹弧完整度。'}
