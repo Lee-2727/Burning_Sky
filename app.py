@@ -422,7 +422,7 @@ def _web_summary_lines(summary):
     return lines
 
 
-def _web_rainbow_panel(rainbow, compact=True):
+def _web_rainbow_panel(rainbow, compact=True, peak_color_rgb=None, sunset_context=False):
     from burning_sky.rainbow_visual import png_bytes, summarize, timeline_chart_bytes
     _cols=st.columns(4)
     for _c,_label,_value in zip(_cols,['主虹机会','主虹质量','副虹机会','副虹质量'],
@@ -430,7 +430,7 @@ def _web_rainbow_panel(rainbow, compact=True):
         _c.metric(_label,f'{_value}/100')
     _left,_right=st.columns([1,2],gap='small')
     with _left:
-        st.image(png_bytes(rainbow),use_container_width=True,caption='虹弧示意（非实际完整度）')
+        st.image(png_bytes(rainbow,peak_color_rgb=peak_color_rgb,sunset_context=sunset_context),use_container_width=True,caption='虹弧示意（非实际完整度）')
     with _right:
         st.image(timeline_chart_bytes(rainbow),use_container_width=True,caption='彩虹时序图：柱高为主虹机会指数；颜色越深表示主虹质量越高；仅显示主虹 >30 的时刻')
     st.caption('彩虹机会：'+str(rainbow.get('label','暂不可估'))+' · '+str(rainbow.get('score','—'))+'/100')
@@ -874,7 +874,20 @@ if results:
             rainbow = result.get("rainbow", {})
             if rainbow:
                 st.markdown('**🌈 彩虹分析**')
-                _web_rainbow_panel(rainbow)
+                _rainbow_sunset_overlap=False
+                if _chosen_direction=='evening':
+                    try:
+                        from datetime import datetime, timedelta, timezone
+                        _sunset_dt,_=engine.find_sunset(forecast_date,8,lat,lon)
+                        _sunset_utc=(_sunset_dt-timedelta(hours=8)).replace(tzinfo=timezone.utc)
+                        _rainbow_sunset_overlap=any(
+                            float(_rr.get('primary_index') or 0)>30 and
+                            abs((datetime.fromisoformat(str(_rr['time']).replace('Z','+00:00')).replace(tzinfo=timezone.utc)
+                                 if datetime.fromisoformat(str(_rr['time']).replace('Z','+00:00')).tzinfo is None
+                                 else datetime.fromisoformat(str(_rr['time']).replace('Z','+00:00'))) - _sunset_utc).total_seconds()<=2700
+                            for _rr in rainbow.get('timeline',[]) or [])
+                    except (ValueError,TypeError,KeyError,AttributeError):pass
+                _web_rainbow_panel(rainbow,peak_color_rgb=rgb,sunset_context=_rainbow_sunset_overlap)
             curve = result.get("dynamic_light_curve", {})
             points = curve.get("samples", []) if isinstance(curve, dict) else []
             from burning_sky.cloud_genus import identify_cloud_genera

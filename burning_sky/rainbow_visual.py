@@ -30,15 +30,33 @@ def summarize(result):
     if not penalties:penalties.append('无明显扣分项；虹弧实际完整度仍未知')
     return {'row':row,'penalties':penalties,'arc_known':False}
 
-def render(result,width=900,height=480):
+def render(result,width=900,height=480,peak_color_rgb=None, sunset_context=False):
     s=summarize(result)
-    im=Image.new('RGB',(width,height),(235,245,252));d=ImageDraw.Draw(im)
+    # Only tint the sky for a high-opportunity sunset rainbow when a real peak cloud
+    # colour was supplied by the fire-cloud forecast. Never fabricate this colour.
+    primary=float(result.get('primary_index') or 0)
+    secondary=float(result.get('secondary_index') or 0)
+    pq=float(result.get('primary_quality') or 0)
+    sq=float(result.get('secondary_quality') or 0)
+    best=max(primary,secondary)
+    sky=(235,245,252)
+    if sunset_context and best>30 and isinstance(peak_color_rgb,(list,tuple)) and len(peak_color_rgb)>=3:
+        try:
+            peak=tuple(max(0,min(255,int(v))) for v in peak_color_rgb[:3])
+            sky=tuple(round(.70*b+.30*c) for b,c in zip(sky,peak))
+        except (TypeError,ValueError):pass
+    im=Image.new('RGB',(width,height),sky);d=ImageDraw.Draw(im)
     # Idealized two concentric semicircular rainbows. Dashed sections denote unknown extent,
     # NOT forecast missing portions. Cloud overlays only denote unverified cloud obstruction.
     cx=width//2; ground=int(height*.78)
     d.rectangle((0,ground,width,height),fill=(206,224,199))
     colors=[(216,48,51),(240,124,43),(251,195,67),(117,184,83),(60,147,201),(96,93,168),(160,91,166)]
-    for outer,reverse,alpha in ((int(height*.63),True,.52),(int(height*.51),False,.86)):
+    # Both opportunity and quality govern schematic opacity; zero means barely visible.
+    def opacity(opportunity,quality,base):
+        if opportunity<=0 or quality<=0:return .012
+        return min(base,base*(opportunity/100)**.7*(quality/100)**.6)
+    for outer,reverse,alpha in ((int(height*.63),True,opacity(secondary,sq,.65)),
+                                (int(height*.51),False,opacity(primary,pq,.95))):
         palette=list(reversed(colors)) if reverse else colors
         for j,c in enumerate(palette):
             r=outer-j*6
@@ -49,7 +67,7 @@ def render(result,width=900,height=480):
                 x=cx+int(r*math.cos(a)); y=ground+int(r*math.sin(a))
                 if y<=ground:points.append((x,y))
             if len(points)>1:
-                bg=(235,245,252)
+                bg=sky
                 col=tuple(int(alpha*v+(1-alpha)*b) for v,b in zip(c,bg))
                 d.line(points,fill=col,width=5)
     # Cloud cover illustration is generic, not a location-specific occlusion prediction.
@@ -63,15 +81,15 @@ def render(result,width=900,height=480):
     d.text((18,height-34),'Cloud icons are illustrative, NOT located occlusions',font=_font(13),fill=(78,90,100))
     return im
 
-def png_bytes(result):
-    b=BytesIO();render(result).save(b,format='PNG');return b.getvalue()
+def png_bytes(result,peak_color_rgb=None,sunset_context=False):
+    b=BytesIO();render(result,peak_color_rgb=peak_color_rgb,sunset_context=sunset_context).save(b,format='PNG');return b.getvalue()
 
 
 def timeline_chart_bytes(result, timezone_name="Asia/Shanghai", threshold=30):
-    """Render 15-minute primary rainbow time-series bars. All timestamps are local.
+    """Plot only qualifying sampled intervals; invalid periods consume no x-axis space.
 
-    Bar intensity represents primary quality. Only intervals with primary > threshold
-    are plotted; gaps remain empty. Never use the global best time as a bar time.
+    The x-axis is a categorical sequence of genuine 15-minute time slots rather
+    than a continuous axis that includes physically invalid midday/night slots.
     """
     from datetime import datetime, timedelta, timezone
     try:
@@ -83,18 +101,21 @@ def timeline_chart_bytes(result, timezone_name="Asia/Shanghai", threshold=30):
     for row in result.get('timeline',[]) or []:
         try:
             score=float(row.get('primary_index') or 0)
-            if not math.isfinite(score) or score<=threshold:continue
             quality=float(row.get('primary_quality') or 0)
-            dt=datetime.fromisoformat(row['time'].replace('Z','+00:00'))
+            altitude=row.get('solar_altitude_deg')
+            if altitude is None or not math.isfinite(float(altitude)) or not (-2 <= float(altitude) <= 53):continue
+            if not math.isfinite(score) or score<=threshold:continue
+            dt=datetime.fromisoformat(str(row['time']).replace('Z','+00:00'))
             if dt.tzinfo is None:dt=dt.replace(tzinfo=timezone.utc)
             dt=dt.astimezone(tz)
-            rows.append((dt, min(100,max(0,score)), min(100,max(0,quality))))
+            rows.append((dt,min(100,max(0,score)),min(100,max(0,quality))))
         except (TypeError,ValueError,KeyError):continue
     rows.sort(key=lambda r:r[0])
     width=1040;height=420
     im=Image.new('RGB',(width,height),'white');d=ImageDraw.Draw(im)
-    left=66;right=width-20;top=45;bottom=height-88
-    d.text((left,8),'主虹时序 · 概率式评分 / 质量深浅',font=_font(22),fill=(32,50,68))
+    left=66;right=width-24;top=48;bottom=height-95
+    # ASCII text remains readable even on Streamlit Cloud images without CJK fonts.
+    d.text((left,9),'PRIMARY RAINBOW  |  Opportunity / Quality',font=_font(21),fill=(32,50,68))
     for v in (0,25,50,75,100):
         y=bottom-round((bottom-top)*v/100)
         d.line((left,y,right,y),fill=(225,232,239),width=1)
@@ -102,27 +123,28 @@ def timeline_chart_bytes(result, timezone_name="Asia/Shanghai", threshold=30):
     d.line((left,top,left,bottom),fill=(85,95,105),width=2)
     d.line((left,bottom,right,bottom),fill=(85,95,105),width=2)
     if not rows:
-        d.text((left+85,top+115),'没有主虹评分超过30的时段',font=_font(24),fill=(95,105,115))
+        d.text((left+120,top+115),'NO QUALIFYING PERIODS (>30/100)',font=_font(22),fill=(95,105,115))
     else:
-        # A shared 15-min timeline retains the real gaps between nonconsecutive candidates.
-        start=rows[0][0];end=rows[-1][0]+timedelta(minutes=15)
-        span=max(15,(end-start).total_seconds()/60)
-        for dt,score,quality in rows:
-            x1=left+round((right-left)*((dt-start).total_seconds()/60)/span)
-            x2=left+round((right-left)*(((dt-start).total_seconds()/60)+15)/span)
+        # Only qualifying intervals get categories. The time labels still reveal
+        # discontinuities, without plotting false periods or long blank axes.
+        n=len(rows)
+        slot=(right-left)/n
+        for i,(dt,score,quality) in enumerate(rows):
+            x1=left+round(i*slot)+1
+            x2=left+round((i+1)*slot)-2
             y=bottom-round((bottom-top)*score/100)
-            # Light pastel to deep saturated blue as quality increases.
             t=quality/100
             col=(round(193-143*t),round(221-124*t),round(245-54*t))
-            d.rectangle((x1+1,y,max(x1+2,x2-2),bottom-1),fill=col)
-        # Use evenly spaced labels, not one per bar when the window is dense.
-        count=min(7,max(2,int(span//30)+1))
-        for i in range(count):
-            frac=i/(count-1)
-            dt=start+timedelta(minutes=span*frac)
-            x=left+round((right-left)*frac)
-            label=dt.strftime('%H:%M')
-            d.text((max(left,x-23),bottom+12),label,font=_font(15),fill=(70,80,90))
+            d.rectangle((x1,y,max(x1+1,x2),bottom-1),fill=col)
+        # Label segment boundaries and some interior samples, avoiding overlaps.
+        indices={0,n-1}
+        indices.update(round(i*(n-1)/max(1,min(6,n-1))) for i in range(min(6,n-1)+1))
+        prev=None
+        for i in sorted(indices):
+            x=left+round((i+.5)*slot)
+            if prev is not None and x-prev<90:continue
+            d.text((max(left,x-24),bottom+10),rows[i][0].strftime('%H:%M'),font=_font(15),fill=(70,80,90))
+            prev=x
         best=max(rows,key=lambda r:r[1])
-        d.text((left,bottom+52),f'最高主虹 {best[1]:.0f}/100 · {best[0]:%H:%M} · 质量 {best[2]:.0f}/100',font=_font(17),fill=(35,55,75))
+        d.text((left,bottom+55),f'Peak {best[1]:.0f}/100  |  {best[0]:%H:%M}  |  Quality {best[2]:.0f}/100',font=_font(17),fill=(35,55,75))
     b=BytesIO();im.save(b,format='PNG');return b.getvalue()
