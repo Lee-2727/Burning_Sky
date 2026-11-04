@@ -324,8 +324,95 @@ with st.sidebar:
     with evening_col:
         run_evening = st.button("查询晚霞", use_container_width=True)
     run_all = st.button("查询 / 更新朝霞与晚霞", type="primary", use_container_width=True)
+    rainbow_only_web = st.button("🌈 单独分析彩虹（不请求火烧云）",use_container_width=True)
+    rainbow_web_period = st.radio("彩虹时段",["晚霞","朝霞"],horizontal=True,key="rainbow_web_period")
+    rainbow_observer_text = st.text_input('可选观察点坐标（纬度,经度；留空为区域分析）',key='rainbow_observer_text')
+    rainbow_observer_submit = st.button('分析该观察点（复用彩虹数据）',use_container_width=True)
     run = run_morning or run_evening or run_all
     query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
+
+# Rainbow-only execution: do not invoke the fire-cloud forecast task.
+if rainbow_only_web:
+    from datetime import datetime, timedelta
+    from burning_sky.rainbow_visual import png_bytes, summarize
+    _model_id=engine._weather_model_id_from_label(model_label)
+    _finder=engine.find_sunset if rainbow_web_period=='晚霞' else engine.find_sunrise
+    _event_dt,_sun_az=_finder(forecast_date,8,lat,lon)
+    if _event_dt is None:
+        st.error('无法计算太阳事件时间')
+        st.stop()
+    _event_utc=(_event_dt-timedelta(hours=8)).replace(tzinfo=None)
+    _web_cache=st.session_state.get('case_bundle_cache') or {}
+    if not use_case_cache:
+        _web_cache=dict(_web_cache)
+        _web_cache.update(st.session_state.get('rainbow_request_cache',{}))
+    engine._CASE_REQUEST_CONTEXT={'mode':'replay' if use_case_cache else 'capture','cache':_web_cache}
+    try:
+        with st.spinner('分析彩虹雨区、光路、能见度及空气质量……'):
+            _rainbow=WebForecastEngine._estimate_rainbow_opportunity(lat,lon,_sun_az,_event_utc,_model_id,
+                minute_range=WebForecastEngine._rainbow_window(rainbow_web_period))
+        st.session_state['rainbow_only_web_result']=_rainbow
+        st.session_state['rainbow_request_cache']=_web_cache
+        st.session_state['rainbow_web_meta']=(forecast_date.isoformat(),model_label,round(lat,5),round(lon,5),rainbow_web_period)
+    except Exception as _exc:
+        st.error('独立彩虹分析失败：'+str(_exc))
+    finally:
+        engine._CASE_REQUEST_CONTEXT=None
+    st.session_state['show_multi_day_overview']=False
+if rainbow_observer_submit:
+    from burning_sky.rainbow_observer import evaluate_observer
+    try:
+        if not rainbow_observer_text.strip():
+            st.session_state.pop('rainbow_observer_result',None)
+        else:
+            _a,_b=map(float,rainbow_observer_text.replace('，',',').split(','))
+            _period=rainbow_web_period
+            _finder=engine.find_sunset if _period=='晚霞' else engine.find_sunrise
+            _dt,_az=_finder(forecast_date,8,lat,lon)
+            from datetime import timedelta
+            _utc=(_dt-timedelta(hours=8)).replace(tzinfo=None)
+            _model=engine._weather_model_id_from_label(model_label)
+            _key=WebForecastEngine._rainbow_cache_key(lat,lon,_utc,_model,
+                WebForecastEngine._rainbow_window(_period))
+            _regional=WebForecastEngine._RAINBOW_RESULT_CACHE.get(_key)
+            if _regional is None:
+                _regional=(st.session_state.get('rainbow_only_web_result') if
+                    st.session_state.get('rainbow_web_meta')==(forecast_date.isoformat(),model_label,round(lat,5),round(lon,5),_period) else None)
+            if _regional is None and st.session_state.get('rainbow_web_meta')==(forecast_date.isoformat(),model_label,round(lat,5),round(lon,5),'全天'):
+                _regional=st.session_state.get('rainbow_only_web_result')
+            if _regional is None:
+                st.warning('尚无对应日期、模式和时段的区域彩虹分析，请先运行区域查询。')
+            else:
+                st.session_state['rainbow_observer_result']=evaluate_observer(_regional,_a,_b)
+    except Exception as _exc:
+        st.error('观察点坐标或计算失败：'+str(_exc))
+if st.session_state.get('rainbow_observer_result') is not None:
+    _obs=st.session_state['rainbow_observer_result'];_best=_obs.get('best') or {}
+    st.subheader('指定观察点 · 低分辨率几何匹配')
+    _oc=st.columns(2)
+    _oc[0].metric('主虹匹配指数',str(_best.get('primary_index',0))+'/100')
+    _oc[1].metric('副虹匹配指数',str(_best.get('secondary_index',0))+'/100')
+    st.caption('主虹方向：'+str(_best.get('primary_side_hint','未知'))+'；副虹方向：'+str(_best.get('secondary_side_hint','未知')))
+    st.caption(_obs['completeness']+'。'+_obs['confidence']+'；无需额外API请求。')
+    with st.expander('观察点逐时诊断'):
+        st.json(_obs['timeline'])
+if st.session_state.get('rainbow_only_web_result') is not None:
+    from burning_sky.rainbow_visual import png_bytes, summarize
+    _rb=st.session_state['rainbow_only_web_result']
+    st.subheader('🌈 独立彩虹分析')
+    _m=st.columns(4)
+    for _c,_name,_value in zip(_m,['主虹概率式分值','主虹质量','副虹概率式分值','副虹质量'],
+                               [_rb.get('primary_index',0),_rb.get('primary_quality',0),_rb.get('secondary_index',0),_rb.get('secondary_quality',0)]):
+        _c.metric(_name,f'{_value}/100')
+    st.image(png_bytes(_rb),caption='虹弧示意图；不能由现有离散采样确定左右缺失、实际完整度或局部云遮挡')
+    _sm=summarize(_rb)
+    st.caption('；'.join(_sm['penalties']))
+    with st.expander('详细分析（各时段、采样点及系数）'):
+        st.json([{k:v for k,v in r.items() if k!='details'} for r in _rb.get('timeline',[])])
+        st.json(_rb.get('environment_sources',{}))
+        st.json(_sm['row'].get('details',[]))
+    st.caption('数字为未经历史校准的概率式评分，不是统计发生概率。')
+    if rainbow_only_web: st.stop()
 
 # 在多日概览页面点击左侧任一查询按钮时，优先执行单次查询。
 # 清除概览页面状态，避免 st.stop() 截断查询流程，也避免下次 rerun 又跳回概览。
@@ -511,6 +598,11 @@ if run:
     elif not runner.direction_results:
         st.error("没有获得预报结果。请检查日期、坐标、天气接口状态后重试。")
     else:
+        _chosen_direction='evening' if query_direction=='evening' else 'morning'
+        _rb_main=(getattr(runner,'rainbow_day_result',None) if query_direction=='all' else None) or (runner.direction_results.get(_chosen_direction) or {}).get('rainbow')
+        if _rb_main:
+            st.session_state['rainbow_only_web_result']=_rb_main
+            st.session_state['rainbow_web_meta']=(forecast_date.isoformat(),model_label,round(lat,5),round(lon,5),'全天' if query_direction=='all' else '晚霞' if _chosen_direction=='evening' else '朝霞')
         st.session_state["fire_cloud_last_results"] = runner.direction_results
         st.session_state["fire_cloud_last_report"] = runner.last_report
         st.session_state["fire_cloud_last_meta"] = {
@@ -740,6 +832,12 @@ if results:
                 st.markdown(f'<div style="height:34px;border-radius:8px;background:{hex_color};border:1px solid #888"></div>', unsafe_allow_html=True)
             rainbow = result.get("rainbow", {})
             if rainbow:
+                from burning_sky.rainbow_visual import png_bytes, summarize
+                _rc=st.columns(4)
+                for _c,_label,_value in zip(_rc,['主虹分值','主虹质量','副虹分值','副虹质量'],[rainbow.get('primary_index',0),rainbow.get('primary_quality',0),rainbow.get('secondary_index',0),rainbow.get('secondary_quality',0)]):
+                    _c.metric(_label,f'{_value}/100')
+                st.image(png_bytes(rainbow),caption='虹弧示意；左右缺失及云遮挡位置未经验证')
+                st.caption('；'.join(summarize(rainbow)['penalties']))
                 st.caption(f"彩虹机会：{rainbow.get('label', '暂不可估')}（实验指数 {rainbow.get('score', '—')}/100）；{rainbow.get('light_method', '光路待验证')}；不是统计概率。")
                 if rainbow.get('time'):
                     st.caption(f"候选峰值时间（UTC）：{rainbow['time']}；弧段采样覆盖 {rainbow.get('sector_coverage_pct', 0)}%（非彩虹完整度）。")

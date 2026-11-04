@@ -323,6 +323,9 @@ def request_json(req, timeout=20, retries=3, cache_key=None, cache_ttl=None):
             if url not in cache:
                 raise RuntimeError("案例缓存缺少本次查询所需的天气/AOD/云底数据。请关闭‘从案例缓存读取’重新联网查询，或加载包含该日期、模式和方向数据的案例。")
             return cache[url]
+    # Reuse previously captured exact URL payloads, including sunshine-path samples.
+    if context and context.get('mode')=='capture' and url in context.get('cache',{}):
+        return context['cache'][url]
     payload = _request_json_impl(req, timeout=timeout, retries=retries, cache_key=cache_key, cache_ttl=cache_ttl)
     with _CASE_REQUEST_CONTEXT_LOCK:
         context = _CASE_REQUEST_CONTEXT
@@ -591,6 +594,23 @@ class FireCloudApp(tk.Tk):
         self.fetch_buttons["evening"].pack(side="left", fill="x", expand=True, padx=(4, 0))
         self.fetch_buttons["both"] = ttk.Button(btns, text="一键查询朝晚霞", style="Accent.TButton", command=lambda: self.fetch_weather("both"))
         self.fetch_buttons["both"].pack(fill="x", pady=(0, 6))
+        # Rainbow-only workflow: no cloud-base profiles, CAMS AOD, or fire-cloud requests.
+        self.rainbow_period_var = tk.StringVar(value="晚霞")
+        ttk.Combobox(btns, textvariable=self.rainbow_period_var, values=("朝霞", "晚霞"), state="readonly", width=12).pack(fill="x", pady=(0, 4))
+        self.rainbow_only_button = ttk.Button(btns, text="🌈 单独分析彩虹（不查询火烧云）", style="Accent.TButton", command=self.fetch_rainbow_only)
+        self.rainbow_only_button.pack(fill="x", pady=(0, 6))
+        ttk.Button(btns, text="查看彩虹完整分析 / 各项扣分", command=self.show_rainbow_diagnostics).pack(fill="x", pady=(0, 6))
+        ttk.Button(btns, text="导出独立彩虹案例 ZIP", command=self.export_rainbow_only_zip).pack(fill="x", pady=(0, 6))
+        self.rainbow_summary_var = tk.StringVar(value='彩虹尚未分析。单独查询后将在这里显示结果；完整日志请点击上方按钮。')
+        ttk.Label(btns,textvariable=self.rainbow_summary_var,style='Sub.TLabel',wraplength=305,justify='left').pack(fill='x',pady=(0,5))
+        ttk.Label(btns,text='指定观察点（可选，纬度,经度）',style='Sub.TLabel').pack(anchor='w')
+        self.rainbow_observer_var=tk.StringVar(value='')
+        ttk.Entry(btns,textvariable=self.rainbow_observer_var).pack(fill='x',pady=(2,3))
+        ttk.Button(btns,text='分析该观察点（优先复用彩虹缓存）',command=self.analyze_rainbow_observer).pack(fill='x',pady=(0,4))
+        self.rainbow_observer_summary=tk.StringVar(value='观察点留空：仅区域预测。')
+        ttk.Label(btns,textvariable=self.rainbow_observer_summary,style='Sub.TLabel',wraplength=305,justify='left').pack(fill='x',pady=(0,5))
+        self.rainbow_preview_label = ttk.Label(btns)
+        self.rainbow_preview_label.pack(fill='x',pady=(0,5))
         self.fetch_button = self.fetch_buttons["morning"]  # 兼容旧代码中对按钮状态的引用
         self.fetch_status_var = tk.StringVar(value="可分别查询朝霞/晚霞，也可一键更新两个时段。")
         ttk.Label(btns, textvariable=self.fetch_status_var, style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(0, 6))
@@ -770,6 +790,179 @@ class FireCloudApp(tk.Tk):
             self.after(0, apply)
         except tk.TclError:
             pass
+
+    @staticmethod
+    def _rainbow_high_opportunity_text(result, utc_offset=8):
+        rows=sorted((r for r in result.get('timeline',[]) if r.get('time')),key=lambda r:r['time'])
+        qualifying=[r for r in rows if max(r.get('primary_index',0),r.get('secondary_index',0))>30]
+        if not qualifying:return '机会指数 >30 的时段：未检出（指数非统计概率）'
+        segments=[];block=[]
+        for row in qualifying:
+            if block and (datetime.fromisoformat(row['time'])-datetime.fromisoformat(block[-1]['time'])).total_seconds()>900:
+                segments.append(block);block=[]
+            block.append(row)
+        if block:segments.append(block)
+        out=[]
+        for block in segments:
+            start=(datetime.fromisoformat(block[0]['time'])+timedelta(hours=utc_offset)).strftime('%H:%M')
+            end=(datetime.fromisoformat(block[-1]['time'])+timedelta(hours=utc_offset)).strftime('%H:%M')
+            peak=max(block,key=lambda r:max(r.get('primary_index',0),r.get('secondary_index',0)))
+            out.append(f"{start}–{end} 主虹{peak.get('primary_index',0)}/100 质量{peak.get('primary_quality',0)}/100；副虹{peak.get('secondary_index',0)}/100 质量{peak.get('secondary_quality',0)}/100")
+        return '机会指数 >30 的时段（北京时间；每段显示峰值时刻）：\n'+'\n'.join(out)
+
+    def _update_rainbow_summary(self, result):
+        """Inline summary; full diagnostics remains available on demand."""
+        from burning_sky.rainbow_visual import render, summarize
+        from PIL import ImageTk
+        self.rainbow_summary_var.set(
+            f"主虹 概率式分值 {result.get('primary_index',0)}/100 · 质量 {result.get('primary_quality',0)}/100\n"
+            f"副虹 概率式分值 {result.get('secondary_index',0)}/100 · 质量 {result.get('secondary_quality',0)}/100\n"
+            + '；'.join(summarize(result)['penalties'][:3])
+            + '\n虹弧左右缺失及真实完整度：尚无法从现有采样确认。'
+            + '\n' + self._rainbow_high_opportunity_text(result))
+        image=render(result,width=640,height=330)
+        self._rainbow_preview_photo=ImageTk.PhotoImage(image)
+        self.rainbow_preview_label.configure(image=self._rainbow_preview_photo)
+
+    def show_rainbow_diagnostics(self):
+        """Full standalone per-time, per-site breakdown; no weather requests."""
+        result=getattr(self,'rainbow_only_result',None)
+        if not result:
+            messagebox.showinfo('彩虹诊断','请先点击「单独分析彩虹」。')
+            return
+        win=tk.Toplevel(self)
+        win.title('彩虹完整诊断 · 主虹/副虹概率式分值及质量')
+        win.geometry('1120x780')
+        frame=ttk.Frame(win,padding=8);frame.pack(fill='both',expand=True)
+        bar=ttk.Frame(frame);bar.pack(fill='x')
+        ttk.Label(bar,text='全部时段及采样区；概率式分值未经实况校准。点击导出可保存原始数据。').pack(side='left')
+        body=tk.Text(frame,wrap='none',font=('Consolas',10))
+        vs=ttk.Scrollbar(frame,orient='vertical',command=body.yview)
+        hs=ttk.Scrollbar(frame,orient='horizontal',command=body.xview)
+        body.configure(yscrollcommand=vs.set,xscrollcommand=hs.set)
+        vs.pack(side='right',fill='y');hs.pack(side='bottom',fill='x');body.pack(fill='both',expand=True)
+        lines=['环境数据源状态: '+json.dumps(result.get('environment_sources',{}),ensure_ascii=False),
+               f"主虹概率式分值: {result.get('primary_index')} / 100   主虹质量: {result.get('primary_quality')} / 100",
+               f"副虹概率式分值: {result.get('secondary_index')} / 100   副虹质量: {result.get('secondary_quality')} / 100",
+               '提示：没有实况统计校准，数字不能当作真实发生概率；候选区域不是实际虹弧完整度。','']
+        offset=getattr(self,'rainbow_only_metadata',{}).get('utc_offset',8)
+        for row in result.get('timeline',[]):
+            try: tm=(datetime.fromisoformat(row['time'])+timedelta(hours=offset)).strftime('%m-%d %H:%M')
+            except Exception:tm=str(row.get('time'))
+            lines.append(f"=== {tm} 太阳高度{row.get('solar_altitude_deg')}°  主虹{row.get('primary_index',0)}  副虹{row.get('secondary_index',0)}  候选点{row.get('illuminated_candidate_count',0)} ===")
+            for d in row.get('details',[]):
+                lines.append(f"距离{d.get('distance_km')}km 偏角{d.get('offset_deg')}° | {d.get('state','')} | 雨量{d.get('amount_mm')}mm PoP{d.get('probability_pct')}% 湿度{d.get('humidity_pct')}% 能见度{d.get('visibility_m')}m PM2.5={d.get('pm2_5')} PM10={d.get('pm10')} AOD={d.get('aod')} DNI={d.get('dni')} | 主虹{d.get('primary_index','-')} 副虹{d.get('secondary_index','-')} 质量{d.get('primary_quality','-')} | {d.get('reason','')}")
+                if d.get('score_components'):lines.append('   分项系数: '+json.dumps(d['score_components'],ensure_ascii=False))
+                if d.get('light_trials'):lines.append('   高度光路: '+json.dumps(d['light_trials'],ensure_ascii=False))
+                if d.get('uncertainty_flags'):lines.append('   未确定项: '+', '.join(d['uncertainty_flags']))
+            lines.append('')
+        body.insert('1.0','\n'.join(lines));body.configure(state='disabled')
+
+    def analyze_rainbow_observer(self):
+        from burning_sky.rainbow_observer import evaluate_observer
+        raw=self.rainbow_observer_var.get().strip().replace('，',',')
+        if not raw:
+            self.rainbow_observer_summary.set('未指定观察点；区域预测不受影响。')
+            return
+        try:
+            lat,lon=map(float,raw.split(','))
+            result=getattr(self,'rainbow_only_result',None)
+            if result is None:
+                data=self._read_inputs()
+                model=_weather_model_id_from_label(self.vars['weather_model'].get())
+                finder=find_sunrise if self.rainbow_period_var.get()=='朝霞' else find_sunset
+                event,az=finder(data['date'],data['utc_offset'],data['lat'],data['lon'])
+                if event is not None:
+                    utc=(event-timedelta(hours=data['utc_offset'])).replace(tzinfo=None)
+                    result=self._RAINBOW_RESULT_CACHE.get(self._rainbow_cache_key(data['lat'],data['lon'],utc,model,
+                        self._rainbow_window(self.rainbow_period_var.get())))
+            if result is None:
+                messagebox.showinfo('观察点分析','尚无对应时段的彩虹区域数据。请先查询彩虹或朝霞/晚霞。')
+                return
+            assessment=evaluate_observer(result,lat,lon)
+            self.rainbow_observer_result=assessment
+            b=assessment.get('best') or {}
+            self.rainbow_observer_summary.set(
+                f"观察点 {lat:.4f},{lon:.4f}：主虹匹配指数 {b.get('primary_index',0)}/100，"
+                f"副虹 {b.get('secondary_index',0)}/100；"
+                f"主虹方向 {b.get('primary_side_hint','—')}；完整度尚不能可靠确定。"
+                '（复用已有数据，未新增请求）')
+        except Exception as exc:
+            messagebox.showerror('观察点分析失败',str(exc))
+
+    def fetch_rainbow_only(self):
+        """Only the rainbow-specific 20 rain and 120 sunlight locations are requested."""
+        if self.fetch_in_progress:
+            return
+        self.fetch_in_progress = True
+        self.rainbow_only_button.configure(state="disabled")
+        self.fetch_status_var.set("独立彩虹分析：只请求雨区和太阳光路，不调用火烧云/AOD/云底剖面。")
+        def worker():
+            global _CASE_REQUEST_CONTEXT
+            try:
+                data=self._read_inputs()
+                model_id=_weather_model_id_from_label(self.vars['weather_model'].get())
+                finder=find_sunrise if self.rainbow_period_var.get()=='朝霞' else find_sunset
+                event_dt,az=finder(data['date'],data['utc_offset'],data['lat'],data['lon'])
+                if event_dt is None: raise ValueError('无法计算该日期日落')
+                event_utc=(event_dt-timedelta(hours=data['utc_offset'])).replace(tzinfo=None)
+                key=self._rainbow_cache_key(data['lat'],data['lon'],event_utc,model_id,
+                    self._rainbow_window(self.rainbow_period_var.get()))
+                if key in self._RAINBOW_RESULT_CACHE:
+                    result=self._RAINBOW_RESULT_CACHE[key]
+                    self.rainbow_only_result=result
+                    self.rainbow_only_metadata={'date':str(data['date']),'lat':data['lat'],'lon':data['lon'],
+                        'model_id':model_id,'event_utc':event_utc.isoformat(),'sun_azimuth':az,'utc_offset':data['utc_offset']}
+                    self.after(0,lambda r=result:(self._update_rainbow_summary(r),self.fetch_status_var.set('已复用同日期、地点、模式、时段的彩虹分析缓存，无新增请求。')))
+                    return
+                if self.case_cache_var.get():
+                    if not self.loaded_case_path:
+                        raise ValueError('请先加载案例缓存')
+                    cp=os.path.join(self.loaded_case_path,'request_cache.json')
+                    if not os.path.isfile(cp): raise ValueError('案例缺少 request_cache.json')
+                    with open(cp,encoding='utf-8') as f: cache=json.load(f)
+                    _CASE_REQUEST_CONTEXT={'mode':'replay','cache':cache}
+                else:
+                    if not isinstance(getattr(self,'case_request_cache',None),dict):
+                        self.case_request_cache={}
+                    _CASE_REQUEST_CONTEXT={'mode':'capture','cache':self.case_request_cache}
+                result=self._estimate_rainbow_opportunity(data['lat'],data['lon'],az,event_utc,model_id,
+                    minute_range=self._rainbow_window(self.rainbow_period_var.get()))
+                self.rainbow_only_result=result
+                self.rainbow_only_metadata={'date':str(data['date']),'lat':data['lat'],'lon':data['lon'],
+                    'model_id':model_id,'event_utc':event_utc.isoformat(),'sun_azimuth':az,'utc_offset':data['utc_offset']}
+                for row in result.get('timeline',[]):
+                    print('[RAINBOW ONLY] '+json.dumps({k:row.get(k) for k in ('time','solar_altitude_deg','primary_index','secondary_index','illuminated_candidate_count','rejections')},ensure_ascii=False),flush=True)
+                best_local=(datetime.fromisoformat(result['time'])+timedelta(hours=data['utc_offset'])).strftime('%Y-%m-%d %H:%M') if result.get('time') else '无'
+                msg=(f"主虹概率式分值 {result.get('primary_index')}/100；主虹质量 {result.get('primary_quality')}/100；"
+                     f"副虹概率式分值 {result.get('secondary_index')}/100；副虹质量 {result.get('secondary_quality')}/100；"
+                     f"候选峰值(当地时间) {best_local}。请点击『查看彩虹完整分析』检查分项；数字未经实况校准。")
+                self.after(0,lambda: (self.fetch_status_var.set(msg),self._update_rainbow_summary(result)))
+            except Exception as exc:
+                err=str(exc)
+                self.after(0,lambda:messagebox.showerror('独立彩虹分析失败',err))
+            finally:
+                _CASE_REQUEST_CONTEXT=None
+                self.after(0,self._finish_rainbow_only)
+        threading.Thread(target=worker,daemon=True,name='rainbow-only-query').start()
+
+    def _finish_rainbow_only(self):
+        self.fetch_in_progress=False
+        self.rainbow_only_button.configure(state='normal')
+
+    def export_rainbow_only_zip(self):
+        """Export original rain/path hourly series for exact offline blind replay."""
+        result=getattr(self,'rainbow_only_result',None)
+        if not result:
+            messagebox.showinfo('没有彩虹结果','请先点击「单独分析彩虹」。')
+            return
+        path=filedialog.asksaveasfilename(title='保存独立彩虹案例',defaultextension='.zip',
+            filetypes=[('ZIP压缩包','*.zip')],initialfile='Burning_Sky_Rainbow_Only_Case.zip')
+        if not path:return
+        payload={'schema_version':1,'metadata':getattr(self,'rainbow_only_metadata',{}),'rainbow':result}
+        with zipfile.ZipFile(path,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
+            z.writestr('rainbow_only_case.json',json.dumps(self._json_safe(payload),ensure_ascii=False,indent=2))
+        messagebox.showinfo('导出成功','彩虹原始候选雨区和光路逐时数据已写入 ZIP，可离线复算。')
 
     def fetch_weather(self, direction_key="both"):
         """在后台查询指定方向；不清空另一方向已有结果。"""
@@ -1077,7 +1270,11 @@ class FireCloudApp(tk.Tk):
                 self._set_main_progress(base_progress + 37, f"{direction_name}：估算反太阳方向彩虹条件……")
                 try:
                     rainbow_result = self._estimate_rainbow_opportunity(
-                        data["lat"], data["lon"], azimuth, event_utc, model_id, samples[0] if samples else {})
+                        data["lat"], data["lon"], azimuth, event_utc, model_id,
+                        minute_range=self._rainbow_window(direction_key))
+                    self.rainbow_only_result=rainbow_result
+                    self.rainbow_only_metadata={'utc_offset':data['utc_offset'],'date':str(data['date'])}
+                    self.after(0,lambda r=rainbow_result:self._update_rainbow_summary(r))
                 except Exception as rainbow_exc:
                     rainbow_result = {"score": None, "label": "暂不可估", "distance_km": None,
                                       "precip_probability": None, "precipitation": None,
@@ -1288,6 +1485,19 @@ class FireCloudApp(tk.Tk):
                     gap_display_label = '晴空间隔'
                     gap_text = gap_ranges if all_gaps else '未形成可判读的晴空间隔'
                 cap_note = "已触及 600 km 采样上限；若理论深入距离更远，需进一步提高上限或采用更稀疏的远距离采样。" if sample_limit >= 600 and max_reach > 600 else ""
+                # Debug30: Desktop rainbow diagnostics in console and per-case file.
+                # No additional weather API calls; records existing intermediate results.
+                try:
+                    import json as _rainbow_json
+                    print(f"\n[RAINBOW DEBUG] {direction_name} | 分析方向={direction_name}", flush=True)
+                    print(f"[RAINBOW DEBUG] 机会指数={rainbow_result.get('score')} /100；峰值时间={rainbow_result.get('time')}；光路={rainbow_result.get('light_method')}", flush=True)
+                    print(f"[RAINBOW DEBUG] 弧段采样覆盖={rainbow_result.get('sector_coverage_pct')}%（非实际完整度）；备注={rainbow_result.get('note')}", flush=True)
+                    for _row in rainbow_result.get('timeline', []):
+                        print('[RAINBOW TIME] '+_rainbow_json.dumps(_row,ensure_ascii=False,default=str),flush=True)
+                    if rainbow_result.get('score') is None:
+                        print('[RAINBOW ERROR] '+str(rainbow_result.get('note','未知错误')),flush=True)
+                except Exception as _diag_exc:
+                    print('[RAINBOW DEBUG ERROR] '+str(_diag_exc),flush=True)
                 if rainbow_result.get("score") is None:
                     rainbow_summary = "彩虹出现机会：暂不可估"
                 else:
@@ -1488,6 +1698,14 @@ class FireCloudApp(tk.Tk):
                                           # 保存本次实际请求返回的原始天气响应，供案例复盘；不额外发起请求。
                                           "raw_weather": raw_locations}
 
+            # Combined query: merge morning/evening rainbow results only.
+            # Never request a third noon corridor.
+            if requested_direction == 'both':
+                morning_rb=(results.get('morning') or {}).get('rainbow') or {}
+                evening_rb=(results.get('evening') or {}).get('rainbow') or {}
+                self.rainbow_day_result=self._merge_rainbow_periods((morning_rb,evening_rb))
+                self.rainbow_only_result=self.rainbow_day_result
+                self.after(0,lambda r=self.rainbow_day_result:self._update_rainbow_summary(r))
             self._set_main_progress(100, "朝霞与晚霞预报完成")
             merged_results = dict(getattr(self, "direction_results", {}) or {})
             merged_results.update(results)
@@ -1548,27 +1766,54 @@ class FireCloudApp(tk.Tk):
             score = int(round(float(score)))
         except (TypeError, ValueError):
             return "彩虹：暂不可估"
-        # 中等及以上才在主评分区突出显示，减少低信号干扰。
-        if score < 45:
-            return f"彩虹机会偏低\n指数 {score}/100\n未达到提示阈值"
-        label = rainbow.get("label", "中等")
-        time_text = "日出/日落前后约 1 小时"
-        if isinstance(event_dt, str):
-            try:
-                event_dt = datetime.fromisoformat(event_dt)
-            except ValueError:
-                event_dt = None
-        if isinstance(event_dt, datetime):
-            start = event_dt - timedelta(hours=1)
-            end = event_dt + timedelta(hours=1)
-            time_text = f"{start:%H:%M}–{end:%H:%M}"
-        precip_prob = rainbow.get("precip_probability")
-        precip_text = f"降水 {float(precip_prob):.0f}%" if isinstance(precip_prob, (int, float)) else "降水概率缺测"
-        return f"🌈 彩虹机会{label}\n指数 {score}/100\n{time_text}\n{precip_text}"
+        label = rainbow.get('label', '待评估')
+        peak=rainbow.get('time')
+        try:
+            from datetime import timezone
+            peak_local=datetime.fromisoformat(peak).replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=8))).strftime('%m-%d %H:%M') if peak else '—'
+        except (TypeError,ValueError):
+            peak_local=str(peak or '—')
+        count=max((r.get('illuminated_candidate_count',0) for r in rainbow.get('timeline',[])),default=0)
+        return f"🌈 区域彩虹{label}\n指数 {score}/100（非概率）\n候选峰值 {peak_local} 北京时间\n最多受光雨区 {count}处\n完整度：未验证"
+
+    # Rainbow sampling is independent of fire-cloud sampling. Windows are relative
+    # to sunrise/sunset, not restricted to the fire-cloud twilight interval.
+    _RAINBOW_MORNING_WINDOW = (-90, 240)
+    _RAINBOW_EVENING_WINDOW = (-240, 90)
 
     @staticmethod
-    def _estimate_rainbow_opportunity(lat, lon, sun_azimuth, event_utc, model_id, local_sample=None):
+    def _rainbow_window(direction):
+        return (FireCloudApp._RAINBOW_MORNING_WINDOW if direction in ('morning','朝霞')
+                else FireCloudApp._RAINBOW_EVENING_WINDOW)
+
+    @staticmethod
+    def _merge_rainbow_periods(results):
+        rows = {r['time']:r for result in results for r in result.get('timeline',[]) if r.get('time')}
+        timeline = [rows[k] for k in sorted(rows)]
+        winner = max(timeline,key=lambda r:(r.get('primary_index',0),r.get('secondary_index',0)),default={})
+        return {'timeline':timeline,'time':winner.get('time'),
+                'score':winner.get('primary_index',0),
+                'primary_index':winner.get('primary_index',0),
+                'secondary_index':winner.get('secondary_index',0),
+                'primary_quality':winner.get('primary_quality',0),
+                'secondary_quality':winner.get('secondary_quality',0),
+                'label':'朝间与晚间独立彩虹分析',
+                'day_coverage':'仅日出前后和日落前后的彩虹太阳高度角窗口；无正午专门采样',
+                'rainbow_completeness':'区域采样不能证明虹弧完整度'}
+
+    _RAINBOW_RESULT_CACHE = {}
+
+    @staticmethod
+    def _rainbow_cache_key(lat, lon, event_utc, model_id, minute_range=(-240,90)):
+        return (round(float(lat),5),round(float(lon),5),event_utc.isoformat(),str(model_id),tuple(minute_range))
+
+    @staticmethod
+    def _estimate_rainbow_opportunity(lat, lon, sun_azimuth, event_utc, model_id, local_sample=None, minute_range=(-240,90)):
         """Scan rain sectors and solar paths with rainbow-specific strict geometry."""
+        key=FireCloudApp._rainbow_cache_key(lat,lon,event_utc,model_id,minute_range)
+        cached=FireCloudApp._RAINBOW_RESULT_CACHE.get(key)
+        if cached is not None:
+            return cached
         from burning_sky.rainbow_geometry import RAIN_DISTANCES, RAIN_BEARING_OFFSETS, SUN_DISTANCES, evaluate
         from burning_sky.algorithm import solar_position
         # Use real solar azimuth for every candidate time, not sunset azimuth.
@@ -1590,11 +1835,33 @@ class FireCloudApp(tk.Tk):
             rain_sites.append((dist,offset,rlat,rlon,locations[pos].get('hourly',{})))
             paths.append([locations[pos+1+j].get('hourly',{}) for j in range(len(SUN_DISTANCES))])
             pos+=1+len(SUN_DISTANCES)
-        result=evaluate(lat,lon,event_utc,rain_sites,paths)
+        # Supplemental environmental data are queried only at the 20 rain sites.
+        # A missing field must never silently masquerade as clean air.
+        from burning_sky.rainbow_environment import fetch_environment
+        environment, environmental_status = fetch_environment(
+            [(x[2], x[3]) for x in rain_sites], request_json,
+            replay=bool(_CASE_REQUEST_CONTEXT and _CASE_REQUEST_CONTEXT.get('mode') == 'replay'))
+        result=evaluate(lat,lon,event_utc,rain_sites,paths,environment=environment,minute_range=minute_range)
+        result['environment_sources']=environmental_status
+
+        # Preserve ALL original hourly series, including the 20 rain cells and
+        # their 120 solar-path cells. Enables offline re-evaluation with no API.
+        result['raw_candidate_data']={
+            'environment':environment,'environment_sources':environmental_status,
+            'schema_version':1,'time_zone':'UTC','event_utc':event_utc.isoformat(),
+            'rain_sites':[{'distance_km':d,'offset_deg':o,'lat':a,'lon':b,'hourly':h}
+                          for d,o,a,b,h in rain_sites],
+            'sunlight_paths':[{'distance_km':d,'offset_deg':o,
+                               'samples':[{'sun_distance_km':sd,'hourly':h}
+                                          for sd,h in zip(SUN_DISTANCES,path)]}
+                              for (d,o,_,_,_),path in zip(rain_sites,paths)],
+            'caveat':'原始网格数据，不是现场实测雨滴；可离线复算。'
+        }
         result['anti_solar_azimuth']=anti_az
         result['distance_km']=None
         result['precip_probability']=None
         result['precipitation']=None
+        FireCloudApp._RAINBOW_RESULT_CACHE[key]=result
         return result
 
     @staticmethod
@@ -2756,110 +3023,61 @@ class FireCloudApp(tk.Tk):
 
 
     def show_2d_illumination(self, direction_key):
-        """Six observer-angle sky sectors. Draw immediately, fetch 9 side positions async."""
-        result = getattr(self, "direction_results", {}).get(direction_key)
+        """Compass polygon using main-line result plus four lateral cloud probes."""
+        result = getattr(self, 'direction_results', {}).get(direction_key)
         if not result:
-            messagebox.showinfo("尚无数据", "请先完成朝霞或晚霞查询。")
-            return
-        from burning_sky.sky_six import grid_points, evaluate, draw
-        from datetime import datetime, timedelta
-        origin = result.get("origin")
-        event_dt = result.get("event_dt")
-        if isinstance(event_dt, str):
-            event_dt = datetime.fromisoformat(event_dt)
+            messagebox.showinfo('尚无数据', '请先完成单次朝霞/晚霞查询。'); return
+        from burning_sky.sunset_compass import transverse_sites, cloud_evidence, estimate, render
+        from PIL import ImageTk
+        from datetime import datetime
+        origin=result.get('origin'); event_dt=result.get('event_dt')
+        if isinstance(event_dt,str):event_dt=datetime.fromisoformat(event_dt)
         if not origin or event_dt is None:
-            messagebox.showerror("缺少参数", "结果缺少坐标或日出日落时刻。")
-            return
-        radius = (result.get("boundaries") or {}).get("fire_cloud_range_km")
-        if not isinstance(radius, (int,float)) or radius <= 0:
-            messagebox.showinfo("霞云距不足", "霞云距为零或未知，无法分析。")
-            return
-        radius = min(float(radius),350.0)
-        bearing = float(result.get("azimuth",0))
-        points = [p for p in grid_points(origin[0],origin[1],bearing,radius)
-                  if p['bearing_offset'] != 0]
-        # The centre column is reconstructed from the existing primary path samples,
-        # without another API request. The side columns use six real locations.
-        win = tk.Toplevel(self)
-        win.title("二维霞云图 · 六分区")
-        win.geometry("1210x750")
-        label = ttk.Label(win,text="已打开六分区图；中心线复用已有采样，正在准备左右6个位置……",
-                          wraplength=1100)
-        label.pack(anchor="w",padx=12,pady=8)
-        frame = ttk.Frame(win)
-        frame.pack(fill="both",expand=True)
-        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-        from matplotlib import pyplot as plt
-        empty = {'bins':[{'state':'unknown','colors':[None]*10} for _ in range(6)]}
-        fig = draw(empty,"朝霞" if direction_key=='morning' else '晚霞')
-        canvas = FigureCanvasTkAgg(fig,master=frame)
-        canvas.get_tk_widget().pack(fill="both",expand=True)
-        win.after(10, canvas.draw_idle)
-        win.protocol('WM_DELETE_WINDOW',lambda:(plt.close(fig),win.destroy()))
-        model_label=self.vars['weather_model'].get() if 'weather_model' in self.vars else ''
-        model_id=_weather_model_id_from_label(model_label)
-        def update_label(message):
-            if win.winfo_exists():label.configure(text=message)
-        import time
-        started=time.monotonic()
-        phase={'text':'准备请求','done':False,'completed':0,'total':6,'detail':'','status':'运行中'}
-        def progress_tick():
-            if not win.winfo_exists() or phase['done']:return
-            update_label(f"二维图：{phase['text']}｜{phase['status']}｜已用时 {time.monotonic()-started:.0f} 秒"
-                         f"｜侧向数据 {phase['completed']}/{phase['total']}｜{phase['detail']}")
-            win.after(350,progress_tick)
-        win.after(100,progress_tick)
+            messagebox.showerror('缺少参数','当前结果缺少观测坐标或日出日落时间。');return
+        bearing=float(result.get('azimuth') or 0)
+        sites,gap=transverse_sites(origin[0],origin[1],bearing,result.get('boundaries') or {})
+        win=tk.Toplevel(self);win.title('八方位晚霞多边形 · 云洞横向扫描');win.geometry('1040x940')
+        status=ttk.Label(win,wraplength=1000);status.pack(anchor='w',padx=10,pady=8)
+        picture=ttk.Label(win);picture.pack(fill='both',expand=True)
+        def display(im):
+            if not win.winfo_exists():return
+            photo=ImageTk.PhotoImage(im);picture.configure(image=photo);picture.image=photo
+        if not sites:
+            diag=estimate(result,[]);result['sunset_compass']=self._json_safe(diag)
+            display(render(diag));status.configure(text='未找到可用于横向扫描的主贡献云洞：南北可见角度未知；不生成预测多边形。');return
+        status.configure(text='主贡献云洞附近横向采样：±15/±30 km，共4个位置；沿用请求缓存。')
         def worker():
             try:
-                import urllib.parse, urllib.request
-                phase['text']='读取缓存或请求气象 API';phase['detail']='批量请求6个位置，最多约44秒（含重试）' 
-                # One small batch, with request_json disk cache and bounded timeout.
-                params={'latitude':','.join(f"{p['lat']:.5f}" for p in points),
-                        'longitude':','.join(f"{p['lon']:.5f}" for p in points),
-                        'hourly':'cloud_cover_low,cloud_cover_mid,cloud_cover_high',
-                        'models':model_id,'timezone':'UTC',
-                        'start_date':(event_dt-timedelta(hours=8)).date().isoformat(),
-                        'end_date':(event_dt+timedelta(hours=8)).date().isoformat()}
-                url='https://api.open-meteo.com/v1/forecast?'+urllib.parse.urlencode(params)
-                req=urllib.request.Request(url,headers={'User-Agent':'BurningSky-Debug18/1.0'})
-                payload=request_json(req,timeout=22,retries=1,cache_key=url)
-                records=payload if isinstance(payload,list) else [payload]
-                phase['completed']=len(records);phase['detail']='天气响应已收到，开始处理'
-                if len(records)!=len(points):
-                    raise ValueError(f"API返回{len(records)}个位置，预期{len(points)}个")
-                # The centre-column data are from the already computed primary path.
-                # A one-hour record is sufficient for evaluate's nearest-hour lookup.
-                centre=[]
-                for i,fraction in enumerate((.25,.55,.85)):
-                    desired=radius*fraction
-                    sm=min(result.get('samples') or [],key=lambda x:abs(float(x.get('distance_km',0))-desired),default={})
-                    lat0,lon0=__import__('burning_sky.spherical_raytrace',fromlist=['destination']).destination(origin[0],origin[1],bearing,desired)
-                    centre.append(({'column':1,'distance_km':desired,'bearing_offset':0,'lat':lat0,'lon':lon0},
-                        {'hourly':{'time':[(event_dt-timedelta(hours=8)).replace(minute=0,second=0,microsecond=0).isoformat()],
-                         **{k:[sm.get(k)] for k in ('cloud_cover_mid','cloud_cover_high')}}}))
-                combined=sorted(list(zip(points,records))+centre,key=lambda z:(z[0]['column'],z[0]['distance_km']))
-                phase['text']='计算六分区云色';phase['detail']='本地计算，不再请求API'
-                res=evaluate([x[0] for x in combined],[x[1] for x in combined],event_dt,8,origin[0],origin[1],direction_key,
-                             aod=result.get('aod') or .2)
-                def finish():
+                model_id=_weather_model_id_from_label(self.vars['weather_model'].get())
+                raws=self._fetch_weather_locations([(q['lat'],q['lon']) for q in sites],model_id)
+                samples=cloud_evidence(sites,raws,event_dt)
+                diag=estimate(result,samples)
+                diag['raw_weather']=raws  # Case save keeps complete API responses.
+                result['sunset_compass']=self._json_safe(diag)
+                im=render(diag)
+                def done():
                     if not win.winfo_exists():return
-                    phase['text']='绘制六分区';phase['detail']='更新图像'
-                    newfig=draw(res,'朝霞' if direction_key=='morning' else '晚霞')
-                    nonlocal fig
-                    plt.close(fig)
-                    fig=newfig
-                    canvas.figure=fig
-                    fig.set_canvas(canvas)
-                    canvas.draw()
-                    phase["done"]=True
-                    label.configure(text=f"六分区观察者天空图；半径{radius:.0f}公里，中心线复用 + 左右6个采样位置。"
-                         f"候选受光分区{res['candidate_bins']}/6。"
-                         "注意：尚未获得侧向气压层及完整上游遮挡，不能作为正式霞云规模。")
-                win.after(0,finish)
+                    display(im)
+                    status.configure(text='完成：主线概率和峰值云色 + 云洞横向4点云量证据。注意侧向未做球面光路验证，图中不是独立方位概率。保存案例可保留完整响应。')
+                win.after(0,done)
             except Exception as exc:
+                # Optional transverse observations must not block the main compass.
                 msg=str(exc)
-                phase['done']=True;phase['status']='失败'
-                win.after(0,lambda:update_label('二维天气请求失败：'+msg+'。下方六分区空白图仍可查看。'))
+                diag=estimate(result,[])
+                diag['transverse_error']=msg
+                diag['transverse_status']='unavailable'
+                result['sunset_compass']=self._json_safe(diag)
+                try:
+                    im=render(diag)
+                except Exception as render_exc:
+                    error=str(render_exc)
+                    win.after(0,lambda:status.configure(text='二维图绘制失败：'+error))
+                    return
+                def show_partial():
+                    if not win.winfo_exists():return
+                    display(im)
+                    status.configure(text='横向采样失败：无法判断南北晚霞可见角度，图中不绘制预测多边形。错误：'+msg)
+                win.after(0,show_partial)
         threading.Thread(target=worker,daemon=True).start()
 
     def show_path_cloud_profile(self, direction_key):
@@ -5472,7 +5690,7 @@ class FireCloudApp(tk.Tk):
             os.makedirs(folder, exist_ok=True)
             model_label = self.vars["weather_model"].get()
             state = {
-                "schema_version": 1, "app_version": APP_TITLE,
+                "schema_version": 2, "app_version": APP_TITLE,
                 "saved_at": datetime.now().astimezone().isoformat(),
                 "place": self.vars["place"].get(), "date": self.vars["date"].get(),
                 "latitude": self.vars["lat"].get(), "longitude": self.vars["lon"].get(),
@@ -5493,12 +5711,21 @@ class FireCloudApp(tk.Tk):
                 json.dump(state, f, ensure_ascii=False, indent=2)
             # 完整保存沿线天气 API 返回值；若当前旧案例没有原始响应，至少保留所有已解析采样数据。
             raw = {k: {"raw_weather": v.get("raw_weather", []), "samples": v.get("samples", []),
-                       "profiles": v.get("profiles", []), "raw_details": v.get("raw_details", [])}
+                       "profiles": v.get("profiles", []), "raw_details": v.get("raw_details", []),
+                       "parallel_2d": v.get("parallel_2d"), "sunset_compass": v.get("sunset_compass"), "rainbow": v.get("rainbow"),
+                       "solar_geometry": v.get("geometry"), "boundaries": v.get("boundaries")}
                    for k, v in self.direction_results.items()}
             with open(os.path.join(folder, "weather_raw.json"), "w", encoding="utf-8") as f:
                 json.dump(self._json_safe(raw), f, ensure_ascii=False, indent=2)
             with open(os.path.join(folder, "request_cache.json"), "w", encoding="utf-8") as f:
                 json.dump(self._json_safe(self.case_request_cache), f, ensure_ascii=False, indent=2)
+            # A standalone diagnostics file is easier to inspect when improving rainbow predictions.
+            with open(os.path.join(folder, "rainbow_diagnostics.json"), "w", encoding="utf-8") as f:
+                json.dump(self._json_safe({k:{"rainbow":v.get("rainbow"),"event_dt":v.get("event_dt"),
+                    "azimuth":v.get("azimuth"),"origin":v.get("origin"),
+                    "parallel_2d":v.get("parallel_2d"),"sunset_compass":v.get("sunset_compass"),"samples":v.get("samples"),
+                    "profiles":v.get("profiles")} for k,v in self.direction_results.items()}),
+                    f, ensure_ascii=False, indent=2)
             with open(os.path.join(folder, "analysis_report.csv"), "w", encoding="utf-8-sig", newline="") as f:
                 w = csv.writer(f)
                 w.writerow(["方向", "分析项目", "结果", "直白解释", "数据/推断属性"])
