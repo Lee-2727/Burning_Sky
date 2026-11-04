@@ -65,3 +65,64 @@ def render(result,width=900,height=480):
 
 def png_bytes(result):
     b=BytesIO();render(result).save(b,format='PNG');return b.getvalue()
+
+
+def timeline_chart_bytes(result, timezone_name="Asia/Shanghai", threshold=30):
+    """Render 15-minute primary rainbow time-series bars. All timestamps are local.
+
+    Bar intensity represents primary quality. Only intervals with primary > threshold
+    are plotted; gaps remain empty. Never use the global best time as a bar time.
+    """
+    from datetime import datetime, timedelta, timezone
+    try:
+        from zoneinfo import ZoneInfo
+        tz=ZoneInfo(timezone_name)
+    except Exception:
+        tz=timezone(timedelta(hours=8))
+    rows=[]
+    for row in result.get('timeline',[]) or []:
+        try:
+            score=float(row.get('primary_index') or 0)
+            if not math.isfinite(score) or score<=threshold:continue
+            quality=float(row.get('primary_quality') or 0)
+            dt=datetime.fromisoformat(row['time'].replace('Z','+00:00'))
+            if dt.tzinfo is None:dt=dt.replace(tzinfo=timezone.utc)
+            dt=dt.astimezone(tz)
+            rows.append((dt, min(100,max(0,score)), min(100,max(0,quality))))
+        except (TypeError,ValueError,KeyError):continue
+    rows.sort(key=lambda r:r[0])
+    width=1040;height=420
+    im=Image.new('RGB',(width,height),'white');d=ImageDraw.Draw(im)
+    left=66;right=width-20;top=45;bottom=height-88
+    d.text((left,8),'主虹时序 · 概率式评分 / 质量深浅',font=_font(22),fill=(32,50,68))
+    for v in (0,25,50,75,100):
+        y=bottom-round((bottom-top)*v/100)
+        d.line((left,y,right,y),fill=(225,232,239),width=1)
+        d.text((12,y-9),str(v),font=_font(15),fill=(70,80,90))
+    d.line((left,top,left,bottom),fill=(85,95,105),width=2)
+    d.line((left,bottom,right,bottom),fill=(85,95,105),width=2)
+    if not rows:
+        d.text((left+85,top+115),'没有主虹评分超过30的时段',font=_font(24),fill=(95,105,115))
+    else:
+        # A shared 15-min timeline retains the real gaps between nonconsecutive candidates.
+        start=rows[0][0];end=rows[-1][0]+timedelta(minutes=15)
+        span=max(15,(end-start).total_seconds()/60)
+        for dt,score,quality in rows:
+            x1=left+round((right-left)*((dt-start).total_seconds()/60)/span)
+            x2=left+round((right-left)*(((dt-start).total_seconds()/60)+15)/span)
+            y=bottom-round((bottom-top)*score/100)
+            # Light pastel to deep saturated blue as quality increases.
+            t=quality/100
+            col=(round(193-143*t),round(221-124*t),round(245-54*t))
+            d.rectangle((x1+1,y,max(x1+2,x2-2),bottom-1),fill=col)
+        # Use evenly spaced labels, not one per bar when the window is dense.
+        count=min(7,max(2,int(span//30)+1))
+        for i in range(count):
+            frac=i/(count-1)
+            dt=start+timedelta(minutes=span*frac)
+            x=left+round((right-left)*frac)
+            label=dt.strftime('%H:%M')
+            d.text((max(left,x-23),bottom+12),label,font=_font(15),fill=(70,80,90))
+        best=max(rows,key=lambda r:r[1])
+        d.text((left,bottom+52),f'最高主虹 {best[1]:.0f}/100 · {best[0]:%H:%M} · 质量 {best[2]:.0f}/100',font=_font(17),fill=(35,55,75))
+    b=BytesIO();im.save(b,format='PNG');return b.getvalue()

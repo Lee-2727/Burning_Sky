@@ -406,6 +406,39 @@ if not run and st.session_state.get('rainbow_observer_result') is not None:
     st.caption(_obs['completeness']+'。'+_obs['confidence']+'；无需额外API请求。')
     with st.expander('观察点逐时诊断'):
         st.json(_obs['timeline'])
+def _web_summary_lines(summary):
+    """Exactly five logical display rows, preserving the original engine text."""
+    lines=str(summary or '').splitlines()
+    if not lines:return []
+    # Engine emits model timestamp, event, model/clouds, distances, base/AOD,
+    # and an optional verdict. Keep model on the same row as color/cloud data.
+    if len(lines)>=5 and lines[4].startswith('云底'):
+        parts=lines[2].split('　|　',1)
+        model=parts[0]
+        clouds=parts[1] if len(parts)>1 else ''
+        out=[lines[0],lines[1]+'　'+model,clouds,lines[3]+'　'+lines[4]]
+        out.append('　'.join(lines[5:]) if len(lines)>5 else '特殊判定：无')
+        return out
+    return lines
+
+
+def _web_rainbow_panel(rainbow, compact=True):
+    from burning_sky.rainbow_visual import png_bytes, summarize, timeline_chart_bytes
+    _cols=st.columns(4)
+    for _c,_label,_value in zip(_cols,['主虹机会','主虹质量','副虹机会','副虹质量'],
+                                  [rainbow.get('primary_index',0),rainbow.get('primary_quality',0),rainbow.get('secondary_index',0),rainbow.get('secondary_quality',0)]):
+        _c.metric(_label,f'{_value}/100')
+    _left,_right=st.columns([1,2],gap='small')
+    with _left:
+        st.image(png_bytes(rainbow),use_container_width=True,caption='虹弧示意（非实际完整度）')
+    with _right:
+        st.image(timeline_chart_bytes(rainbow),use_container_width=True,caption='彩虹时序图：柱高为主虹机会指数；颜色越深表示主虹质量越高；仅显示主虹 >30 的时刻')
+    st.caption('彩虹机会：'+str(rainbow.get('label','暂不可估'))+' · '+str(rainbow.get('score','—'))+'/100')
+    st.caption('；'.join(summarize(rainbow)['penalties']))
+    if rainbow.get('rainbow_completeness'):
+        st.caption('彩虹完整度：'+str(rainbow['rainbow_completeness']))
+
+
 if not run and st.session_state.get('rainbow_only_web_result') is not None:
     from burning_sky.rainbow_visual import png_bytes, summarize
     _rb=st.session_state['rainbow_only_web_result']
@@ -414,9 +447,7 @@ if not run and st.session_state.get('rainbow_only_web_result') is not None:
     for _c,_name,_value in zip(_m,['主虹概率式分值','主虹质量','副虹概率式分值','副虹质量'],
                                [_rb.get('primary_index',0),_rb.get('primary_quality',0),_rb.get('secondary_index',0),_rb.get('secondary_quality',0)]):
         _c.metric(_name,f'{_value}/100')
-    st.image(png_bytes(_rb),caption='虹弧示意图；不能由现有离散采样确定左右缺失、实际完整度或局部云遮挡')
-    _sm=summarize(_rb)
-    st.caption('；'.join(_sm['penalties']))
+    _web_rainbow_panel(_rb)
     with st.expander('详细分析（各时段、采样点及系数）'):
         st.json([{k:v for k,v in r.items() if k!='details'} for r in _rb.get('timeline',[])])
         st.json(_rb.get('environment_sources',{}))
@@ -810,7 +841,8 @@ if results:
         with col:
             st.subheader(title)
             if result.get("summary"):
-                st.markdown(_styled_cloud_summary(result["summary"]), unsafe_allow_html=True)
+                for _line in _web_summary_lines(result["summary"]):
+                    st.markdown(_styled_cloud_summary(_line), unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
             regular_score = inferred.get("regular_score", inferred.get("score", "—"))
             upper_score = inferred.get("upper_score", "—")
@@ -841,17 +873,8 @@ if results:
                 st.markdown(f'<div style="height:34px;border-radius:8px;background:{hex_color};border:1px solid #888"></div>', unsafe_allow_html=True)
             rainbow = result.get("rainbow", {})
             if rainbow:
-                from burning_sky.rainbow_visual import png_bytes, summarize
-                _rc=st.columns(4)
-                for _c,_label,_value in zip(_rc,['主虹分值','主虹质量','副虹分值','副虹质量'],[rainbow.get('primary_index',0),rainbow.get('primary_quality',0),rainbow.get('secondary_index',0),rainbow.get('secondary_quality',0)]):
-                    _c.metric(_label,f'{_value}/100')
-                st.image(png_bytes(rainbow),caption='虹弧示意；左右缺失及云遮挡位置未经验证')
-                st.caption('；'.join(summarize(rainbow)['penalties']))
-                st.caption(f"彩虹机会：{rainbow.get('label', '暂不可估')}（实验指数 {rainbow.get('score', '—')}/100）；{rainbow.get('light_method', '光路待验证')}；不是统计概率。")
-                if rainbow.get('time'):
-                    st.caption(f"候选峰值时间（UTC）：{rainbow['time']}；弧段采样覆盖 {rainbow.get('sector_coverage_pct', 0)}%（非彩虹完整度）。")
-                if rainbow.get('rainbow_completeness'):
-                    st.caption(f"彩虹完整度：{rainbow['rainbow_completeness']}")
+                st.markdown('**🌈 彩虹分析**')
+                _web_rainbow_panel(rainbow)
             curve = result.get("dynamic_light_curve", {})
             points = curve.get("samples", []) if isinstance(curve, dict) else []
             from burning_sky.cloud_genus import identify_cloud_genera
