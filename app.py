@@ -105,6 +105,9 @@ class WebForecastEngine(engine.FireCloudApp):
         self.morning_aod_status_var = _Var("")
         self.evening_aod_status_var = _Var("")
         self._error = None
+    def after(self, delay_ms, callback=None, *args):
+        """Tk compatibility: Streamlit renders results after computation, not via Tk callbacks."""
+        return None
     def _set_main_progress(self, percent, status=None):
         pass
     @staticmethod
@@ -329,6 +332,13 @@ with st.sidebar:
     rainbow_observer_text = st.text_input('可选观察点坐标（纬度,经度；留空为区域分析）',key='rainbow_observer_text')
     rainbow_observer_submit = st.button('分析该观察点（复用彩虹数据）',use_container_width=True)
     run = run_morning or run_evening or run_all
+    if run:
+        # A fire-cloud query replaces the standalone rainbow view. Keep the
+        # underlying rainbow computation cache, but not its old UI panel.
+        st.session_state.pop("rainbow_only_web_result", None)
+        st.session_state.pop("rainbow_web_meta", None)
+        st.session_state.pop("rainbow_observer_result", None)
+        st.session_state["show_multi_day_overview"] = False
     query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
 
 # Rainbow-only execution: do not invoke the fire-cloud forecast task.
@@ -386,7 +396,7 @@ if rainbow_observer_submit:
                 st.session_state['rainbow_observer_result']=evaluate_observer(_regional,_a,_b)
     except Exception as _exc:
         st.error('观察点坐标或计算失败：'+str(_exc))
-if st.session_state.get('rainbow_observer_result') is not None:
+if not run and st.session_state.get('rainbow_observer_result') is not None:
     _obs=st.session_state['rainbow_observer_result'];_best=_obs.get('best') or {}
     st.subheader('指定观察点 · 低分辨率几何匹配')
     _oc=st.columns(2)
@@ -396,7 +406,7 @@ if st.session_state.get('rainbow_observer_result') is not None:
     st.caption(_obs['completeness']+'。'+_obs['confidence']+'；无需额外API请求。')
     with st.expander('观察点逐时诊断'):
         st.json(_obs['timeline'])
-if st.session_state.get('rainbow_only_web_result') is not None:
+if not run and st.session_state.get('rainbow_only_web_result') is not None:
     from burning_sky.rainbow_visual import png_bytes, summarize
     _rb=st.session_state['rainbow_only_web_result']
     st.subheader('🌈 独立彩虹分析')
@@ -600,9 +610,8 @@ if run:
     else:
         _chosen_direction='evening' if query_direction=='evening' else 'morning'
         _rb_main=(getattr(runner,'rainbow_day_result',None) if query_direction=='all' else None) or (runner.direction_results.get(_chosen_direction) or {}).get('rainbow')
-        if _rb_main:
-            st.session_state['rainbow_only_web_result']=_rb_main
-            st.session_state['rainbow_web_meta']=(forecast_date.isoformat(),model_label,round(lat,5),round(lon,5),'全天' if query_direction=='all' else '晚霞' if _chosen_direction=='evening' else '朝霞')
+        # Fire-cloud query results are rendered below in the single-mode panel.
+        # Do not activate the standalone rainbow panel as a side effect.
         st.session_state["fire_cloud_last_results"] = runner.direction_results
         st.session_state["fire_cloud_last_report"] = runner.last_report
         st.session_state["fire_cloud_last_meta"] = {
