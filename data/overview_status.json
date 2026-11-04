@@ -4,12 +4,13 @@
   "direction": "evening",
   "direction_title": "晚霞",
   "started_at": "2026-11-04 08:38:48 CST",
-  "updated_at": "2026-11-04 08:42:16 CST",
+  "updated_at": "2026-11-04 08:44:55 CST",
   "current_model": "GFS Global",
   "model_index": 2,
   "model_total": 5,
   "completed_models": [
-    "ECMWF IFS 0.25°"
+    "ECMWF IFS 0.25°",
+    "GFS Global"
   ],
   "cities": [
     "合肥",
@@ -17,7 +18,7 @@
   ],
   "city_progress": 2,
   "city_total": 2,
-  "task_progress": 6,
+  "task_progress": 12,
   "task_total": 30,
   "next_update": "北京时间每日 00:00/04:00/20:00 朝霞；08:00/12:00/16:00 晚霞",
   "failure_count": 0,
