@@ -875,7 +875,7 @@ if results:
             if rainbow:
                 st.markdown('**🌈 彩虹分析**')
                 _rainbow_sunset_overlap=False
-                if _chosen_direction=='evening':
+                if key == 'evening':  # use the direction of this rendered result on every Streamlit rerun
                     try:
                         from datetime import datetime, timedelta, timezone
                         _sunset_dt,_=engine.find_sunset(forecast_date,8,lat,lon)
