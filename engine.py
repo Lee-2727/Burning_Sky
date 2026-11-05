@@ -1603,89 +1603,78 @@ class FireCloudApp(tk.Tk):
                     base_source_short = '手动值'
                 else:
                     base_source_short = '默认值' if cloud_base_mode == '自动' else base_source_raw
-                # 光路结果为所有受光估算的统一几何门控，避免剖面无通道而规模仍很高。
-                # 新可染色云占比：以日出/日落前后 60 分钟为窗口，按中高云覆盖量、
-                # 云层高度带和沿太阳方向的距离单元加权；同时检验球形地球上的直射受光
-                # 与观测点至云层的几何视线。云洞不再通过人为距离折减系数处理，而是由
-                # 各距离单元实际的云量分布进入积分。高度带为模式低/中/高云的近似范围。
+                # 同一时刻、同一空间范围：霞云距内的中高云参与可染色比例及规模。
+                # 晚霞只从日落时刻起统计；朝霞只统计日出前。不能把不同分钟
+                # 各自最亮的云层累计为一张同时受光的云图。
                 earth_r = 6371.0088
+                ordered = sorted(samples, key=lambda q: float(q.get("distance_km", 0)))
+                potential_limit = boundaries.get("fire_cloud_range_km")
                 tint_num = 0.0
                 tint_den = 0.0
-                ordered = sorted(samples, key=lambda q: float(q.get("distance_km", 0)))
-                if event_dt and ordered:
-                    cells = []
+                cloud_sum = 0.0
+                range_width = 0.0
+                cells = []
+                if event_dt and ordered and isinstance(potential_limit, (int, float)) and potential_limit > 0:
                     for si, sm in enumerate(ordered):
                         d = float(sm.get("distance_km", 0))
                         prev_d = float(ordered[si-1].get("distance_km", d)) if si else d
                         next_d = float(ordered[si+1].get("distance_km", d)) if si+1 < len(ordered) else d
                         left = max(0.0, (prev_d+d)/2.0) if si else 0.0
                         right = (d+next_d)/2.0 if si+1 < len(ordered) else d + max(5.0, (d-prev_d)/2.0 if si else 12.5)
-                        # The tintable ratio is over the geometric visible range,
-                        # NOT the local contiguous potential-cloud range.
-                        width = max(0.0, right-left)
+                        width = max(0.0, min(float(potential_limit), right)-left)
                         if width <= 0: continue
-                        for key, lo, hi in (("cloud_cover_mid",2.0,6.0),("cloud_cover_high",6.0,12.0)):
+                        layer_covers = []
+                        for key, lo, hi in (("cloud_cover_mid", 2.0, 6.0), ("cloud_cover_high", 6.0, 12.0)):
                             cover = sm.get(key)
-                            if not isinstance(cover,(int,float)) or not math.isfinite(float(cover)) or cover <= 0: continue
-                            # Only the geometrically visible part of each cloud layer contributes.
-                            horizon_km = math.sqrt(max(0.0,(earth_r+hi)**2-earth_r**2))
-                            visible_width = max(0.0, min(right, horizon_km)-left)
-                            if visible_width <= 0: continue
-                            weight = visible_width * (hi-lo) * float(cover) / 100.0
-                            cells.append((d,lo,hi,weight))
-                            tint_den += weight
+                            if not isinstance(cover, (int,float)) or not math.isfinite(float(cover)): continue
+                            cover = max(0.0, min(100.0, float(cover)))
+                            if cover <= 0: continue
+                            # 保留中高云加和的经验近似，云量和染色分母采用同一批采样单元。
+                            layer_covers.append(cover)
+                            cells.append((d, lo, hi, width * cover))
+                        cloud_sum += width * min(100.0, sum(layer_covers))
+                        range_width += width
+                    tint_den = sum(weight for _, _, _, weight in cells)
                     if tint_den > 0:
-                        # 逐分钟扫描事件前后半小时；任一时刻满足受光和可见条件即计入。
-                        for d, lo, hi, weight in cells:
-                            mid_h = (lo+hi)/2.0
-                            horizon_km = math.sqrt(max(0.0,(earth_r+hi)**2-earth_r**2))
-                            if d > horizon_km: continue
-                            lit_best = 0.0
-                            for minute in range(-30,31):
-                                dt = event_dt + timedelta(minutes=minute)
-                                solar_alt, _ = solar_position(dt, data["utc_offset"], data["lat"], data["lon"])
-                                # 目标云区处的局地太阳高度需修正地球曲率。
+                        # 取霞云距内所有云在同一分钟受光总量的峰值，而不是逐云取最佳分钟。
+                        minute_offsets = range(0, 31) if direction_key == 'evening' else range(-30, 1)
+                        for minute in minute_offsets:
+                            dt = event_dt + timedelta(minutes=minute)
+                            solar_alt, _ = solar_position(dt, data["utc_offset"], data["lat"], data["lon"])
+                            lit_sum = 0.0
+                            for d, lo, hi, weight in cells:
                                 local_alt = solar_alt + math.degrees(d/earth_r)
                                 def _shadow_angle(h):
-                                    return -math.degrees(math.acos(max(-1.0,min(1.0,earth_r/(earth_r+h)))))
+                                    return -math.degrees(math.acos(max(-1.0, min(1.0, earth_r/(earth_r+h)))))
                                 base_thr, top_thr = _shadow_angle(lo), _shadow_angle(hi)
                                 if local_alt >= base_thr: lit = 1.0
                                 elif local_alt <= top_thr: lit = 0.0
-                                else: lit = (local_alt-top_thr)/max(1e-9,base_thr-top_thr)
-                                lit_best = max(lit_best, lit)
-                                if lit_best >= 0.999: break
-                            tint_num += weight * lit_best
-                tintable_ratio = round(max(0.0,min(100.0,100.0*tint_num/tint_den))) if tint_den > 0 else (0 if ordered else None)
-                # Experimental one-dimensional channel availability factor.
-                # A cloud-free gap is a LIGHT CHANNEL, not a target cloud:
-                # never require a target cloud to lie *inside* a clear gap.
-                # The longest channel dominates; smaller channels contribute
-                # only a bounded secondary amount. This is not sky-area coverage.
+                                else: lit = (local_alt-top_thr)/max(1e-9, base_thr-top_thr)
+                                lit_sum += weight * lit
+                            tint_num = max(tint_num, lit_sum)
+                tintable_ratio = round(max(0.0, min(100.0, 100.0*tint_num/tint_den))) if tint_den > 0 else (0 if ordered else None)
+                # 沿用原有云洞通道修正；这不是对每片云的完整三维光线追踪。
                 accepted_gaps = boundaries.get("clear_gaps") or cloud_hole_search.get("gaps") or []
                 if tintable_ratio is not None and accepted_gaps:
                     reach_for_gaps = max(1., float(boundaries.get("cloud_edge_distance_km") or local_reach or 1.))
                     widths = sorted((max(0., float(g.get("size_km",0.))) for g in accepted_gaps), reverse=True)
                     channel_coverage = min(1., (widths[0] + .25*sum(widths[1:]))/reach_for_gaps)
-                    # Keep the original physically-lit fraction as the upper bound.
                     tintable_ratio = round(tintable_ratio * channel_coverage)
                 if search_stage == 'spherical_raytrace_no_clear_path':
                     tintable_ratio = 0
-                if tintable_ratio is None:
-                    tintable_text = "暂不可估"
-                else:
-                    tintable_text = f"约 {tintable_ratio}%"
-                # 霞云规模必须同时考虑天空中实际存在的中高云量与其中可染色的比例。
-                # 可染色云占比本身只是中高云资源的几何筛选比例，不能直接作为霞云规模。
+                tintable_text = "暂不可估" if tintable_ratio is None else f"约 {tintable_ratio}%"
+                local_cover = min(100.0, cloud_sum/range_width) if range_width > 0 else 0.0
+                burn_scale_index, burn_scale_label = calculate_burn_scale(local_cover, 0.0, tintable_ratio)
+                # 视野内低云提示仍保留原几何可见距离定义，不参与规模计算。
                 visible_cover = visible_cloud_coverage(samples)
-                burn_scale_index, burn_scale_label = calculate_burn_scale(
-                    visible_cover['mid'], visible_cover['high'], tintable_ratio)
                 inferred['visible_cloud_cover'] = visible_cover
                 inferred['visible_low_cloud_pct'] = round(visible_cover['low'], 1)
+                inferred['potential_range_mid_high_pct'] = round(local_cover, 2)
                 inferred["burn_scale_index"] = burn_scale_index
                 inferred["burn_scale_label"] = burn_scale_label
                 inferred["tintable_ratio"] = tintable_ratio
                 special_summary_line = (f"\n特殊判定：{inferred.get('verdict_override')}" if inferred.get("verdict_override") else "")
-                # Color score uses the same bounded local cloud resource as the tintable ratio.
+                # Color score uses the bounded local cloud resource.
                 potential_limit = boundaries.get("fire_cloud_range_km")
                 if potential_limit is not None:
                     local_color_samples = [q for q in samples if float(q.get("distance_km", 0)) <= float(potential_limit)]
@@ -1712,7 +1701,7 @@ class FireCloudApp(tk.Tk):
                     f"火烧云发生概率估计：{inferred['regular_score']}%（经验估计，尚未经历史样本校准）",
                     f"有利情景上限：{inferred['upper_score']}%（表示条件理想时的潜在机会，不代表实际发生概率）",
                     f"色彩表现评分：{inferred.get('color_score', '—')}/100（{inferred.get('color_score_label', '待估')}；{inferred.get('color_score_note', '经验指数')}）",
-                    f"可染色云占比：{tintable_text}。基于模式云量、高度带、太阳位置、地球曲率与几何可见性估算；不是卫星实测值。",
+                    f"可染色云占比：{tintable_text}。仅统计潜在霞云距内的中高云，并取朝霞日出前/晚霞日落后同一分钟的最大受光比例；云洞通道仍为近似修正，不是卫星实测值。",
                     model_time_text,
                     f"潜在霞云距（本地连续中高云末端）：{fire_range_text}；极限云距（几何上限）：{cloud_edge_text}；{gap_display_label}：{gap_text}",
                     (f"彩虹出现机会：暂不可估；{rainbow_result.get('note', '反太阳方向降水条件数据不可用。')}" if rainbow_result.get("score") is None else

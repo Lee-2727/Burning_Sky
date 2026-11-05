@@ -455,7 +455,7 @@ if not run and st.session_state.get('rainbow_only_web_result') is not None:
         st.json(_rb.get('environment_sources',{}))
         st.json(_sm['row'].get('details',[]))
     st.caption('数字为未经历史校准的概率式评分，不是统计发生概率。')
-    st.caption('火烧云规模：0% 不烧；大于0%且不足10% 微烧；10%–不足30% 小烧；30%–不足60% 中烧；60%–100% 大烧。光板天判定优先于不烧。')
+    st.caption('火烧云规模：0% 不烧；大于0%且不足10% 微烧；10%–不足30% 小烧；30%–不足60% 中烧；60%–100% 大烧。')
     if rainbow_only_web: st.stop()
 
 # 在多日概览页面点击左侧任一查询按钮时，优先执行单次查询。
@@ -1048,7 +1048,9 @@ if results:
             c1.metric("常规概率", f"{regular_score}%")
             c2.metric("上限概率", f"{upper_score}%")
             c3.metric("色彩评分", f"{color_score}/100")
-            st.caption('规模评价：0% 不烧；大于0%–不足10% 微烧；10–不足30% 小烧；30–不足60% 中烧；60–100% 大烧。光板天优先。')
+            st.caption('概率评价：低于45% 小概率；45%–75% 有概率；高于75% 高概率。概率为未经实况校准的经验估计。')
+            st.caption('色彩评价：低于30 平平无奇；30–不足50 普通；50–不足70 绚烂；70–不足90 史诗；90–100 世纪。')
+            st.caption('规模评价：0% 不烧；大于0%–不足10% 微烧；10–不足30% 小烧；30–不足60% 中烧；60–100% 大烧。')
             burn_label, burn_index = _burn_label(inferred, result.get("summary", ""))
             regular_label = _probability_label(regular_score)
             color_class = _color_label(color_score)

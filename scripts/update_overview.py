@@ -143,11 +143,9 @@ def _record(result):
     # Reuse the engine's visible-horizon scale rather than the 0-km cloud sample.
     burn_scale = numeric(inferred.get("burn_scale_index"))
     if burn_scale is None:
-        visible = inferred.get('visible_cloud_cover') or {}
-        mid = numeric(visible.get('mid'))
-        high = numeric(visible.get('high'))
-        burn_scale = (round(min(100.0, mid+high)*tintable_ratio/100.0, 2)
-                      if mid is not None and high is not None and tintable_ratio is not None else None)
+        local_cover = numeric(inferred.get('potential_range_mid_high_pct'))
+        burn_scale = (round(local_cover*tintable_ratio/100.0, 2)
+                      if local_cover is not None and tintable_ratio is not None else None)
     fire_score = (round(probability * burn_scale / 100.0, 2)
                   if probability is not None and burn_scale is not None else None)
     return {
