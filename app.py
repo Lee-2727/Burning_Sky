@@ -697,54 +697,81 @@ if st.session_state.get("show_multi_day_overview"):
             except (OSError, ValueError): pass
         if _cached:
             st.info("已自动读取缓存，数据获得时间："+str(_cached.get("obtained_at", "未知"))+"。点击查询才重新联网。")
-        _do_run = st.button("查询 / 强制刷新三模式三日朝晚霞", type="primary", key="manual_overview_submit")
-        _display = _cached
+        # GitHub Actions async manual overview: never run 18 forecasts inside Streamlit.
+        import requests as _gh_requests
+        import time as _gh_time
+        import re as _gh_re
+        import subprocess as _gh_subprocess
+        def _gh_secret(name, default=""):
+            try: return str(st.secrets.get(name, default))
+            except Exception: return str(os.environ.get(name, default))
+        _repo = _gh_secret("BURNING_SKY_GITHUB_REPOSITORY") or _gh_secret("GITHUB_REPOSITORY")
+        if not _repo:
+            try:
+                _remote = _gh_subprocess.run(["git","remote","get-url","origin"],cwd=_APP_DIR,capture_output=True,text=True,timeout=2)
+                _match = _gh_re.search(r"github\.com[:/]([^/\s]+/[^/\s]+?)(?:\.git)?$",_remote.stdout.strip())
+                if _match: _repo = _match.group(1)
+            except (OSError, _gh_subprocess.TimeoutExpired): pass
+        _branch = _gh_secret("BURNING_SKY_GITHUB_BRANCH", "main")
+        _token = _gh_secret("BURNING_SKY_GITHUB_TOKEN")
+        _configured = bool(_token and _gh_re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", _repo))
+        _api_base = f"https://api.github.com/repos/{_repo}"
+        _headers = {"Authorization":f"Bearer {_token}","Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}
+        def _gh_call(method,path,**kwargs):
+            resp = _gh_requests.request(method,_api_base+path,headers=_headers,timeout=12,**kwargs)
+            if not resp.ok: raise RuntimeError(f"GitHub API HTTP {resp.status_code}: {resp.text[:220]}")
+            return resp.json() if resp.content else None
+        _active = []
+        _latest = None
+        if _configured:
+            try:
+                _runs = _gh_call("GET","/actions/workflows/manual-overview.yml/runs",params={"per_page":30,"event":"workflow_dispatch"}).get("workflow_runs",[])
+                _active = [r for r in _runs if r.get("status") in ("queued","in_progress","waiting","pending","requested")]
+                _matching = [r for r in _runs if _cache_id in (r.get("display_title") or "")]
+                _latest = _matching[0] if _matching else None
+            except Exception as _e: st.warning("无法查询后台任务："+str(_e))
+        else:
+            st.warning("需要在 Streamlit Secrets 设置 BURNING_SKY_GITHUB_TOKEN 和 BURNING_SKY_GITHUB_REPOSITORY 才能启动/停止后台任务。")
+        _btn_start,_btn_stop,_btn_refresh = st.columns([2,1,1])
+        with _btn_start:
+            _do_run = st.button("▶ 启动 GitHub 后台更新",type="primary",disabled=not _configured or bool(_active),key="manual_overview_submit")
+        with _btn_stop:
+            _do_stop = st.button("■ 停止任务",disabled=not _configured or not _active,key="manual_overview_cancel")
+        with _btn_refresh:
+            _do_refresh = st.button("刷新状态",key="manual_overview_refresh")
         if _do_run:
-            if not _mplace:
-                st.error("请填写查询地点。")
-            else:
-                _bar = st.progress(0, text="开始查询 0/18")
-                _records, _errors = [], []
-                _done = 0
-                _stop_for_limit = False
-                for _di in range(3):
-                    if _stop_for_limit: break
-                    _day = _mdate + _MTD(days=_di)
-                    for _model in _models:
-                        if _stop_for_limit: break
-                        for _direction in ("morning", "evening"):
-                            _bar.progress(_done/18, text=f"{_done}/18 · {_day} · {_model} · {_direction}")
-                            _vals = {"place":_mplace,"date":_day.isoformat(),"lat":str(_mlat),"lon":str(_mlon),
-                                     "elevation":str(_melev),"weather_model":_model,"cloud_base_mode":"自动剖面推算",
-                                     "morning_cloud_base_km":"2.0","evening_cloud_base_km":"2.0",
-                                     "morning_aod":"","evening_aod":""}
-                            try:
-                                _runner = WebForecastEngine(_vals)
-                                _runner.skip_rainbow_for_overview = True
-                                _runner._fetch_weather_task(_direction)
-                                _result = _runner.direction_results.get(_direction)
-                                if not _result: raise RuntimeError(str(getattr(engine.messagebox,"last_error",None) or "预测未返回结果"))
-                                _inf = _result.get("inferred") or {}
-                                _records.append({"date":_day.isoformat(),"model":_model,"direction":_direction,
-                                    "probability":_inf.get("regular_score"),"color_score":_inf.get("color_score"),
-                                    "burn_scale":_inf.get("burn_scale_index")})
-                            except Exception as _err:
-                                _reason = str(_err)
-                                _errors.append(f"{_day} {_model} {_direction}: {_reason}")
-                                if "429" in _reason or "limit exceeded" in _reason.lower() or "限流" in _reason:
-                                    _stop_for_limit = True
-                            _done += 1
-                            _bar.progress(_done/18, text=f"已处理 {_done}/18")
-                            if _stop_for_limit: break
-                _display = {"identity":_identity,"obtained_at":_MDT.now(_mtz).isoformat(timespec="seconds"),
-                            "records":_records,"errors":_errors}
-                if len(_records)==18 and not _errors:
-                    _tmp = _cache_file.with_suffix(".tmp")
-                    _tmp.write_text(json.dumps(_display,ensure_ascii=False,indent=2),encoding="utf-8")
-                    _tmp.replace(_cache_file)
-                    st.success("18 项查询全部完成，已写入今日缓存。")
-                else:
-                    st.warning(f"完成 {_done}/18 项，其中成功 {len(_records)} 项；不覆盖旧的完整缓存。")
+            try:
+                _gh_call("POST","/actions/workflows/manual-overview.yml/dispatches",json={"ref":_branch,"inputs":{"place":_mplace,"lat":str(_mlat),"lon":str(_mlon),"elev":str(_melev),"date":_mdate.isoformat(),"request_id":_cache_id}})
+                st.success("已提交 GitHub Actions 后台任务，可以关闭网页。")
+                st.rerun()
+            except Exception as _e: st.error("启动失败："+str(_e))
+        if _do_stop:
+            try:
+                # Only cancel the run started by this manual overview workflow.
+                for _r in _active:
+                    _gh_call("POST",f"/actions/runs/{_r['id']}/cancel")
+                st.info("已请求取消后台任务。GitHub 可能需要片刻才停止。")
+                st.rerun()
+            except Exception as _e: st.error("取消失败："+str(_e))
+        if _active:
+            _r = _active[0]
+            st.info(f"GitHub Actions 运行中：{_r.get('display_title','')} · {_r.get('status')} · 运行编号 {_r.get('run_number','?')}")
+            st.caption("关闭网页不影响后台运行。停止按钮会取消当前手动概览工作流的活动任务。")
+        elif _latest:
+            st.caption(f"最近一次相同条件的后台任务：{_latest.get('status')} / {_latest.get('conclusion') or '未结束'}")
+        # GitHub raw data is authoritative after publication; the Streamlit instance may be stale.
+        if _repo and _gh_re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",_repo):
+            try:
+                from urllib.parse import quote as _quote
+                _url=f"https://raw.githubusercontent.com/{_repo}/{_quote(_branch,safe='')}/data/manual_overview_runs/{_cache_id}.json"
+                _resp=_gh_requests.get(_url,params={"v":str(int(_gh_time.time()//30))},timeout=8,headers={"Cache-Control":"no-cache"})
+                if _resp.ok:
+                    _published=_resp.json()
+                    if _published.get("identity")==_identity:
+                        _display=_published
+                        st.caption(f"已发布结果：{_display.get('completed',0)}/18 · {_display.get('state','未知')} · {_display.get('obtained_at','')}")
+            except (_gh_requests.RequestException,ValueError): pass
+        if _display is None: _display = _cached
         if _display:
             _rows = [{"日期":r["date"],"时段":"朝霞" if r["direction"]=="morning" else "晚霞",
                       "模式":r["model"],"常规概率":r.get("probability"),"色彩分":r.get("color_score"),
