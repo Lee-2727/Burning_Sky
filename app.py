@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+# The Streamlit foreground query is interactive; GitHub Actions remains batch-limited.
+os.environ["BURNING_SKY_REQUEST_PROFILE"] = "interactive"
 import re
 import math
 import io

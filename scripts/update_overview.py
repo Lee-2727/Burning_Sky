@@ -20,7 +20,7 @@ CITY_CONFIG_FILE = ROOT / "overview_cities.txt"
 
 # Requests are processed conservatively within each model batch; each completed
 # model batch is published before the next model starts.
-REQUEST_INTERVAL_SECONDS = 0  # 真正限速在 engine 的每次 HTTP 发出前执行
+REQUEST_INTERVAL_SECONDS = 20  # 恢复原定时更新任务间隔；不叠加逐请求5/min限速
 
 def load_city_config():
     cities = []
@@ -349,7 +349,7 @@ def main():
                     result = runner.direction_results.get(direction)
                     record = _record(result) if result else None
                     error = engine.messagebox.last_error
-                    if error or not isinstance(record, dict) or not isinstance(record.get("probability"), (int, float)):
+                    if error or not isinstance(record, dict) or any(not isinstance(record.get(k), (int, float)) for k in ("probability", "color_score", "burn_scale")):
                         reason = str(error[1]) if error else "预测流程未返回有效概率结果"
                         failures.append({"city": city, "date": day.isoformat(), "model": label, "error": reason[:1000]})
                         if "Hourly API request limit exceeded" in reason or "429" in reason:
@@ -362,7 +362,7 @@ def main():
                                   updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
                                   failure_count=len(failures), last_error=(failures[-1] if failures else None))
                     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-                    print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: {'valid' if not error and record and isinstance(record.get('probability'), (int,float)) else 'failed'} ({task_index}/{status['task_total']})", flush=True)
+                    print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: {'valid' if not error and record and all(isinstance(record.get(k),(int,float)) for k in ('probability','color_score','burn_scale')) else 'failed'} ({task_index}/{status['task_total']})", flush=True)
                     if limit_hit:
                         print("Hourly API limit detected; stopping this batch early to avoid wasting further requests.", flush=True)
                         break

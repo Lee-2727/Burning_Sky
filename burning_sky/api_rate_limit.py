@@ -16,8 +16,11 @@ import urllib.request
 
 _LOCK = threading.RLock()
 _STATE = Path(os.environ.get('BURNING_SKY_RATE_STATE', '/tmp/burning_sky_open_meteo_rate.json'))
-_MIN_INTERVAL = 12.5  # 4.8 requests/minute, including metadata and retries
-_MAX_PER_MINUTE = 5
+# Explicit profiles: scheduled restores the previously working task-level pacing;
+# manual uses an 8/min rolling window; interactive remains 10/min.
+_PROFILE = os.environ.get('BURNING_SKY_REQUEST_PROFILE', 'interactive').lower()
+_POLICY = {'manual': (7.6, 8), 'interactive': (4.0, 10)}
+_MIN_INTERVAL, _MAX_PER_MINUTE = _POLICY.get(_PROFILE, (0.0, 0))
 _COOLDOWN = 20 * 60
 
 
@@ -43,7 +46,9 @@ def _reserve():
                     state = {}
                 now = time.time()
                 recent = [float(t) for t in state.get('recent', []) if now - 60 < float(t) <= now]
-                wait = max(0.0, float(state.get('cooldown_until', 0)) - now)
+                if float(state.get('cooldown_until', 0)) > now:
+                    raise RuntimeError('HTTP 429: Open-Meteo 冷却中，本批任务停止而不是等待20分钟')
+                wait = 0.0
                 if recent:
                     wait = max(wait, recent[-1] + _MIN_INTERVAL - now)
                 if len(recent) >= _MAX_PER_MINUTE:
@@ -82,7 +87,7 @@ def _mark_429():
 
 
 def limited_urlopen(req, *args, **kwargs):
-    if _is_open_meteo(req):
+    if _is_open_meteo(req) and _PROFILE in _POLICY:
         _reserve()
     try:
         return urllib.request.urlopen(req, *args, **kwargs)

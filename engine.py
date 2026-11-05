@@ -1585,6 +1585,8 @@ class FireCloudApp(tk.Tk):
                 # Debug30: Desktop rainbow diagnostics in console and per-case file.
                 # No additional weather API calls; records existing intermediate results.
                 try:
+                    if getattr(self, "skip_rainbow_for_overview", False):
+                        raise StopIteration("overview skips rainbow diagnostics")
                     import json as _rainbow_json
                     print(f"\n[RAINBOW DEBUG] {direction_name} | 分析方向={direction_name}", flush=True)
                     print(f"[RAINBOW DEBUG] 机会指数={rainbow_result.get('score')} /100；峰值时间={rainbow_result.get('time')}；光路={rainbow_result.get('light_method')}", flush=True)
@@ -1593,6 +1595,8 @@ class FireCloudApp(tk.Tk):
                         print('[RAINBOW TIME] '+_rainbow_json.dumps(_row,ensure_ascii=False,default=str),flush=True)
                     if rainbow_result.get('score') is None:
                         print('[RAINBOW ERROR] '+str(rainbow_result.get('note','未知错误')),flush=True)
+                except StopIteration:
+                    pass
                 except Exception as _diag_exc:
                     print('[RAINBOW DEBUG ERROR] '+str(_diag_exc),flush=True)
                 if rainbow_result.get("score") is None:

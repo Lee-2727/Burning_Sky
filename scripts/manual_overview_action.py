@@ -54,6 +54,8 @@ def main():
                     result=runner.direction_results.get(direction)
                     if not result: raise RuntimeError('预测未返回结果')
                     inf=result.get('inferred') or {}
+                    if any(not isinstance(inf.get(k), (int, float)) for k in ('regular_score', 'color_score', 'burn_scale_index')):
+                        raise RuntimeError('预测结果不完整：概率、色彩分或火烧云规模缺失')
                     records.append({'date':day.isoformat(),'model':model,'direction':direction,
                                     'probability':inf.get('regular_score'), 'color_score':inf.get('color_score'),
                                     'burn_scale':inf.get('burn_scale_index')})
