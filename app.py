@@ -7,6 +7,7 @@ import re
 import math
 import io
 import json
+import html
 import zipfile
 import importlib.util
 import sys
