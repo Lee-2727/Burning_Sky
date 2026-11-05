@@ -19,30 +19,82 @@ def parse_overrides(text):
     return rows
 
 def apply_overrides(samples, overrides):
+    """Edit point samples at their actual coordinates; never blend a clear interval
+    with the cloudiness outside the user-specified boundaries."""
     if not overrides: return samples
-    ordered=sorted(samples,key=lambda x:float(x.get('distance_km',0)))
-    for i,sample in enumerate(ordered):
+    for sample in samples:
         if sample.get('_manual_override_applied'): continue
         sample['_manual_override_applied']=True
         d=float(sample['distance_km'])
-        left=0. if i==0 else (d+float(ordered[i-1]['distance_km']))/2
-        right=(d+float(ordered[i+1]['distance_km']))/2 if i+1<len(ordered) else min(600.,d+max(12.5,(d-left)))
-        width=max(1e-6,right-left)
-        modified=False
         for a,b,low,mid,high in overrides:
-            fraction=max(0.,min(right,b)-max(left,a))/width
-            if fraction<=0:continue
+            if not (a <= d < b): continue
+            keys=[]
             for key,value in zip(('cloud_cover_low','cloud_cover_mid','cloud_cover_high'),(low,mid,high)):
-                if value is None:continue
-                previous=sample.get(key)
-                previous=float(previous) if isinstance(previous,(int,float)) else value
-                sample[key]=max(0.,min(100.,previous*(1-fraction)+value*fraction))
-                modified=True
-            if modified:
-                sample['cloud_cover']=max(sample.get('cloud_cover_low') or 0,sample.get('cloud_cover_mid') or 0,sample.get('cloud_cover_high') or 0)
+                if value is None: continue
+                sample[key]=float(value);keys.append(key)
+            if keys:
+                sample['cloud_cover']=max(float(sample.get(k) or 0) for k in ('cloud_cover_low','cloud_cover_mid','cloud_cover_high'))
                 sample['center_cloud_cover_low']=sample.get('cloud_cover_low')
                 sample['cross_track_low_cover']=[sample.get('cloud_cover_low')]*6
                 sample['cross_track_low_ge70_count']=6 if (sample.get('cloud_cover_low') or 0)>=70 else 0
                 sample['cross_track_low_ge70_fraction']=1. if (sample.get('cloud_cover_low') or 0)>=70 else 0.
                 sample['manual_cloud_override']=True
+                sample['manual_cloud_override_keys']=keys
     return samples
+
+
+def apply_overrides_to_profiles(profiles, samples, overrides):
+    """Synchronize pressure-level cloud cover with edited distance samples.
+
+    Preserve pressure heights/humidity and the existing vertical shape for partial
+    edits; exact 0% and 100% edits are honored for the affected altitude band.
+    No network access. All geometry and tracing use the same edited profiles.
+    """
+    if not overrides:
+        return profiles
+    # Store interval metadata on every profile, including profiles whose centres
+    # fall outside the edited interval: cell construction needs exact boundaries.
+    for profile in profiles:
+        profile['manual_override_intervals'] = [list(row) for row in overrides]
+    lookup={round(float(s['distance_km']),5):s for s in samples if isinstance(s.get('distance_km'),(int,float))}
+    bands=((0.,2.,'cloud_cover_low'),(2.,6.,'cloud_cover_mid'),(6.,float('inf'),'cloud_cover_high'))
+    for profile in profiles:
+        if not isinstance(profile.get('distance_km'),(int,float)):
+            continue
+        sample=lookup.get(round(float(profile['distance_km']),5))
+        if not sample or not sample.get('manual_cloud_override'):
+            continue
+        levels=profile.get('levels') or []
+        changed=False
+        for lo,hi,key in bands:
+            if key not in sample.get('manual_cloud_override_keys',()):
+                continue
+            target=sample.get(key)
+            if not isinstance(target,(int,float)):
+                continue
+            relevant=[lv for lv in levels if isinstance(lv.get('height_agl_km'),(int,float)) and lo<=float(lv['height_agl_km'])<hi]
+            if not relevant:
+                continue
+            originals=[float(lv['cloud_cover']) for lv in relevant if isinstance(lv.get('cloud_cover'),(int,float))]
+            mean=sum(originals)/len(originals) if originals else 0.
+            for lv in relevant:
+                old=lv.get('cloud_cover')
+                lv.setdefault('_original_cloud_cover', old)
+                if not isinstance(old,(int,float)):
+                    old=mean
+                if target<=0:
+                    new=0.
+                elif target>=100:
+                    new=100.
+                elif mean>0:
+                    new=max(0.,min(100.,float(old)*float(target)/mean))
+                else:
+                    new=float(target)
+                lv['cloud_cover']=new
+                changed=True
+        if changed:
+            profile['manual_cloud_override']=True
+            # Derived cloud-base markers can be stale after edits; the plotting
+            # and raytrace use the edited pressure levels as their source.
+            profile['manual_cloud_override_note']='Pressure-level cloud covers edited; heights unchanged'
+    return profiles

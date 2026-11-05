@@ -43,7 +43,7 @@ def _earth_blocked(target_h, sun_alt, max_upstream_km):
     return target_ray_height(target_h,sun_alt,closest)<0
 
 def multi_target_profile(samples, profiles, event_dt, utc_offset, origin_lat, origin_lon,
-                         direction='morning', target_limit_km=100.0, step_minutes=3):
+                         direction='morning', target_limit_km=100.0, step_minutes=1):
     """Check multiple targets and cloud heights along the original solar-axis profile.
 
     The source profiles are a 1-D section. A clear ray is only verified within
@@ -70,7 +70,7 @@ def multi_target_profile(samples, profiles, event_dt, utc_offset, origin_lat, or
             targets.append({'distance_km':d,'height_km':h,'cover':float(lv['cloud_cover']),
                             'elevation_deg':apparent_elevation(d,h),
                             'latitude':p.get('lat'),'longitude':p.get('lon')})
-    minutes=range(-30,0,step_minutes) if direction=='morning' else range(1,31,step_minutes)
+    minutes=range(-30,1,step_minutes) if direction=='morning' else range(0,31,step_minutes)
     times=[event_dt+timedelta(minutes=m) for m in minutes]
     for target in targets:
         d=target['distance_km'];h=target['height_km']
@@ -206,94 +206,85 @@ def adaptive_profile_diagnostic(profiles, event_dt, utc_offset, origin_lat, orig
             'warning':'risk为未校准经验指标；不能据此宣称真实云隙或统计透光概率。'}
 
 def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction,
-                             reach_km, min_width_km=15.0):
-    """Bounded, sampled-section equivalent light channels; never claim 3D certainty.
+                             reach_km, min_width_km=15.0, extension_factor=1.5):
+    """Conservative local-target ray test with a verified upstream source window.
 
-    Reuse existing pressure levels, sample time adaptively around transitions,
-    and group illuminated target-distance cells into clipped contiguous spans.
-    Cloud cover is an occupancy-risk proxy, not an opaque solid.
+    A distant illuminated cloud is NEVER a clear-sky source. The extension is
+    a verification horizon, not a physical extinction distance. Incomplete
+    profiles yield unresolved_data, never a fabricated clear gap.
     """
-    valid=sorted((p for p in (profiles or []) if p.get('levels') and
-                  isinstance(p.get('distance_km'),(int,float))),key=lambda p:p['distance_km'])
-    if len(valid)<2 or not isinstance(reach_km,(int,float)) or reach_km<=0:
-        return {'gaps':[],'status':'unresolved_data','evaluations':0}
-    end=float(valid[-1]['distance_km']);limit=min(float(reach_km),end)
-    cells=profile_cloud_cells(valid)
-    targets=[]
+    valid = sorted((p for p in (profiles or []) if p.get('levels') and
+                    isinstance(p.get('distance_km'), (int, float))),
+                   key=lambda p: float(p['distance_km']))
+    reach = max(0., float(reach_km or 0.))
+    required = reach * max(1.01, float(extension_factor))
+    if len(valid) < 2 or reach <= 0 or float(valid[-1]['distance_km']) + 1e-6 < required:
+        return {'gaps': [], 'status': 'unresolved_data', 'evaluations': 0,
+                'required_profile_km': round(required, 2),
+                'available_profile_km': float(valid[-1]['distance_km']) if valid else 0.,
+                'note': '上游剖面未覆盖1.5倍极限距离，不能把采样边界当作晴空光源'}
+    cells = profile_cloud_cells(valid)
+    # Only the cloud-bearing targets inside the potential local cloud reach.
+    targets = []
     for p in valid:
-        d=float(p['distance_km'])
-        if d>limit:continue
-        cloud=[lv for lv in p['levels'] if isinstance(lv.get('cloud_cover'),(int,float))
-               and lv['cloud_cover']>=25 and isinstance(lv.get('height_agl_km'),(int,float))
-               and lv['height_agl_km']>=1.5]
-        for lv in sorted(cloud,key=lambda x:-x['cloud_cover'])[:3]:
-            targets.append((d,float(lv['height_agl_km']),float(lv['cloud_cover']),p))
-    if not targets:return {'gaps':[],'status':'no_target_cloud','evaluations':0}
-    evaluated=0;illuminated=[];diagnostics=[]
+        d = float(p['distance_km'])
+        if d > reach: continue
+        for lv in p['levels']:
+            cover, h = lv.get('cloud_cover'), lv.get('height_agl_km')
+            if isinstance(cover, (int,float)) and cover >= 25 and isinstance(h, (int,float)) and h >= 1.5:
+                targets.append((d,float(h),float(cover),p))
+    if not targets:
+        return {'gaps': [], 'status': 'no_target_cloud', 'evaluations': 0}
+    # A source must be an actual clear segment BEYOND the local reach.
+    # This is a sampled-pressure-profile approximation, not a 3-D sky proof.
+    source_cells = [c for c in cells if float(c['start_km']) >= reach and
+                    float(c['end_km']) <= required]
+    source_bins = {}
+    for c in source_cells:
+        idx = int(float(c['sample_distance_km']) // 25)
+        source_bins[idx] = max(source_bins.get(idx, 0.), float(c['cloud_cover']))
+    if not source_bins or min(source_bins.values()) >= 15.:
+        return {'gaps': [], 'status': 'no_verified_source', 'evaluations': 0,
+                'note': '延伸剖面内没有确认的低云量入口；远端云受光不算本地云洞'}
+    evaluations = 0
+    confirmed = []
+    diagnostics = []
+    offsets = range(-30, 1, 3) if direction == 'morning' else range(0, 31, 3)
     for d,h,cover,p in targets:
-        plat=p.get('lat');plon=p.get('lon')
+        plat,plon = p.get('lat'),p.get('lon')
         if not isinstance(plat,(int,float)) or not isinstance(plon,(int,float)):
-            # Without actual target coordinates, a position-specific solar angle
-            # cannot be verified; do not fabricate a positive path.
             continue
-        cache={}
-        def assess(t):
-            nonlocal evaluated
-            key=round(t,5)
-            if key in cache:return cache[key]
-            dt=event_dt+timedelta(minutes=t)
-            alt,_=solar_position(dt,utc_offset,plat,plon)
-            if _earth_blocked(h,alt,end-d):
-                answer=(False,1.0,alt)
-            else:
-                # Evaluate the maximum cover in each independent 25 km segment;
-                # repeated pressure levels must not multiply the same cloud.
-                bins={}
-                for c in cells:
-                    a=max(d+1.,float(c['start_km']));b=min(end,float(c['end_km']))
-                    if b<=a:continue
-                    if not _intersects(h,alt,c,d,end):continue
-                    strength=min(.98,max(0.,float(c['cloud_cover'])/100.))
-                    index=int(((a+b)*.5)//25)
-                    bins[index]=max(strength,bins.get(index,0.))
-                risk=1.-math.prod(1.-v for v in bins.values())
-                answer=(risk<.7,risk,alt)
-            cache[key]=answer; evaluated+=1
-            return answer
-        times=list(range(-30,0,3)) if direction=='morning' else list(range(1,31,3))
-        for t in times:assess(float(t))
-        def refine(a,b,depth=0):
-            if depth>=7 or b-a<=.05:return
-            mid=(a+b)/2
-            aa=assess(a)[0];bb=assess(b)[0];mm=assess(mid)[0]
-            if aa!=bb or aa!=mm or bb!=mm or depth<2:
-                refine(a,mid,depth+1);refine(mid,b,depth+1)
-        for a,b in zip(times,times[1:]):refine(float(a),float(b))
-        good=[(t,v) for t,v in cache.items() if v[0]]
-        if good:
-            best=min(good,key=lambda z:z[1][1]);illuminated.append(d)
-            diagnostics.append({'distance_km':d,'height_km':h,'best_risk':round(best[1][1],3),
-                                'minute_offset':best[0],'solar_altitude_deg':round(best[1][2],3)})
-    distances=sorted(set(illuminated));gaps=[]
-    # Adjacent target-distance cells are grouped by the original sampling grid.
-    # Never extrapolate beyond the physical reach.
-    grid=sorted(set(float(p['distance_km']) for p in valid if float(p['distance_km'])<=limit))
-    for d in distances:
-        i=grid.index(d)
-        left=max(0.,(grid[i-1]+d)/2 if i else d)
-        right=min(limit,(d+grid[i+1])/2 if i+1<len(grid) else limit)
-        if right<=left:continue
-        if gaps and left<=gaps[-1]['end_km']+1e-5:
-            gaps[-1]['end_km']=round(max(gaps[-1]['end_km'],right),2)
-            gaps[-1]['size_km']=round(gaps[-1]['end_km']-gaps[-1]['start_km'],2)
-        else:gaps.append({'start_km':round(left,2),'end_km':round(right,2),
-                          'size_km':round(right-left,2),'source':'adaptive_profile_equivalent'})
-    gaps=[g for g in gaps if g['size_km']>=min_width_km]
-    return {'gaps':gaps,'status':'candidate' if gaps else ('no_candidate' if evaluated else 'unresolved_data'),
-            'evaluations':evaluated,'illuminated_target_count':len(illuminated),
+        best = None
+        for minute in offsets:
+            dt = event_dt + timedelta(minutes=minute)
+            alt,_ = solar_position(dt,utc_offset,plat,plon)
+            evaluations += 1
+            if _earth_blocked(h,alt,required-d): continue
+            # Require a geometrically clear source bin along this SAME ray.
+            upstream = {}
+            for c in cells:
+                a=max(d+0.05,float(c['start_km']))
+                b=min(required,float(c['end_km']))
+                if b <= a or not _intersects(h,alt,c,d,required): continue
+                idx=int(((a+b)*0.5)//25)
+                upstream[idx]=max(upstream.get(idx,0.),min(.98,max(0.,float(c['cloud_cover'])/100.)))
+            source_clear = any(idx*25 >= reach and v < .15 for idx,v in upstream.items())
+            # No upstream intersection at a known clear source bin also qualifies.
+            source_clear = source_clear or any(idx*25 >= reach and
+                idx not in upstream and val < 15 for idx,val in source_bins.items())
+            if not source_clear: continue
+            risk=1.-math.prod(1.-v for v in upstream.values())
+            if risk < .7 and (best is None or risk < best[0]): best=(risk,minute)
+        if best is not None:
+            confirmed.append(d)
+            diagnostics.append({'distance_km':d,'height_km':h,
+                                'best_risk':round(best[0],3),'minute_offset':best[1]})
+    # These are illuminated LOCAL TARGET ranges, NOT clear-sky gaps.
+    # Do not publish them as clear_gaps or use their width for cloud scale.
+    return {'gaps': [], 'status': 'local_targets_verified' if confirmed else 'no_verified_source',
+            'evaluations':evaluations,'illuminated_target_count':len(confirmed),
             'diagnostics':diagnostics[:40],
-            'note':'一维气压剖面经验透光风险<0.7的候选等效通道；非实测云洞或真实概率'}
-
+            'note':'目标云层受光诊断不等于晴空云洞；未证实真实晴空间隔，不向clear_gaps写入远端受光区间'}
 
 def grid_points(origin_lat,origin_lon,bearing,radius_km):
     """Three angular columns x three distances + local; 10 locations maximum."""

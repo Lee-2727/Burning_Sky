@@ -86,6 +86,14 @@ def profile_cloud_cells(profiles, threshold=25.0, blur_horizontal_km=10.0, blur_
             total += w*cover
             weighted += w
         return total/weighted if weighted > 1e-12 else original
+    # Exact manual intervals are authoritative; the display-cell midpoint is
+    # not an artificial cloud boundary. Disable blur for edited sections so a
+    # neighbouring cloudy sample cannot bleed into an explicitly clear zone.
+    intervals = next((p.get('manual_override_intervals') for p in valid
+                      if p.get('manual_override_intervals')), [])
+    if intervals:
+        blur_horizontal_km = 0.0
+        blur_vertical_km = 0.0
     out = []
     distances = [float(p['distance_km']) for p in valid]
     for i, prof in enumerate(valid):
@@ -99,12 +107,28 @@ def profile_cloud_cells(profiles, threshold=25.0, blur_horizontal_km=10.0, blur_
             # Humidity is retained as a diagnostic, but does not create an
             # opaque solid wall by itself when measured cloud cover is available.
             effective = softened_cover(d, h, float(cc)) if isinstance(cc, (int,float)) else None
-            if effective is None or effective < threshold:
+            if effective is None:
                 continue
             bottom=(float(levels[j-1]['height_agl_km'])+h)/2 if j else max(0.,h-.35)
             top=(h+float(levels[j+1]['height_agl_km']))/2 if j+1<len(levels) else h+.35
-            out.append({'start_km':left,'end_km':right,'bottom_km':bottom,'top_km':top,
-                        'cloud_cover':effective,'raw_cloud_cover':cc,'sample_distance_km':d,'pressure_hpa':lv.get('pressure_hpa')})
+            # Split each display cell at every manual interval boundary.
+            # Outside the edit, retain the original cloud cover; inside it,
+            # use the exact override, independently of sampling-grid centres.
+            boundaries=sorted(set([left,right]+[float(x) for row in intervals for x in row[:2]
+                                            if left < float(x) < right]))
+            for x,y in zip(boundaries,boundaries[1:]):
+                mid=(x+y)/2
+                segment_cover=float(lv.get('_original_cloud_cover',cc) or 0) if intervals else effective
+                if intervals:
+                    for a,b,low,med,high in intervals:
+                        if float(a)<=mid<float(b):
+                            if h<2: value=low
+                            elif h<6: value=med
+                            else: value=high
+                            if value is not None: segment_cover=float(value)
+                if segment_cover < threshold: continue
+                out.append({'start_km':x,'end_km':y,'bottom_km':bottom,'top_km':top,
+                            'cloud_cover':segment_cover,'raw_cloud_cover':cc,'sample_distance_km':d,'pressure_hpa':lv.get('pressure_hpa')})
     return out
 
 

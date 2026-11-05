@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 from .spherical_raytrace import destination
 
 def transverse_sites(lat, lon, azimuth, boundaries):
-    gaps = boundaries.get('clear_gaps') or []
+    gaps = boundaries.get('observed_clear_gaps') or boundaries.get('clear_gaps') or []
     gaps = [g for g in gaps if isinstance(g,dict) and g.get('start_km') is not None and g.get('end_km') is not None]
     if not gaps: return [], None
     best = max(gaps,key=lambda g:float(g.get('size_km') or (float(g['end_km'])-float(g['start_km']))))
@@ -47,7 +47,7 @@ def estimate(result, sites):
     inferred=result.get('inferred') or {}
     az=float(result.get('azimuth') or 270)
     boundaries=result.get('boundaries') or {}
-    gaps=boundaries.get('clear_gaps') or []
+    gaps=boundaries.get('observed_clear_gaps') or boundaries.get('clear_gaps') or []
     score=float(inferred.get('regular_score') or 0)
     rgb=inferred.get('color_rgb') or [248,115,65]
     if not isinstance(rgb,(list,tuple)) or len(rgb)!=3:rgb=[248,115,65]
@@ -130,4 +130,39 @@ def render(diag):
     if diag.get('transverse_error'):
         msg=str(diag['transverse_error'])[:85]
         d.text((35,862),'横向请求错误：'+msg,font=_font(16),fill='#b91c1c')
+    return im
+
+
+def render_compact(diag, size=760):
+    """Web-only compact compass: no explanatory paragraphs inside the image."""
+    from PIL import Image, ImageDraw
+    im=Image.new('RGB',(size,size),'#f8fafc')
+    d=ImageDraw.Draw(im,'RGBA')
+    cx=cy=size//2;R=size*.365
+    def point(az,r):
+        a=math.radians(az)
+        return (cx+math.sin(a)*r,cy-math.cos(a)*r)
+    for fraction in (.25,.5,.75,1.):
+        rad=R*fraction
+        d.ellipse((cx-rad,cy-rad,cx+rad,cy+rad),outline='#cbd5e1',width=2)
+    for i,label in enumerate(('北','东北','东','东南','南','西南','西','西北')):
+        az=i*45
+        d.line((*point(az,0),*point(az,R)),fill='#d4dde8',width=2)
+        d.text(point(az,R+size*.048),label,font=_font(20),fill='#334155',anchor='mm')
+    az=float(diag.get('sun_azimuth') or 0)
+    ex,ey=point(az,R)
+    for i in range(20):
+        if i%2==0:
+            d.line((*point(az,R*i/20),*point(az,R*(i+1)/20)),fill='#eab308',width=4)
+    rays=diag.get('rays') or []
+    lateral=[r for r in rays if r.get('offset_km')!=0 and r.get('strength_proxy') is not None]
+    if len(lateral)==4 and diag.get('transverse_status')=='sampled':
+        active=[r for r in rays if r.get('strength_proxy') is not None]
+        points=[point(float(r['azimuth']),R*max(0,min(100,float(r['strength_proxy'])))/100) for r in active]
+        rgb=tuple(int(max(0,min(255,v))) for v in (diag.get('peak_rgb') or [245,120,95])[:3])
+        if len(points)>=3:
+            d.polygon([(cx,cy)]+points,fill=(*rgb,100))
+            d.line(points,fill=(*rgb,255),width=4,joint='curve')
+        for p in points:d.ellipse((p[0]-5,p[1]-5,p[0]+5,p[1]+5),fill=(*rgb,255))
+    d.ellipse((cx-6,cy-6,cx+6,cy+6),fill='#0f172a')
     return im

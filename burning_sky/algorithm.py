@@ -1273,6 +1273,28 @@ def apply_path_score_pair(inferred, geometry, boundaries, samples=None):
     连续云路难穿透、光板天及低概率结论。"""
     low, mid, high, total = (inferred.get(k) for k in ("low", "mid", "high", "total"))
     aod = inferred.get("aod")
+    # The distant clear corridor is an illumination path, NOT a missing-cloud
+    # target area.  Score target-cloud resource from a fixed near-observer window.
+    # Keep all path-wide cloud diagnostics intact for visibility and obstruction.
+    local_resource_samples = []
+    if samples:
+        local_resource_samples = [row for row in samples
+                                  if isinstance(row.get('distance_km'), (int, float))
+                                  and 0 <= float(row['distance_km']) <= 100.0]
+    if local_resource_samples:
+        def _local_resource_mean(key):
+            vals = [float(row[key]) for row in local_resource_samples
+                    if isinstance(row.get(key), (int, float))]
+            return sum(vals) / len(vals) if vals else None
+        local_mid = _local_resource_mean('cloud_cover_mid')
+        local_high = _local_resource_mean('cloud_cover_high')
+        local_total_resource = _local_resource_mean('cloud_cover')
+        local_low_resource = _local_resource_mean('cloud_cover_low')
+        inferred['score_local_resource_range_km'] = 100.0
+        inferred['score_local_mid_high'] = (local_mid, local_high)
+        mid, high = local_mid, local_high
+        if local_total_resource is not None: total = local_total_resource
+        if local_low_resource is not None: low = local_low_resource
     target_values = [v for v in (mid, high) if isinstance(v, (int, float))]
     target = sum(target_values) / len(target_values) if target_values else None
     local = next((r for r in geometry.get("rows", []) if r.get("distance_km") == 0), None)

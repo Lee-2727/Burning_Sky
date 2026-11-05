@@ -314,6 +314,10 @@ with st.sidebar:
                 else:
                     st.session_state["case_bundle_state"] = json.loads(_zf.read(_state_name).decode("utf-8"))
                     st.session_state["case_bundle_cache"] = json.loads(_zf.read(_cache_name).decode("utf-8"))
+                    from burning_sky.case_manifest import check_zip_manifest
+                    _warnings = check_zip_manifest(_zf)
+                    if _warnings:
+                        st.warning("案例完整性提示：" + "；".join(_warnings[:4]))
                     st.success(f"案例已加载：{st.session_state['case_bundle_state'].get('date')} · {st.session_state['case_bundle_state'].get('model_code')}。")
         except Exception as _exc:
             st.error(f"案例 ZIP 读取失败：{_exc}")
@@ -832,7 +836,18 @@ if run:
         with zipfile.ZipFile(_bundle, "w", zipfile.ZIP_DEFLATED) as _zf:
             _zf.writestr("analysis_state.json", json.dumps(_case_state_out, ensure_ascii=False, indent=2))
             _zf.writestr("request_cache.json", json.dumps(engine.FireCloudApp._json_safe(_web_case_cache if not use_case_cache else (st.session_state.get("case_bundle_cache") or {})), ensure_ascii=False))
-            _zf.writestr("weather_raw.json", json.dumps(engine.FireCloudApp._json_safe({k: {"raw_weather": v.get("raw_weather", []), "samples": v.get("samples", []), "profiles": v.get("profiles", []), "raw_details": v.get("raw_details", [])} for k, v in _combined_results.items()}), ensure_ascii=False))
+            _zf.writestr("weather_raw.json", json.dumps(engine.FireCloudApp._json_safe({k: {"raw_weather": v.get("raw_weather", []), "samples": v.get("samples", []), "profiles": v.get("profiles", []), "raw_details": v.get("raw_details", []), "boundaries": v.get("boundaries"), "parallel_2d": v.get("parallel_2d"), "sunset_compass": v.get("sunset_compass"), "rainbow": v.get("rainbow")} for k, v in _combined_results.items()}), ensure_ascii=False))
+            from burning_sky.case_manifest import write_manifest_zip
+            write_manifest_zip(_zf, _case_state_out, {
+                "cloud_base_mode": cloud_base_mode,
+                "cloud_base_inputs": _case_state_out["cloud_base_inputs"],
+                "aod_inputs": _case_state_out["aod_inputs"],
+                "query_direction": query_direction,
+                "manual_cloud_override": st.session_state.get('cloud_manual_override_text', ''),
+                "effective_model": model_label,
+                "local_cloud_geometry": "continuous_face_strict",
+                "primary_spherical_path_gate": True,
+            })
         st.download_button("保存当前查询案例 ZIP", data=_bundle.getvalue(), file_name=f"BurningSky_{forecast_date.isoformat()}_{place}_{_case_state_out['model_code']}.zip", mime="application/zip")
 
 def _styled_cloud_summary(summary):
@@ -981,9 +996,9 @@ def _web_profile_figure(result):
 def _web_gap_text(result):
     inferred=result.get("inferred") or {}
     boundaries=result.get("boundaries") or {}
-    gaps=boundaries.get("clear_gaps") or []
-    if not gaps:return "可能不透光"
-    label="云洞（等效）" if inferred.get("cloud_hole_search_stage")=="spherical_raytrace_clear" else "云洞"
+    gaps=boundaries.get("observed_clear_gaps") or boundaries.get("clear_gaps") or []
+    if not gaps:return "未识别到晴空间隔；球面光路需单独判断"
+    label="晴空间隔（云量识别，非受光证明）" if boundaries.get("observed_clear_gaps") else "云洞"
     spans=[]
     for g in gaps:
         try:spans.append(f"{float(g['start_km']):.0f}–{float(g['end_km']):.0f} km（{float(g['size_km']):.0f} km）")
@@ -1020,7 +1035,7 @@ if st.session_state.get('fire_cloud_original_results'):
                     if not _replay.direction_results:
                         raise RuntimeError('离线重新计算没有返回结果。')
                     st.session_state['fire_cloud_last_results']=_replay.direction_results
-                    st.success('已按人工修正重新计算（无 API 请求）。')
+                    st.success('已同步修正采样云量和气压层剖面，并重新计算球面光路（无 API 请求）。')
                 st.rerun()
             except Exception as _exc:
                 st.error(f'人工云图修正失败：{_exc}')
@@ -1029,6 +1044,47 @@ results = st.session_state.get("fire_cloud_last_results")
 meta = st.session_state.get("fire_cloud_last_meta", {})
 if results:
     st.caption(f"最近一次结果：{meta.get('place','')} · {meta.get('date','')} · {meta.get('model','')} · {meta.get('fetched_at') or '时间信息不可用'}")
+    # Export the *current* replayed case, including manual cloud edits and full cached responses.
+    _current_cache = st.session_state.get('fire_cloud_replay_cache') or {}
+    _current_values = st.session_state.get('fire_cloud_replay_values') or {}
+    if _current_cache and _current_values:
+        _state_now = {
+            'schema_version': 3, 'app_version': 'Burning Sky',
+            'saved_at': __import__('datetime').datetime.now().astimezone().isoformat(),
+            'place': meta.get('place'), 'date': meta.get('date'),
+            'latitude': meta.get('lat'), 'longitude': meta.get('lon'),
+            'elevation_m': meta.get('elevation'), 'weather_model': meta.get('model'),
+            'model_code': {'ecmwf_ifs025':'EC','ncep_gfs_global':'GFS','icon_global':'ICON',
+                'ecmwf_aifs025_single':'AIFS','cma_grapes_global':'CMA_GRAPES'}.get(
+                engine._weather_model_id_from_label(meta.get('model','')), 'EC'),
+            'direction_results': engine.FireCloudApp._json_safe({k:{kk:vv for kk,vv in v.items() if kk!='raw_weather'}
+                for k,v in results.items()}),
+            'last_report': st.session_state.get('fire_cloud_last_report',''),
+        }
+        _current_zip=io.BytesIO()
+        with zipfile.ZipFile(_current_zip,'w',zipfile.ZIP_DEFLATED) as _zf:
+            _zf.writestr('analysis_state.json',json.dumps(_state_now,ensure_ascii=False,indent=2))
+            _zf.writestr('request_cache.json',json.dumps(engine.FireCloudApp._json_safe(_current_cache),ensure_ascii=False))
+            _zf.writestr('weather_raw.json',json.dumps(engine.FireCloudApp._json_safe({k:{
+                'raw_weather':v.get('raw_weather',[]),'samples':v.get('samples',[]),
+                'profiles':v.get('profiles',[]),'raw_details':v.get('raw_details',[]),
+                'boundaries':v.get('boundaries'),'rainbow':v.get('rainbow'),
+                'parallel_2d':v.get('parallel_2d')} for k,v in results.items()}),ensure_ascii=False))
+            from burning_sky.case_manifest import write_manifest_zip
+            from burning_sky.cloud_overrides import parse_overrides
+            _manual_text=st.session_state.get('cloud_manual_override_text','')
+            try: _manual_rows=parse_overrides(_manual_text)
+            except (ValueError,TypeError): _manual_rows=[]
+            write_manifest_zip(_zf,_state_now,{
+                'request_inputs':_current_values,'manual_cloud_override_text':_manual_text,
+                'manual_cloud_override_rows':_manual_rows,
+                'primary_spherical_path_gate':True,'local_cloud_geometry':'continuous_face_strict'})
+        st.download_button('保存完整当前案例 ZIP（含人工修正）',data=_current_zip.getvalue(),
+            file_name=f"BurningSky_Repro_{meta.get('date','case')}_{_state_now['model_code']}.zip",
+            mime='application/zip',key='download_complete_case')
+    else:
+        st.warning('当前缺少完整请求缓存，不能导出可保证离线复测的案例。')
+
     visible_direction = meta.get("query_direction", "all")
     directions = [("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")]
     if visible_direction in ("morning", "evening"):
@@ -1122,9 +1178,59 @@ if results:
             else:
                 st.caption("当前气压层资料不足，暂无法识别云属。")
             st.markdown("**" + _web_gap_text(result) + "**")
+            # Optional lateral compass: never make extra API requests during normal forecast.
+            # Four side points are a cloud-cover proxy, not independent ray-traced probabilities.
+            from burning_sky.sunset_compass import transverse_sites, cloud_evidence, estimate, render_compact
+            with st.expander("二维八方位图", expanded=False):
+                _compass_key = f"web_compass_{meta.get('date')}_{meta.get('lat')}_{meta.get('lon')}_{meta.get('model')}_{key}"
+                _compass_diag = st.session_state.get(_compass_key) or result.get('sunset_compass')
+                _origin = result.get('origin')
+                _event_dt = result.get('event_dt')
+                if isinstance(_event_dt, str):
+                    try: _event_dt = __import__('datetime').datetime.fromisoformat(_event_dt)
+                    except ValueError: _event_dt = None
+                if not _compass_diag:
+                    st.caption("需要额外获取 4 个横向采样点；仅点击按钮时联网。")
+                    if st.button("生成八方位图（4点采样）",key=_compass_key+'_run'):
+                        if not _origin or _event_dt is None:
+                            st.warning("缺少观测坐标或事件时刻。")
+                        else:
+                            _compass_boundaries = dict(result.get('boundaries') or {})
+                            _compass_boundaries['clear_gaps'] = _compass_boundaries.get('observed_clear_gaps') or _compass_boundaries.get('clear_gaps') or []
+                            _sites, _gap = transverse_sites(float(_origin[0]),float(_origin[1]),float(result.get('azimuth') or 0),_compass_boundaries)
+                            if not _sites:
+                                _compass_diag=estimate(result,[])
+                                st.info("没有可用的典型云洞横向采样中心，方位覆盖未知。")
+                            else:
+                                try:
+                                    with st.spinner("正在读取 4 个横向云量采样点……"):
+                                        _model_id=engine._weather_model_id_from_label(meta['model'])
+                                        if use_case_cache:
+                                            engine._CASE_REQUEST_CONTEXT={'mode':'replay','cache':st.session_state.get('case_bundle_cache') or {}}
+                                        else:
+                                            engine._CASE_REQUEST_CONTEXT={'mode':'capture','cache':st.session_state.get('fire_cloud_replay_cache') or {}}
+                                        try:
+                                            _raw=engine.FireCloudApp._fetch_weather_locations([(s['lat'],s['lon']) for s in _sites],_model_id)
+                                        finally:
+                                            engine._CASE_REQUEST_CONTEXT=None
+                                    _compass_diag=estimate(result,cloud_evidence(_sites,_raw,_event_dt))
+                                except Exception as _exc:
+                                    st.warning('横向采样失败：'+str(_exc))
+                            if _compass_diag:
+                                st.session_state[_compass_key]=_compass_diag
+                if _compass_diag:
+                    st.image(render_compact(_compass_diag),use_container_width=True)
+                    st.caption("黄色虚线：太阳方向；彩色区域：横向云量支持的相对受光代理，不是八方位独立概率或已验证的球面光路。")
             _profile_fig = _web_profile_figure(result)
             if _profile_fig is not None:
                 st.image(_profile_fig, use_container_width=True)
+            with st.expander("二维霞云 · 低中高云空间分布", expanded=False):
+                from burning_sky.web_cloud_2d import render_cloud_2d
+                _cloud_layer = st.selectbox("二维云图图层", ["综合", "低云", "中云", "高云"], key=f"cloud2d_{key}")
+                _map_image, _map_note = render_cloud_2d(result, _cloud_layer)
+                if _map_image is not None:
+                    st.image(_map_image, use_container_width=True)
+                st.caption(_map_note)
             st.subheader("云色时序")
             st.image(_draw_dynamic_color_curve(points, curve.get("peak"), key), use_container_width=True)
             if points:

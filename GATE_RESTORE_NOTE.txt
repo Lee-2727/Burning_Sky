@@ -1,0 +1,1 @@
+Restores the sampled-target illumination probability gate from Integrated Light Test. Removes legacy high-score fallback when sampled target illumination is zero. Does not fix spherical tracing geometry or prove a clear path. No rainbow changes.

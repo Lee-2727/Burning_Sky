@@ -17,7 +17,7 @@ Python 3.11 / Tkinter，无第三方依赖。
 
 import math
 import colorsys
-from burning_sky.cloud_overrides import parse_overrides, apply_overrides
+from burning_sky.cloud_overrides import parse_overrides, apply_overrides, apply_overrides_to_profiles
 import json
 import urllib.parse
 import urllib.request
@@ -636,6 +636,8 @@ class FireCloudApp(tk.Tk):
         self.fetch_buttons["morning"].pack(side="left", fill="x", expand=True, padx=(0, 4))
         self.fetch_buttons["evening"] = ttk.Button(query_row, text="查询晚霞", style="Accent.TButton", command=lambda: self.fetch_weather("evening"))
         self.fetch_buttons["evening"].pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self.skip_rainbow_single_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(btns, text="朝霞/晚霞单独查询不分析彩虹（支持旧案例缓存）", variable=self.skip_rainbow_single_var).pack(anchor="w", pady=(0, 4))
         self.fetch_buttons["both"] = ttk.Button(btns, text="一键查询朝晚霞", style="Accent.TButton", command=lambda: self.fetch_weather("both"))
         self.fetch_buttons["both"].pack(fill="x", pady=(0, 6))
         # Rainbow-only workflow: no cloud-base profiles, CAMS AOD, or fire-cloud requests.
@@ -1349,7 +1351,7 @@ class FireCloudApp(tk.Tk):
                 # Newly fetched extended samples must receive the same override before all scoring.
                 apply_overrides(samples, _manual_overrides)
                 # 后台多模概览跳过彩虹专用采样与计算；单次单模式保持原逻辑。
-                if getattr(self, "skip_rainbow_for_overview", False):
+                if getattr(self, "skip_rainbow_for_overview", False) or (requested_direction != "both" and getattr(self, "skip_rainbow_single_var", None) is not None and self.skip_rainbow_single_var.get()):
                     rainbow_result = {}
                 else:
                     self._set_main_progress(base_progress + 37, f"{direction_name}：估算反太阳方向彩虹条件……")
@@ -1393,6 +1395,9 @@ class FireCloudApp(tk.Tk):
                     profiles = [{"distance_km": d, "estimated_base_km": None,
                                  "status": f"剖面获取失败：{profile_exc}", "levels": []}
                                 for d in distances]
+                # Keep rendered pressure section and spherical ray tracing aligned
+                # with the edited cloud corridor, without any additional API call.
+                apply_overrides_to_profiles(profiles, samples, _manual_overrides)
                 elevation_filter_result = apply_high_elevation_nearby_low_cloud_filter(
                     samples, profiles, data.get("elevation_m", 0.0), radius_km=80.0)
                 geometry = analyze_cloud_base_geometry(
@@ -1411,12 +1416,17 @@ class FireCloudApp(tk.Tk):
                 if not isinstance(local_reach, (int, float)):
                     local_reach = max_reach if max_reach > 0 else None
                 boundaries = estimate_path_cloud_boundaries(samples, local_reach)
+                # Preserve sampled physical clear intervals separately from verified illumination.
+                # Never feed these diagnostic gaps back into geometric scoring.
+                boundaries['observed_clear_gaps'] = [dict(g) for g in (boundaries.get('clear_gaps') or [])]
+                boundaries['observed_clear_gap_count'] = len(boundaries['observed_clear_gaps'])
                 # Cloud-hole decision order: direct clear-gap quick screen first;
                 # if none exists, spherical ray tracing is the sole geometric fallback.
                 cloud_hole_search = staged_cloud_hole_search(samples, local_reach)
                 search_stage = cloud_hole_search.get("stage")
+                inferred["quick_screen_diagnostic"] = {"stage":search_stage,"candidate_gaps":list(cloud_hole_search.get("gaps") or []),"note":"仅供诊断；不作为受光证据"}
                 _ray_debug = None
-                if search_stage != "quick_screen":
+                if True:  # TRACE_PRIMARY: quick screen is diagnostic only; never bypass ray tracing
                     try:
                         from burning_sky.spherical_raytrace import scan_window as _spherical_scan, render_schematic_map as _render_spherical_map, equivalent_gaps as _equivalent_gaps
                         _target_base = float(local_geometry.get("cloud_base_km") or cloud_base_km) if local_geometry else float(cloud_base_km)
@@ -1451,8 +1461,26 @@ class FireCloudApp(tk.Tk):
                         _adaptive = adaptive_equivalent_gaps(profiles, event_dt, data['utc_offset'],
                             data['lat'], data['lon'], direction_key, float(local_reach or 0))
                         _ray_debug['adaptive_equivalent'] = _adaptive
-                        _equiv = _adaptive['gaps']
-                        if _equiv:
+                        # Adaptive candidate targets are not cloud holes. Never promote them to clear_gaps.
+                        # A ray must be traced from a LOCAL target, with upstream evidence beyond
+                        # the geometric reach; otherwise the result is unresolved, not clear.
+                        _equiv = []
+                        inferred['adaptive_target_candidates'] = _adaptive.get('gaps', [])
+                        _profile_end = max((float(p.get('distance_km', 0)) for p in profiles), default=0.0)
+                        _source_check_km = 1.5 * float(local_reach or 0)
+                        inferred['upstream_source_check'] = {
+                            'required_km': round(_source_check_km, 2),
+                            'available_km': round(_profile_end, 2),
+                            'status': 'insufficient_cached_profile' if _profile_end < _source_check_km else 'no_verified_local_source',
+                            'note': '远端目标受光不能证明本地受光；尚未证实光路来源，不接受等效云洞。'}
+                        if _adaptive.get('status') == 'local_targets_verified' and _adaptive.get('illuminated_target_count',0) > 0:
+                            search_stage = 'spherical_raytrace_targets_verified'
+                            cloud_hole_search.update({'stage':search_stage,'gaps':[],
+                                'target_count_verified':_adaptive['illuminated_target_count']})
+                            boundaries['clear_gaps'] = []
+                            boundaries['clear_gap_count'] = 0
+                            boundaries['gap_status'] = 'target_ray_verified'
+                        elif _equiv:
                             search_stage = "spherical_raytrace_clear"
                             _gap = max(_equiv, key=lambda g: g["size_km"])
                             cloud_hole_search.update({"stage": search_stage, "gaps": _equiv,
@@ -1468,7 +1496,7 @@ class FireCloudApp(tk.Tk):
                             boundaries["gap_status"] = "effective_gap_candidate"
                         else:
                             _has_unresolved = _adaptive['status']=='unresolved_data' or any(r.get("status") == "unresolved_data" for r in _ray_debug.get("results", []))
-                            search_stage = "spherical_raytrace_unresolved" if _has_unresolved else "spherical_raytrace_no_clear_path"
+                            search_stage = "spherical_raytrace_unresolved" if (_has_unresolved or _profile_end < _source_check_km) else "spherical_raytrace_no_clear_path"
                             cloud_hole_search.update({"stage": search_stage, "gaps": [],
                                 "clear_windows": [], "raytrace_status_counts":
                                 {k:_statuses.count(k) for k in sorted(set(_statuses))}})
@@ -1492,57 +1520,35 @@ class FireCloudApp(tk.Tk):
                         inferred["spherical_raytrace_debug_error"] = str(_ray_exc)
                         inferred.setdefault("score_notes", []).append(
                             "球面光线追踪执行失败，未将未知状态当作透光证据；按无有效透光路径保守处理。")
-                else:
-                    _quick_gaps = cloud_hole_search.get("gaps") or []
-                    if _quick_gaps:
-                        _largest = max(_quick_gaps, key=lambda g: float(g.get("size_km", 0)))
-                        _farthest = max(_quick_gaps, key=lambda g: float(g.get("end_km", 0)))
-                        boundaries["clear_gaps"] = _quick_gaps
-                        boundaries["clear_gap_count"] = len(_quick_gaps)
-                        boundaries["clear_gap_start_km"] = _largest.get("start_km")
-                        boundaries["clear_gap_end_km"] = _largest.get("end_km")
-                        boundaries["largest_gap_size_km"] = _largest.get("size_km", 0)
-                        boundaries["farthest_gap_distance_km"] = _farthest.get("end_km")
-                        boundaries["farthest_gap_start_km"] = _farthest.get("start_km")
-                        boundaries["gap_status"] = "effective_gap_candidate"
-                    inferred.setdefault("score_notes", []).append(
-                        "极限云距内已通过直接采样识别晴空区；本次不调用球面追踪，旧高度角求交集已停用。")
                 inferred["cloud_hole_search_stage"] = search_stage
                 inferred["cloud_hole_angle_intervals_deg"] = []
                 boundaries["cloud_hole_search_stage"] = search_stage
                 boundaries["cloud_hole_angle_intervals_deg"] = []
+                # The observed clear intervals are the SAME input for native and manual cloud fields.
+                # Restore them for the legacy probability score, independently of the
+                # spherical target-illumination verdict (which is stored separately).
+                _observed_gaps = boundaries.get('observed_clear_gaps') or []
+                boundaries['clear_gaps'] = [dict(g) for g in _observed_gaps]
+                boundaries['clear_gap_count'] = len(_observed_gaps)
+                boundaries['largest_gap_size_km'] = max((float(g.get('size_km',0)) for g in _observed_gaps),default=0.0)
+                if _observed_gaps:
+                    _biggest = max(_observed_gaps,key=lambda g:float(g.get('size_km',0)))
+                    boundaries['clear_gap_start_km'] = _biggest.get('start_km')
+                    boundaries['clear_gap_end_km'] = _biggest.get('end_km')
+                    boundaries['farthest_gap_distance_km'] = max(float(g.get('end_km',0)) for g in _observed_gaps)
+                    boundaries['farthest_gap_start_km'] = max(_observed_gaps,key=lambda g:float(g.get('end_km',0))).get('start_km')
+                    boundaries['gap_status'] = 'sampled_clear_gap'
                 inferred = apply_path_score_pair(inferred, geometry, boundaries, samples=samples)
                 inferred = apply_low_cloud_screen_constraint(inferred, samples=samples, source="online_path",
                                                              max_relevant_distance_km=max_reach,
                                                              local_low_cloud_above_ground=local_low_above_ground)
                 inferred = apply_peak_cloud_color(inferred, boundaries, samples)
                 inferred = enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
-                # Hard guard: if the spherical fallback found no verified clear path,
-                # do not allow subsequent scoring/verdict stages to resurrect a high score.
-                if search_stage in ("spherical_raytrace_no_clear_path", "spherical_raytrace_unresolved", "spherical_raytrace_error"):
-                    _before_regular = inferred.get("regular_score", inferred.get("score", 0))
-                    inferred["regular_score"] = inferred["score"] = (0 if search_stage == "spherical_raytrace_no_clear_path" else min(20, int(round(float(_before_regular or 0)))))
-                    inferred["upper_score"] = min(35, int(round(float(inferred.get("upper_score", 35) or 0))))
-                    inferred["cloud_hole_search_stage"] = search_stage
-                    inferred["verdict"] = "球面光路未证实透光"
-                    inferred["score_notes"] = list(inferred.get("score_notes") or []) + [
-                        "最终概率硬上限：无有效球面透光路径，常规概率≤20%，上限概率≤35%。"]
-                # Experimental cloud-beam correction: the same fixed-angle, 5-ray
-                # vertical bundle used in the three-city comparison. Do not alter
-                # the accepted cloud holes or peak-color calculations.
-                if search_stage not in ("spherical_raytrace_no_clear_path", "spherical_raytrace_unresolved", "spherical_raytrace_error"):
-                    try:
-                        from burning_sky.beam_occlusion import estimate_beam_clear_fraction
-                        beam = estimate_beam_clear_fraction(profiles)
-                        inferred["beam_occlusion"] = beam
-                        if beam.get("coefficient") is not None:
-                            raw_probability = float(inferred.get("regular_score") or 0)
-                            corrected = int(round(raw_probability * beam["coefficient"]))
-                            inferred["regular_score"] = inferred["score"] = corrected
-                            inferred.setdefault("score_notes", []).append(
-                                f"光路束遮挡实验修正：{raw_probability:.0f}% × {beam['coefficient']:.3f} = {corrected}%")
-                    except Exception as beam_error:
-                        inferred["beam_occlusion"] = {"error": str(beam_error)}
+                _uncapped_path_score = float(inferred.get("regular_score", inferred.get("score", 0)) or 0)
+                # Keep the established probability scale.  Final geometric gate is
+                # applied after target-illumination results have been computed.
+                # No secondary beam-coefficient probability multiplier.  The legacy
+                # path score already contains cloud-gap/geometry evidence.
                 # Legacy height-angle intersection / fallback multiplier is intentionally disabled.
                 if elevation_filter_result.get("applied"):
                     inferred.setdefault("score_notes", []).append(
@@ -1553,10 +1559,13 @@ class FireCloudApp(tk.Tk):
                 # 不再把“最远中高云采样点”作为独立结论展示，避免与“云边距”混淆。
                 cloud_edge_text = '未估算' if boundaries['cloud_edge_distance_km'] is None else f"约 {boundaries['cloud_edge_distance_km']:.0f} km"
                 fire_range_text = '未识别' if boundaries['fire_cloud_range_km'] is None else f"约 {boundaries['fire_cloud_range_km']} km"
-                all_gaps = boundaries.get('clear_gaps') or []
+                all_gaps = boundaries.get('observed_clear_gaps') or []
                 search_stage = cloud_hole_search.get('stage')
                 gap_ranges = '；'.join(f"{g['start_km']:.0f}–{g['end_km']:.0f} km（{g['size_km']:.0f} km）" for g in all_gaps)
-                if search_stage == 'spherical_raytrace_clear':
+                if all_gaps:
+                    gap_display_label = '晴空间隔（仅云量识别）'
+                    gap_text = gap_ranges
+                elif search_stage == 'spherical_raytrace_clear':
                     gap_display_label = '云洞（等效）'
                     _best_gap = max(all_gaps, key=lambda g: float(g.get('size_km', 0))) if all_gaps else None
                     gap_text = (f"距离 {_best_gap['start_km']:.0f}–{_best_gap['end_km']:.0f} km，大小 {_best_gap['size_km']:.0f} km（仅已采样范围）" if _best_gap else '尚未确定')
@@ -1569,6 +1578,8 @@ class FireCloudApp(tk.Tk):
                 else:
                     gap_display_label = '晴空间隔'
                     gap_text = gap_ranges if all_gaps else '未形成可判读的晴空间隔'
+                if all_gaps and search_stage in ('spherical_raytrace_no_clear_path','spherical_raytrace_unresolved','spherical_raytrace_error'):
+                    inferred.setdefault('score_notes', []).append('存在晴空间隔，但球面光路未证实本地目标云层受光；两项独立判定。')
                 cap_note = "已触及 600 km 采样上限；若理论深入距离更远，需进一步提高上限或采用更稀疏的远距离采样。" if sample_limit >= 600 and max_reach > 600 else ""
                 # Debug30: Desktop rainbow diagnostics in console and per-case file.
                 # No additional weather API calls; records existing intermediate results.
@@ -1653,18 +1664,100 @@ class FireCloudApp(tk.Tk):
                                 lit_sum += weight * lit
                             tint_num = max(tint_num, lit_sum)
                 tintable_ratio = round(max(0.0, min(100.0, 100.0*tint_num/tint_den))) if tint_den > 0 else (0 if ordered else None)
-                # 沿用原有云洞通道修正；这不是对每片云的完整三维光线追踪。
-                accepted_gaps = boundaries.get("clear_gaps") or cloud_hole_search.get("gaps") or []
-                if tintable_ratio is not None and accepted_gaps:
-                    reach_for_gaps = max(1., float(boundaries.get("cloud_edge_distance_km") or local_reach or 1.))
-                    widths = sorted((max(0., float(g.get("size_km",0.))) for g in accepted_gaps), reverse=True)
-                    channel_coverage = min(1., (widths[0] + .25*sum(widths[1:]))/reach_for_gaps)
-                    tintable_ratio = round(tintable_ratio * channel_coverage)
-                if search_stage == 'spherical_raytrace_no_clear_path':
+                # Debug17: shared local mid/high cloud area estimator (same cloud
+                # denominator for ratio and scale, no additional API requests).
+                from burning_sky.local_cloud_illumination import local_illumination as _local_illumination
+                _local_light = _local_illumination(
+                    profiles, event_dt, direction_key, data['utc_offset'],
+                    data['lat'], data['lon'], potential_limit)
+                # Unified profile-target light coverage (1-minute diagnostic; no extra API requests).
+                # A negative sample cannot prove that a sub-minute window does not exist.
+                _light_times = []
+                _light_fractions = []
+                _light_targets = (_multi_ray.get('targets', []) if isinstance(locals().get('_multi_ray'), dict) and inferred.get('multi_target_raytrace_summary') else [])
+                _light_times = (_multi_ray.get('times', []) if isinstance(locals().get('_multi_ray'), dict) and inferred.get('multi_target_raytrace_summary') else [])
+                _target_weights = [max(0.0, float(t.get('cover', 0))) for t in _light_targets]
+                _total_target_weight = sum(_target_weights)
+                for _j in range(len(_light_times)):
+                    _lit = sum(w for t,w in zip(_light_targets,_target_weights)
+                               if _j < len(t.get('illuminated',[])) and t['illuminated'][_j])
+                    _light_fractions.append(_lit/_total_target_weight if _total_target_weight else 0.0)
+                _peak_fraction = max(_light_fractions,default=0.0)
+                if _total_target_weight > 0 and _light_times:
+                    tintable_ratio = round(100*_peak_fraction)
+                    inferred['tintable_ratio_diagnostic'] = '已采样气压剖面内逐目标、每1分钟同步受光加权；未命中不代表连续光路不存在'
+                elif search_stage in ('spherical_raytrace_no_clear_path','spherical_raytrace_error'):
                     tintable_ratio = 0
+                else:
+                    tintable_ratio = None
+                inferred['sampled_target_illumination'] = {
+                    'times': _light_times, 'fractions': [round(x,5) for x in _light_fractions],
+                    'target_count':len(_light_targets),'profile_limited':True}
+                if _total_target_weight > 0 and _light_times:
+                    # No newly invented F/T multipliers or 20% caps.
+                    # A positively illuminated target uses the legacy probability,
+                    # already scored from the SAME modified cloud field.
+                    if _peak_fraction <= 0:
+                        # Sampling is not a proof of geometric impossibility.  Keep the
+                        # separately computed probability estimate, but flag uncertainty.
+                        inferred['verdict'] = '逐分钟目标采样未证实受光（非几何否定）'
+                        inferred['target_light_unresolved'] = True
+                    else:
+                        inferred['verdict'] = '逐分钟目标采样存在有效受光时刻'
+                    inferred.setdefault('score_notes',[]).append('保留原常规概率公式；人工与原始云洞同等参与；目标光路仅执行受光成立性门控，不额外乘时间或面积折扣。')
+                elif search_stage == 'spherical_raytrace_no_clear_path':
+                    inferred['regular_score'] = inferred['score'] = 0
+                    inferred['verdict'] = '球面光路未证实透光'
+                elif search_stage in ('spherical_raytrace_unresolved','spherical_raytrace_error'):
+                    inferred['verdict'] = '光路资料不足，常规概率仅为原评分参考'
+                # Explicit sampled clear corridors are retained for the legacy path score.
+                # They are NOT sufficient on their own: require positive strict
+                # local-face ray geometry at a matching time as well.
+                _observed_gap_verified = bool(boundaries.get('observed_clear_gaps')) and bool(
+                    _local_light.get('available') and any(
+                        float(t.get('strict_fraction') or 0) > 1e-5
+                        for t in _local_light.get('times', [])))
+                _primary_path_verified = (search_stage in (
+                    'spherical_raytrace_targets_verified', 'spherical_raytrace_clear')
+                    or _observed_gap_verified)
+                inferred['primary_path_gate'] = {
+                    'verified': bool(_primary_path_verified),
+                    'evidence': ('spherical_raytrace' if search_stage in (
+                        'spherical_raytrace_targets_verified', 'spherical_raytrace_clear')
+                        else 'observed_clear_gap_plus_strict_local_face' if _observed_gap_verified
+                        else 'none'),
+                    'observed_gap_count': len(boundaries.get('observed_clear_gaps') or []),
+                    'raytrace_stage': search_stage}
+                # A high probability must not coexist with a geometrically
+                # blocked sky and a missing tint/curve. UNKNOWN remains distinct.
+                if not _primary_path_verified and search_stage == 'spherical_raytrace_no_clear_path':
+                    inferred['regular_score'] = inferred['score'] = 0
+                    inferred['verdict'] = '严格主光路未证实透光'
+                elif _observed_gap_verified:
+                    inferred['verdict'] = '明确晴空间隔及连续云面严格光路均存在有效受光时刻' 
+                if _local_light.get('available') and _primary_path_verified:
+                    _best_local = max(_local_light['times'],key=lambda x:x['fraction'])
+                    tintable_ratio = round(100*_best_local['fraction'],1)
+                    inferred['tintable_ratio_diagnostic'] = (
+                        '霞云距内中高云连续目标严格无遮挡受光加权；不采用部分云量透射；'
+                        '同一分钟的峰值，不累加不同时间')
+                    inferred['local_cloud_illumination'] = {
+                        'potential_km':_local_light['potential_km'],
+                        'target_count':_local_light['target_count'],
+                        'peak_minute':_best_local['minutes_from_event'],
+                        'peak_fraction':round(_best_local['fraction'],5),
+                        'strict_peak_fraction':round(max(p['strict_fraction'] for p in _local_light['times']),5),
+                        'possible_peak_fraction':round(max(p['possible_fraction'] for p in _local_light['times']),5),
+                        'caveat':_local_light['caveat']}
+                else:
+                    # The continuous local cloud estimator cannot override the primary spherical-path verdict.
+                    tintable_ratio = 0 if search_stage == 'spherical_raytrace_no_clear_path' else None
+                    inferred['tintable_ratio_diagnostic'] = ('严格主光路未证实有效通道；连续云面不得生成受光占比'
+                        if search_stage == 'spherical_raytrace_no_clear_path' else
+                        '严格主光路未验证，连续云面不作为独立受光证据')
                 tintable_text = "暂不可估" if tintable_ratio is None else f"约 {tintable_ratio}%"
                 local_cover = min(100.0, cloud_sum/range_width) if range_width > 0 else 0.0
-                burn_scale_index, burn_scale_label = calculate_burn_scale(local_cover, 0.0, tintable_ratio)
+                burn_scale_index, burn_scale_label = (None, '暂不可估') if tintable_ratio is None else calculate_burn_scale(local_cover, 0.0, tintable_ratio)
                 # 视野内低云提示仍保留原几何可见距离定义，不参与规模计算。
                 visible_cover = visible_cloud_coverage(samples)
                 inferred['visible_cloud_cover'] = visible_cover
@@ -1687,6 +1780,20 @@ class FireCloudApp(tk.Tk):
                         for field in ("color_score", "color_score_label", "color_score_reasons", "color_score_note"):
                             if field in local_color:
                                 inferred[field] = local_color[field]
+                if _light_fractions and _total_target_weight > 0 and _peak_fraction > 0:
+                    _base_color_score = float(inferred.get('color_score') or 0)
+                    _peak_i = max(range(len(_light_fractions)),key=lambda i:_light_fractions[i])
+                    _peak_dt = datetime.fromisoformat(_light_times[_peak_i])
+                    _peak_solar_alt, _ = solar_position(_peak_dt,data['utc_offset'],data['lat'],data['lon'])
+                    # Deeper twilight tends toward red/pink; optical quality remains
+                    # governed by the original AOD/visibility model.
+                    _redness = max(0.0,min(1.0,(-_peak_solar_alt-0.5)/5.5))
+                    # Preserve baseline atmospheric color quality; timing changes hue,
+                    # while illumination fraction determines tintable area separately.
+                    inferred['color_score'] = round(max(0,min(100,_base_color_score*(0.90+0.10*_redness)))) if _peak_fraction>0 else 0
+                    inferred['color_score_note'] = '有效受光峰值时刻的太阳高度角与原有大气色彩条件（经验估算）'
+                    inferred['peak_illumination_time'] = _peak_dt.isoformat()
+                    inferred['peak_illumination_solar_altitude'] = round(_peak_solar_alt,3)
                 summary = (
                     f"{model_time_text}\n"
                     f"{direction_name} · {data['place']} · {data['date'].isoformat()}　{event_dt.strftime('%H:%M')} / 方位 {azimuth:.0f}°\n"
@@ -1779,22 +1886,47 @@ class FireCloudApp(tk.Tk):
                               "visibility_km": (sum(visibility_values)/len(visibility_values) if visibility_values else None)}
                 dynamic_curve = self._build_dynamic_light_curve(curve_data, curve_zones, (event_dt, azimuth), single_mode=True,
                                             accepted_gaps=boundaries.get("clear_gaps") or []) if curve_zones else {"samples": [], "peak": None, "note": "缺少可用云量采样，未生成动态曲线。"}
-                # When spherical tracing explicitly found no valid channel, do not plot twilight as cloud illumination.
-                if search_stage == 'spherical_raytrace_no_clear_path':
-                    for _point in dynamic_curve.get('samples', []):
-                        _point['geometry_valid']=False
-                        _point['brightness']=0.0
-                        _point['relative_brightness']=0.0
-                        _point['tintable_cloud_area']=0.0
+                # Debug17: share exactly the same local target light field as
+                # tintable ratio. Do not use sparse target witnesses as hard gate.
+                if _local_light.get('available') and _primary_path_verified:
+                    from burning_sky.local_cloud_illumination import apply_to_curve
+                    _vis = curve_data.get('visibility_km')
+                    _vis_factor = (1.0 if _vis is None else
+                        max(.35,min(1.,.35+.65*min(float(_vis),30.)/30.)))
+                    _aod_factor = math.exp(-.35*max(0.,float(effective_aod))) if effective_aod is not None else 1.
+                    _color_quality = aod_color_quality_factor(effective_aod)
+                    if _vis is not None:
+                        _color_quality *= max(0.,min(1.,(float(_vis)-2.)/28.))
+                    _local_light['direction']=direction_key
+                    dynamic_curve=apply_to_curve(dynamic_curve,_local_light,
+                        atmospheric_factor=_vis_factor*_aod_factor,
+                        color_fn=self._dynamic_cloud_color,
+                        aod_color_quality=_color_quality)
+                    inferred['timeline_geometry_gate']=dynamic_curve.get('geometry_gate_diagnostic',{})
+                else:
+                    # Do not display a fabricated twilight if local cloud data
+                    # are unavailable; report unknown instead.
+                    for _p in dynamic_curve.get('samples',[]):
+                        _p['geometry_valid']=False
+                        _p['brightness']=0.
+                        _p['relative_brightness']=0.
+                        _p['tintable_cloud_area']=0.
                     dynamic_curve['peak']=None
-                    dynamic_curve['note']='球面光路未证实透光：不将暮光当作云彩受光。'
+                    dynamic_curve['note']='严格主光路未验证有效透光通道；连续云面时序不生效。'
+                    dynamic_curve['geometry_gate_diagnostic']={'mode':'primary_spherical_gate','stage':search_stage,'verified':False}
                 # 峰值云色与动态曲线峰值时刻对齐：使用所有有效距离段共同计算出的峰值时刻色彩，
                 # 避免 GUI 色块只由第一个云洞的距离规则决定；色相仍属于示意估算。
                 dynamic_peak = dynamic_curve.get("peak")
                 if dynamic_peak and isinstance(dynamic_peak.get("color"), (tuple, list)) and len(dynamic_peak["color"]) == 3:
+                    # Hue is controlled by the verified peak minute, not a fixed
+                    # cloud-gap-distance palette. Preserve the existing atmospheric
+                    # haze/saturation encoded in the curve color.
                     inferred["color_rgb"] = tuple(int(max(0, min(255, c))) for c in dynamic_peak["color"])
                     inferred["peak_cloud_color_rule"] = "动态曲线峰值时刻的综合受光色（所有有效距离段加权；色相为示意估算）"
                     inferred["color_name"] = inferred["peak_cloud_color_rule"]
+                # Refresh summary after integrated color / probability / tint changes.
+                summary = summary.replace('色彩评分 '+str(int(_base_color_score) if '_base_color_score' in locals() else inferred.get('color_score'))+'/100',
+                                          '色彩评分 '+str(inferred.get('color_score'))+'/100')
                 results[direction_key] = {"summary": summary, "details": "\n".join(detail_lines), "inferred": inferred,
                                           "samples": samples, "raw_details": raw_details, "profiles": profiles, "geometry": geometry,
                                           "distances": distances, "max_reach": max_reach, "aod": effective_aod,
@@ -5423,6 +5555,10 @@ class FireCloudApp(tk.Tk):
     @staticmethod
     def _format_cloud_hole_display(boundary):
         stage = boundary.get("cloud_hole_search_stage")
+        observed = boundary.get('observed_clear_gaps') or []
+        if observed:
+            spans = '；'.join(f"{g['start_km']:.0f}–{g['end_km']:.0f} km" for g in observed)
+            return f"晴空间隔：{spans}（球面光路：{stage or '未判定'}）"
         if stage == "spherical_raytrace_clear":
             return "球面光路透光：追踪发现无遮挡时段"
         if stage in ("spherical_raytrace_no_clear_path", "spherical_raytrace_error"):
@@ -5849,6 +5985,14 @@ class FireCloudApp(tk.Tk):
                 json.dump(self._json_safe(raw), f, ensure_ascii=False, indent=2)
             with open(os.path.join(folder, "request_cache.json"), "w", encoding="utf-8") as f:
                 json.dump(self._json_safe(self.case_request_cache), f, ensure_ascii=False, indent=2)
+            from burning_sky.case_manifest import write_manifest_folder
+            write_manifest_folder(folder, state, self.case_request_cache,
+                effective_parameters={
+                    "cloud_base_mode": state["cloud_base_mode"],
+                    "cloud_base_inputs": state["cloud_base_inputs"],
+                    "aod_inputs": state["aod_inputs"],
+                    "cloud_overrides": getattr(self, "case_cloud_overrides", None),
+                })
             # A standalone diagnostics file is easier to inspect when improving rainbow predictions.
             with open(os.path.join(folder, "rainbow_diagnostics.json"), "w", encoding="utf-8") as f:
                 json.dump(self._json_safe({k:{"rainbow":v.get("rainbow"),"event_dt":v.get("event_dt"),
