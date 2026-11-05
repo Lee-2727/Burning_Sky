@@ -1,43 +1,21 @@
 {
   "schema_version": 2,
-  "state": "failed",
-  "direction": "morning",
-  "direction_title": "朝霞",
-  "started_at": "2026-11-05 04:43:19 CST",
-  "updated_at": "2026-11-05 04:58:14 CST",
-  "current_model": "ECMWF (AI)",
-  "model_index": 5,
+  "state": "running",
+  "direction": "evening",
+  "direction_title": "晚霞",
+  "started_at": "2026-11-05 08:44:25 CST",
+  "updated_at": "2026-11-05 08:44:25 CST",
+  "current_model": "ECMWF IFS 0.25°",
+  "model_index": 1,
   "model_total": 5,
-  "completed_models": [
-    "ECMWF IFS 0.25°",
-    "GFS Global",
-    "ICON Global",
-    "CMA GRAPES Global"
-  ],
+  "completed_models": [],
   "cities": [
     "合肥",
     "深圳"
   ],
-  "city_progress": 2,
+  "city_progress": 0,
   "city_total": 2,
-  "task_progress": 29,
+  "task_progress": 0,
   "task_total": 30,
-  "next_update": "北京时间每日 00:00/04:00/20:00 朝霞；08:00/12:00/16:00 晚霞",
-  "failure_count": 1,
-  "last_error": {
-    "city": "深圳",
-    "date": "2026-11-06",
-    "model": "ECMWF (AI)",
-    "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
-  },
-  "failed_at": "2026-11-05 04:58:14 CST",
-  "failures": [
-    {
-      "city": "深圳",
-      "date": "2026-11-06",
-      "model": "ECMWF (AI)",
-      "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
-    }
-  ],
-  "message": "本轮朝霞有 1 项失败；保留上一次完整发布的数据。"
+  "next_update": "北京时间每日 00:00/04:00/20:00 朝霞；08:00/12:00/16:00 晚霞"
 }
