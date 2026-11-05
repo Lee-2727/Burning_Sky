@@ -417,7 +417,8 @@ def _web_summary_lines(summary):
         model=parts[0]
         clouds=parts[1] if len(parts)>1 else ''
         out=[lines[0],lines[1]+'　'+model,clouds,lines[3]+'　'+lines[4]]
-        out.append('　'.join(lines[5:]) if len(lines)>5 else '特殊判定：无')
+        out.append('　'.join(x for x in lines[5:] if not x.startswith('视野内低云')) if len(lines)>5 else '特殊判定：无')
+        out.extend(x for x in lines[5:] if x.startswith('视野内低云'))
         return out
     return lines
 
@@ -453,6 +454,7 @@ if not run and st.session_state.get('rainbow_only_web_result') is not None:
         st.json(_rb.get('environment_sources',{}))
         st.json(_sm['row'].get('details',[]))
     st.caption('数字为未经历史校准的概率式评分，不是统计发生概率。')
+    st.caption('火烧云规模：0% 不烧；大于0%且不足10% 微烧；10%–不足30% 小烧；30%–不足60% 中烧；60%–100% 大烧。光板天判定优先于不烧。')
     if rainbow_only_web: st.stop()
 
 # 在多日概览页面点击左侧任一查询按钮时，优先执行单次查询。
@@ -638,6 +640,114 @@ if st.session_state.get("show_multi_day_overview"):
                             return f"color: {color}; font-weight: 700;"
                         st.dataframe(_df, use_container_width=True, hide_index=True)
     _render_multi_day_overview()
+
+    # Separate manual overview: no input is inherited from the sidebar.
+    st.divider()
+    st.subheader("手动查询多日概览")
+    st.caption("独立的 EC / GFS / ICON 三模式、三日、朝晚霞查询（共 18 项）。仅点击查询才联网。")
+    import hashlib as _mh
+    from pathlib import Path as _MP
+    from datetime import datetime as _MDT, timedelta as _MTD
+    from zoneinfo import ZoneInfo as _MZone
+    _mtz = _MZone("Asia/Shanghai")
+    _today = _MDT.now(_mtz).date()
+    _cache_dir = _MP(_APP_DIR) / "data" / "manual_overview_cache"
+    _cache_dir.mkdir(parents=True, exist_ok=True)
+    for _file in _cache_dir.glob("*.json"):
+        try:
+            _meta = json.loads(_file.read_text(encoding="utf-8"))
+            if _MDT.fromisoformat(_meta["obtained_at"]).astimezone(_mtz).date() < _today - _MTD(days=1):
+                _file.unlink(missing_ok=True)
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    with st.container(border=True):
+        _mq = st.text_input("查询地点（独立 Excel 联想）", value="合肥", key="manual_overview_query")
+        _names = []
+        if not _place_df.empty and "城市名称" in _place_df.columns and _mq.strip():
+            _names = [str(v) for v in _place_df["城市名称"].dropna().tolist()
+                      if _norm_place(_mq) in _norm_place(v)][:30]
+        _mplace = st.selectbox("匹配地点", _names, key="manual_overview_place") if _names else _mq.strip()
+        _mrow = None
+        if not _place_df.empty and "城市名称" in _place_df.columns:
+            _match_rows = _place_df[_place_df["城市名称"].astype(str) == _mplace]
+            if not _match_rows.empty: _mrow = _match_rows.iloc[0]
+        def _mdefault(col, fallback):
+            return float(_mrow[col]) if _mrow is not None and col in _mrow and pd.notna(_mrow[col]) else fallback
+        _cols = st.columns(3)
+        with _cols[0]:
+            _mlat = st.number_input("纬度", -90.0, 90.0, _mdefault("纬度",31.8047), format="%.5f", key="m_lat_"+str(_mplace))
+        with _cols[1]:
+            _mlon = st.number_input("经度", -180.0, 180.0, _mdefault("经度",117.2214), format="%.5f", key="m_lon_"+str(_mplace))
+        with _cols[2]:
+            _melev = st.number_input("海拔（m）", -500.0, 9000.0, _mdefault("海拔（m）",0.0), key="m_elev_"+str(_mplace))
+        _mdate = st.date_input("起始日期（含当天连续三日）", value=_today, key="manual_overview_start")
+        _models = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global"]
+        _identity = {"place":_mplace, "lat":round(_mlat,5), "lon":round(_mlon,5),
+                     "elev":round(_melev,1), "date":_mdate.isoformat(), "models":_models}
+        _cache_id = _mh.sha256(json.dumps(_identity,sort_keys=True,ensure_ascii=False).encode()).hexdigest()[:24]
+        _cache_file = _cache_dir / (_cache_id + ".json")
+        _cached = None
+        if _cache_file.exists():
+            try: _cached = json.loads(_cache_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError): pass
+        if _cached:
+            st.info("已自动读取缓存，数据获得时间："+str(_cached.get("obtained_at", "未知"))+"。点击查询才重新联网。")
+        _do_run = st.button("查询 / 强制刷新三模式三日朝晚霞", type="primary", key="manual_overview_submit")
+        _display = _cached
+        if _do_run:
+            if not _mplace:
+                st.error("请填写查询地点。")
+            else:
+                _bar = st.progress(0, text="开始查询 0/18")
+                _records, _errors = [], []
+                _done = 0
+                _stop_for_limit = False
+                for _di in range(3):
+                    if _stop_for_limit: break
+                    _day = _mdate + _MTD(days=_di)
+                    for _model in _models:
+                        if _stop_for_limit: break
+                        for _direction in ("morning", "evening"):
+                            _bar.progress(_done/18, text=f"{_done}/18 · {_day} · {_model} · {_direction}")
+                            _vals = {"place":_mplace,"date":_day.isoformat(),"lat":str(_mlat),"lon":str(_mlon),
+                                     "elevation":str(_melev),"weather_model":_model,"cloud_base_mode":"自动剖面推算",
+                                     "morning_cloud_base_km":"2.0","evening_cloud_base_km":"2.0",
+                                     "morning_aod":"","evening_aod":""}
+                            try:
+                                _runner = WebForecastEngine(_vals)
+                                _runner.skip_rainbow_for_overview = True
+                                _runner._fetch_weather_task(_direction)
+                                _result = _runner.direction_results.get(_direction)
+                                if not _result: raise RuntimeError(str(getattr(engine.messagebox,"last_error",None) or "预测未返回结果"))
+                                _inf = _result.get("inferred") or {}
+                                _records.append({"date":_day.isoformat(),"model":_model,"direction":_direction,
+                                    "probability":_inf.get("regular_score"),"color_score":_inf.get("color_score"),
+                                    "burn_scale":_inf.get("burn_scale_index")})
+                            except Exception as _err:
+                                _reason = str(_err)
+                                _errors.append(f"{_day} {_model} {_direction}: {_reason}")
+                                if "429" in _reason or "limit exceeded" in _reason.lower() or "限流" in _reason:
+                                    _stop_for_limit = True
+                            _done += 1
+                            _bar.progress(_done/18, text=f"已处理 {_done}/18")
+                            if _stop_for_limit: break
+                _display = {"identity":_identity,"obtained_at":_MDT.now(_mtz).isoformat(timespec="seconds"),
+                            "records":_records,"errors":_errors}
+                if len(_records)==18 and not _errors:
+                    _tmp = _cache_file.with_suffix(".tmp")
+                    _tmp.write_text(json.dumps(_display,ensure_ascii=False,indent=2),encoding="utf-8")
+                    _tmp.replace(_cache_file)
+                    st.success("18 项查询全部完成，已写入今日缓存。")
+                else:
+                    st.warning(f"完成 {_done}/18 项，其中成功 {len(_records)} 项；不覆盖旧的完整缓存。")
+        if _display:
+            _rows = [{"日期":r["date"],"时段":"朝霞" if r["direction"]=="morning" else "晚霞",
+                      "模式":r["model"],"常规概率":r.get("probability"),"色彩分":r.get("color_score"),
+                      "火烧云规模":r.get("burn_scale")} for r in _display.get("records",[])]
+            if _rows: st.dataframe(pd.DataFrame(_rows),use_container_width=True,hide_index=True)
+            if _display.get("errors"):
+                with st.expander("失败详情"):
+                    st.text("\n".join(_display["errors"]))
     st.stop()
 
 if run:
@@ -693,6 +803,11 @@ if run:
         _rb_main=(getattr(runner,'rainbow_day_result',None) if query_direction=='all' else None) or (runner.direction_results.get(_chosen_direction) or {}).get('rainbow')
         # Fire-cloud query results are rendered below in the single-mode panel.
         # Do not activate the standalone rainbow panel as a side effect.
+        import copy
+        st.session_state['fire_cloud_original_results'] = copy.deepcopy(runner.direction_results)
+        st.session_state['fire_cloud_replay_values'] = dict(values)
+        st.session_state['fire_cloud_replay_cache'] = dict(_web_case_cache if not use_case_cache else (st.session_state.get('case_bundle_cache') or {}))
+        st.session_state['cloud_manual_override_text'] = ''
         st.session_state["fire_cloud_last_results"] = runner.direction_results
         st.session_state["fire_cloud_last_report"] = runner.last_report
         st.session_state["fire_cloud_last_meta"] = {
@@ -874,6 +989,41 @@ def _web_gap_text(result):
         except (KeyError,TypeError,ValueError):continue
     return label+"："+"；".join(spans) if spans else "可能不透光"
 
+# Manual cloud correction: replay exact cached requests, never request weather again.
+if st.session_state.get('fire_cloud_original_results'):
+    with st.expander('☁️ 云图人工修正（不联网重新计算）', expanded=False):
+        st.caption('每行：起点km,终点km,低云%,中云%,高云%。可填多行；云量留空表示保留原值。示例：100,175,0,10,0。清空后点击重新计算恢复原始结果。')
+        _cloud_text=st.text_area('距离区间与云量',key='cloud_manual_override_text',height=100)
+        if st.button('重新计算云图',key='cloud_manual_recompute'):
+            import copy
+            from burning_sky.cloud_overrides import parse_overrides
+            try:
+                _cloud_rows=parse_overrides(_cloud_text)
+                if not _cloud_rows:
+                    st.session_state['fire_cloud_last_results']=copy.deepcopy(st.session_state['fire_cloud_original_results'])
+                    st.success('已恢复原始结果，无 API 请求。')
+                else:
+                    _cache=st.session_state.get('fire_cloud_replay_cache') or {}
+                    _values=st.session_state.get('fire_cloud_replay_values')
+                    if not _cache or not _values:
+                        raise ValueError('没有完整的原始请求缓存，请重新查询一次并保留当前会话。')
+                    _replay=WebForecastEngine(_values)
+                    _prior=engine._CASE_REQUEST_CONTEXT
+                    engine._CASE_REQUEST_CONTEXT={'mode':'replay','cache':_cache,'cloud_overrides':_cloud_rows}
+                    try:
+                        for _direction in st.session_state['fire_cloud_original_results']:
+                            if _direction in ('morning','evening'):
+                                _replay._fetch_weather_task(_direction)
+                    finally:
+                        engine._CASE_REQUEST_CONTEXT=_prior
+                    if not _replay.direction_results:
+                        raise RuntimeError('离线重新计算没有返回结果。')
+                    st.session_state['fire_cloud_last_results']=_replay.direction_results
+                    st.success('已按人工修正重新计算（无 API 请求）。')
+                st.rerun()
+            except Exception as _exc:
+                st.error(f'人工云图修正失败：{_exc}')
+
 results = st.session_state.get("fire_cloud_last_results")
 meta = st.session_state.get("fire_cloud_last_meta", {})
 if results:
@@ -890,9 +1040,6 @@ if results:
         result["inferred"] = inferred
         with col:
             st.subheader(title)
-            if result.get("summary"):
-                for _line in _web_summary_lines(result["summary"]):
-                    st.markdown(_styled_cloud_summary(_line), unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
             regular_score = inferred.get("regular_score", inferred.get("score", "—"))
             upper_score = inferred.get("upper_score", "—")
@@ -900,6 +1047,7 @@ if results:
             c1.metric("常规概率", f"{regular_score}%")
             c2.metric("上限概率", f"{upper_score}%")
             c3.metric("色彩评分", f"{color_score}/100")
+            st.caption('规模评价：0% 不烧；大于0%–不足10% 微烧；10–不足30% 小烧；30–不足60% 中烧；60–100% 大烧。光板天优先。')
             burn_label, burn_index = _burn_label(inferred, result.get("summary", ""))
             regular_label = _probability_label(regular_score)
             color_class = _color_label(color_score)
@@ -907,6 +1055,8 @@ if results:
             color_palette = {"平平无奇": "#e2c76a", "普通": "#c99b24", "绚烂": "#e67e22", "史诗": "#d62828", "世纪": "#9d174d"}
             color_hex = color_palette.get(color_class, "#4b5563")
             special_verdict = inferred.get("verdict_override")
+            if burn_index is not None and burn_index <= 0 and special_verdict not in ('光板天', '云底过低', '低云遮挡过多', '光线难以穿透', '云量不足'):
+                special_verdict = '不烧'
             if special_verdict:
                 st.markdown(
                     f'<div style="font-size:24px;font-weight:800;line-height:1.5;margin:6px 0 2px 0;color:#111111;">'
@@ -916,6 +1066,20 @@ if results:
                     f'<div style="font-size:24px;font-weight:800;line-height:1.5;margin:6px 0 2px 0;">'
                     f'{regular_label} <span style="color:{color_hex};">{color_class}</span>的{burn_text}</div>',
                     unsafe_allow_html=True)
+            # Full one-line interpretation under the short verdict.
+            if not special_verdict:
+                _scale_value = f'{burn_index:.1f}%' if isinstance(burn_index,(int,float)) else '暂不可估'
+                st.markdown(f'预计{regular_label}{color_class}的{burn_text}；常规概率 {regular_score}%，色彩分 {color_score}，火烧云规模 {_scale_value}。')
+            # The detailed original summary follows the short verdict.
+            if result.get('summary'):
+                for _line in _web_summary_lines(result['summary']):
+                    if _line.startswith('视野内低云'):
+                        st.markdown('<div style="font-weight:800;color:#c62828;">'+html.escape(_line)+'</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown(_styled_cloud_summary(_line), unsafe_allow_html=True)
+            _low = inferred.get('visible_low_cloud_pct')
+            if _low is not None and '视野内低云' not in str(result.get('summary','')):
+                st.markdown(f'<div style="font-weight:800;color:#c62828;">视野内低云 {_low:.1f}%，以上结果不考虑低云影响可见性。</div>',unsafe_allow_html=True)
             rgb = inferred.get("peak_color_rgb") or inferred.get("color_rgb")
             if isinstance(rgb, (tuple, list)) and len(rgb) >= 3:
                 hex_color = "#%02x%02x%02x" % tuple(max(0, min(255, int(v))) for v in rgb[:3])

@@ -17,6 +17,7 @@ Python 3.11 / Tkinter，无第三方依赖。
 
 import math
 import colorsys
+from burning_sky.cloud_overrides import parse_overrides, apply_overrides
 import json
 import urllib.parse
 import urllib.request
@@ -382,21 +383,60 @@ def request_json(req, timeout=20, retries=3, cache_key=None, cache_ttl=None):
 
 
 
+def burn_scale_class(value):
+    """Shared scale labels: no burn takes precedence over ordinary labels only."""
+    if value is None or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+        return "暂不可判定"
+    value = max(0.0, min(100.0, float(value)))
+    if value <= 0: return "不烧"
+    if value < 10: return "微烧"
+    if value < 30: return "小烧"
+    if value < 60: return "中烧"
+    return "大烧"
+
+
 def calculate_burn_scale(mid_cloud, high_cloud, tintable_ratio):
-    """Return effective tintable mid/high cloud amount (%) and its size class."""
+    """Empirical visible-cloud scale, capped at 100%."""
     values = (mid_cloud, high_cloud, tintable_ratio)
     if not all(isinstance(v, (int, float)) and math.isfinite(float(v)) for v in values):
         return None, "暂不可判定"
-    mid_high_cover = max(0.0, min(100.0, float(mid_cloud) + float(high_cloud)))
+    cover = max(0.0, min(100.0, float(mid_cloud) + float(high_cloud)))
     ratio = max(0.0, min(100.0, float(tintable_ratio)))
-    value = round(mid_high_cover * ratio / 100.0, 2)
-    if value <= 0: label = "几乎不烧"
-    elif value < 10: label = "小小烧"
-    elif value < 30: label = "微烧"
-    elif value < 50: label = "小烧"
-    elif value < 70: label = "中烧"
-    else: label = "大烧"
-    return value, label
+    value = round(cover * ratio / 100.0, 2)
+    return value, burn_scale_class(value)
+
+
+def visible_cloud_coverage(samples, earth_r=6371.0088):
+    """Distance-cell weighted cloud resource within each layer's geometric horizon.
+
+    This is a one-dimensional sunset/sunrise-direction proxy, NOT a 2D sky map.
+    Layer tops are provisional 6/12 km, low top 2 km. No extra API requests.
+    """
+    ordered = sorted((x for x in (samples or []) if isinstance(x, dict) and
+                      isinstance(x.get('distance_km'), (int, float))),
+                     key=lambda x: float(x['distance_km']))
+    total = {'mid': 0.0, 'high': 0.0, 'low': 0.0}
+    widths = {'mid': 0.0, 'high': 0.0, 'low': 0.0}
+    horizons = {'low': math.sqrt((earth_r+2)**2-earth_r**2),
+                'mid': math.sqrt((earth_r+6)**2-earth_r**2),
+                'high': math.sqrt((earth_r+12)**2-earth_r**2)}
+    for i, sm in enumerate(ordered):
+        d = float(sm['distance_km'])
+        prev_d = float(ordered[i-1]['distance_km']) if i else d
+        next_d = float(ordered[i+1]['distance_km']) if i+1<len(ordered) else d
+        left = max(0.0, (prev_d+d)/2) if i else 0.0
+        right = (d+next_d)/2 if i+1<len(ordered) else d+max(5.0,(d-prev_d)/2 if i else 12.5)
+        for layer in total:
+            span = max(0.0, min(right, horizons[layer])-left)
+            v = sm.get('cloud_cover_'+layer)
+            if span > 0 and isinstance(v,(int,float)) and math.isfinite(float(v)):
+                total[layer] += span*max(0.0,min(100.0,float(v)))
+                widths[layer] += span
+    avg = {k: (total[k]/widths[k] if widths[k] else 0.0) for k in total}
+    # Mid/high additive proxy, clipped at 100. Never infer unknown 2D overlap.
+    cover = min(100.0, avg['mid']+avg['high'])
+    return {'mid': avg['mid'], 'high': avg['high'], 'low': avg['low'],
+            'mid_high': cover, 'horizon_km': horizons}
 
 
 class FireCloudApp(tk.Tk):
@@ -524,6 +564,10 @@ class FireCloudApp(tk.Tk):
         ttk.Button(left, text="导出案例 ZIP（供网页加载）", command=self.export_case_zip).pack(fill="x", pady=(0, 8))
         ttk.Checkbutton(left, text="从案例缓存读取（不请求天气 API）", variable=self.case_cache_var).pack(anchor="w", pady=(0, 8))
         ttk.Button(left, text="实况模拟（读取 Excel）", style="Accent.TButton", command=self.run_live_simulation).pack(fill="x", pady=(0, 10))
+        ttk.Label(left, text="云图人工修正（每行：起点,终点,低云,中云,高云；空云量保留原值）", style="Sub.TLabel", wraplength=320).pack(anchor="w")
+        self.cloud_override_text=tk.Text(left,height=4,width=34)
+        self.cloud_override_text.pack(fill="x",pady=(3,4))
+        ttk.Button(left,text="重新计算云图（不联网）",command=self.recalculate_cloud_overrides).pack(fill="x",pady=(0,8))
         ttk.Label(left, text="预报设置", style="Section.TLabel").pack(anchor="w", pady=(0, 10))
         form = ttk.Frame(left, style="Card.TFrame")
         form.pack(fill="x")
@@ -1010,6 +1054,7 @@ class FireCloudApp(tk.Tk):
                         except Exception:
                             pass
                     _CASE_REQUEST_CONTEXT = {"mode": "capture", "cache": self.case_request_cache}
+                self._cloud_original_results=None
                 self._fetch_weather_task(direction_key)
             except Exception as exc:
                 messagebox.showerror("案例缓存/查询失败", str(exc))
@@ -1021,6 +1066,38 @@ class FireCloudApp(tk.Tk):
                     pass
 
         threading.Thread(target=worker, daemon=True, name="single-weather-query").start()
+
+    def recalculate_cloud_overrides(self):
+        """Replay the last exact-request cache; do not fetch weather or alter originals."""
+        import copy
+        if self.fetch_in_progress:
+            messagebox.showerror('云图修正','查询尚未结束。');return
+        try:
+            overrides=parse_overrides(self.cloud_override_text.get('1.0','end'))
+            if not getattr(self,'case_request_cache',None):
+                raise ValueError('当前没有完整请求缓存。请先联网查询一次，或加载包含 request_cache.json 的案例。')
+            if not getattr(self,'_cloud_original_results',None):
+                self._cloud_original_results=copy.deepcopy(self.direction_results)
+            if not overrides:
+                self.direction_results=copy.deepcopy(self._cloud_original_results)
+                self.last_report='\n\n'.join(v.get('details','') for v in self.direction_results.values())
+                for direction,widget in (('morning',self.morning_summary),('evening',self.evening_summary)):
+                    if direction in self.direction_results:self._set_text(widget,self.direction_results[direction].get('summary',''))
+                self.fetch_status_var.set('云图修正已清空，恢复原始结果（无 API 请求）')
+                return
+            # All required HTTP payloads must already exist; any cache miss fails closed.
+            global _CASE_REQUEST_CONTEXT
+            previous=_CASE_REQUEST_CONTEXT
+            _CASE_REQUEST_CONTEXT={'mode':'replay','cache':self.case_request_cache,'cloud_overrides':overrides}
+            try:
+                directions=list(self._cloud_original_results)
+                for direction in directions:
+                    if direction in ('morning','evening'):self._fetch_weather_task(direction)
+            finally:
+                _CASE_REQUEST_CONTEXT=previous
+            self.fetch_status_var.set('人工云图已重新计算（无 API 请求；原始数据保留）')
+        except Exception as exc:
+            messagebox.showerror('云图修正失败',str(exc))
 
     def _finish_fetch_weather(self):
         self.fetch_in_progress = False
@@ -1198,6 +1275,9 @@ class FireCloudApp(tk.Tk):
 
                 # 若初始极限云距内未识别到可判读晴空间隔，则沿太阳方向补扫至600 km。
                 # 该扩展扫描仅用于云洞距离修正，不把远端云底/AOD纳入本地几何上限。
+                # Apply manual cloud edits before deciding whether the 600-km extension is necessary.
+                _manual_overrides = (_CASE_REQUEST_CONTEXT or {}).get('cloud_overrides') or []
+                apply_overrides(samples, _manual_overrides)
                 initial_boundaries = estimate_path_cloud_boundaries(samples, max_reach)
                 extended_scan_complete = False
                 if not (initial_boundaries.get("clear_gaps") or []):
@@ -1266,6 +1346,8 @@ class FireCloudApp(tk.Tk):
                 else:
                     extended_scan_complete = False
 
+                # Newly fetched extended samples must receive the same override before all scoring.
+                apply_overrides(samples, _manual_overrides)
                 # 后台多模概览跳过彩虹专用采样与计算；单次单模式保持原逻辑。
                 if getattr(self, "skip_rainbow_for_overview", False):
                     rainbow_result = {}
@@ -1538,15 +1620,18 @@ class FireCloudApp(tk.Tk):
                         next_d = float(ordered[si+1].get("distance_km", d)) if si+1 < len(ordered) else d
                         left = max(0.0, (prev_d+d)/2.0) if si else 0.0
                         right = (d+next_d)/2.0 if si+1 < len(ordered) else d + max(5.0, (d-prev_d)/2.0 if si else 12.5)
-                        if local_geometry and isinstance(local_geometry.get("reach_km"), (int,float)):
-                            right = min(right, float(local_geometry["reach_km"]))
+                        # The tintable ratio is over the geometric visible range,
+                        # NOT the local contiguous potential-cloud range.
                         width = max(0.0, right-left)
                         if width <= 0: continue
                         for key, lo, hi in (("cloud_cover_mid",2.0,6.0),("cloud_cover_high",6.0,12.0)):
                             cover = sm.get(key)
                             if not isinstance(cover,(int,float)) or not math.isfinite(float(cover)) or cover <= 0: continue
-                            # 分母为全部有效中高云资源；权重按云量、层厚与距离单元面积。
-                            weight = width * (hi-lo) * float(cover) / 100.0
+                            # Only the geometrically visible part of each cloud layer contributes.
+                            horizon_km = math.sqrt(max(0.0,(earth_r+hi)**2-earth_r**2))
+                            visible_width = max(0.0, min(right, horizon_km)-left)
+                            if visible_width <= 0: continue
+                            weight = visible_width * (hi-lo) * float(cover) / 100.0
                             cells.append((d,lo,hi,weight))
                             tint_den += weight
                     if tint_den > 0:
@@ -1591,12 +1676,28 @@ class FireCloudApp(tk.Tk):
                     tintable_text = f"约 {tintable_ratio}%"
                 # 霞云规模必须同时考虑天空中实际存在的中高云量与其中可染色的比例。
                 # 可染色云占比本身只是中高云资源的几何筛选比例，不能直接作为霞云规模。
+                visible_cover = visible_cloud_coverage(samples)
                 burn_scale_index, burn_scale_label = calculate_burn_scale(
-                    inferred.get("mid"), inferred.get("high"), tintable_ratio)
+                    visible_cover['mid'], visible_cover['high'], tintable_ratio)
+                inferred['visible_cloud_cover'] = visible_cover
+                inferred['visible_low_cloud_pct'] = round(visible_cover['low'], 1)
                 inferred["burn_scale_index"] = burn_scale_index
                 inferred["burn_scale_label"] = burn_scale_label
                 inferred["tintable_ratio"] = tintable_ratio
                 special_summary_line = (f"\n特殊判定：{inferred.get('verdict_override')}" if inferred.get("verdict_override") else "")
+                # Color score uses the same bounded local cloud resource as the tintable ratio.
+                potential_limit = boundaries.get("fire_cloud_range_km")
+                if potential_limit is not None:
+                    local_color_samples = [q for q in samples if float(q.get("distance_km", 0)) <= float(potential_limit)]
+                    if float(potential_limit) <= 0:
+                        inferred["color_score"] = 0
+                        inferred["color_score_label"] = "云量不足"
+                    elif local_color_samples:
+                        local_color = infer_from_cloud_path(local_color_samples, effective_aod,
+                            local_low_cloud_above_ground=local_low_above_ground)
+                        for field in ("color_score", "color_score_label", "color_score_reasons", "color_score_note"):
+                            if field in local_color:
+                                inferred[field] = local_color[field]
                 summary = (
                     f"{model_time_text}\n"
                     f"{direction_name} · {data['place']} · {data['date'].isoformat()}　{event_dt.strftime('%H:%M')} / 方位 {azimuth:.0f}°\n"
@@ -1604,6 +1705,7 @@ class FireCloudApp(tk.Tk):
                     f"潜在霞云距 {fire_range_text}　|　极限云距 {cloud_edge_text}　|　{gap_display_label} {gap_text}\n"
                     f"云底 {base_short}（{base_source_short}）　|　AOD {aod_short}"
                     f"{special_summary_line}"
+                    f"\n视野内低云 {inferred['visible_low_cloud_pct']:.1f}%，以上结果不考虑低云影响可见性。"
                 )
                 detail_lines = [
                     f"{direction_name}详细采样报告", f"地点：{data['place']}；日期：{data['date']}；模式：{model_label}；事件时刻：{event_dt}；方位角：{azimuth:.2f}°",
@@ -1658,6 +1760,9 @@ class FireCloudApp(tk.Tk):
                 local_curve_reach = None
                 if local_geometry and isinstance(local_geometry.get("reach_km"), (int, float)) and local_geometry.get("reach_km") > 0:
                     local_curve_reach = float(local_geometry["reach_km"])
+                potential_curve_limit = boundaries.get("fire_cloud_range_km")
+                if potential_curve_limit is not None:
+                    local_curve_reach = min(float(potential_curve_limit), local_curve_reach) if local_curve_reach is not None else float(potential_curve_limit)
                 for si, sm_curve in enumerate(ordered_curve_samples):
                     dist_c = float(sm_curve.get("distance_km", 0))
                     if local_curve_reach is not None and dist_c > local_curve_reach:
@@ -1670,7 +1775,7 @@ class FireCloudApp(tk.Tk):
                         left_d = min(left_d, local_curve_reach)
                         right_d = min(right_d, local_curve_reach)
                     if right_d <= left_d:
-                        right_d = left_d + 5.0
+                        continue
                     for cloud_key, height_band in (("cloud_cover_low", (0.0, 2000.0)),
                                                    ("cloud_cover_mid", (2000.0, 6000.0)),
                                                    ("cloud_cover_high", (6000.0, 12000.0))):
@@ -1685,6 +1790,15 @@ class FireCloudApp(tk.Tk):
                               "visibility_km": (sum(visibility_values)/len(visibility_values) if visibility_values else None)}
                 dynamic_curve = self._build_dynamic_light_curve(curve_data, curve_zones, (event_dt, azimuth), single_mode=True,
                                             accepted_gaps=boundaries.get("clear_gaps") or []) if curve_zones else {"samples": [], "peak": None, "note": "缺少可用云量采样，未生成动态曲线。"}
+                # When spherical tracing explicitly found no valid channel, do not plot twilight as cloud illumination.
+                if search_stage == 'spherical_raytrace_no_clear_path':
+                    for _point in dynamic_curve.get('samples', []):
+                        _point['geometry_valid']=False
+                        _point['brightness']=0.0
+                        _point['relative_brightness']=0.0
+                        _point['tintable_cloud_area']=0.0
+                    dynamic_curve['peak']=None
+                    dynamic_curve['note']='球面光路未证实透光：不将暮光当作云彩受光。'
                 # 峰值云色与动态曲线峰值时刻对齐：使用所有有效距离段共同计算出的峰值时刻色彩，
                 # 避免 GUI 色块只由第一个云洞的距离规则决定；色相仍属于示意估算。
                 dynamic_peak = dynamic_curve.get("peak")
@@ -1717,8 +1831,10 @@ class FireCloudApp(tk.Tk):
             self.last_report = "\n\n".join(self.direction_results[k]["details"] for k in ("morning", "evening") if k in self.direction_results)
             if "morning" in results:
                 self._set_text(self.morning_summary, results["morning"].get("summary", "朝霞暂无结果"))
+                self._highlight_low_cloud(self.morning_summary)
             if "evening" in results:
                 self._set_text(self.evening_summary, results["evening"].get("summary", "晚霞暂无结果"))
+                self._highlight_low_cloud(self.evening_summary)
             for direction_key, prefix in (("morning", "morning"), ("evening", "evening")):
                 if direction_key not in results:
                     continue
@@ -1732,8 +1848,12 @@ class FireCloudApp(tk.Tk):
                 color_label = inferred_result.get("color_score_label", "色彩待估")
                 getattr(self, f"{prefix}_color_score_label").configure(
                     text=(f"色彩 {color_score}/100\n{color_label}" if color_score is not None else "色彩 —/100"))
+                _verdict = inferred_result.get('verdict_override')
+                _scale = inferred_result.get('burn_scale_index')
+                if not _verdict and isinstance(_scale, (int,float)) and _scale <= 0:
+                    _verdict = '不烧'
                 self._set_judgment_text(getattr(self, f"{prefix}_judgment_label"), regular_score, color_score,
-                                         inferred_result.get("verdict_override") or inferred_result.get("burn_scale_label"))
+                                         _verdict or inferred_result.get("burn_scale_label"))
                 rainbow = result.get("rainbow", {})
                 getattr(self, f"{prefix}_rainbow_label").configure(
                     text=self._rainbow_indicator_text(rainbow, result.get("event_dt"), direction_key))
@@ -4095,8 +4215,22 @@ class FireCloudApp(tk.Tk):
         messagebox.showinfo("提示", "请选择天气预报模式，然后点击对应的‘查询朝霞’或‘查询晚霞’。")
 
     @staticmethod
+    def _highlight_low_cloud(widget):
+        try:
+            widget.configure(state='normal')
+            pos = widget.search('视野内低云', '1.0', stopindex='end')
+            if pos:
+                end = widget.index(f'{pos} lineend')
+                widget.tag_add('low_cloud_warning', pos, end)
+                widget.tag_configure('low_cloud_warning', foreground='#c62828',
+                                     font=('Microsoft YaHei UI', 10, 'bold'))
+            widget.configure(state='disabled')
+        except Exception:
+            pass
+
+    @staticmethod
     def _set_judgment_text(widget, regular_score, color_score, burn_label):
-        special_verdicts = {"云底过低", "光线难以穿透", "低云遮挡过多", "机会太小，几乎不烧", "光板天"}
+        special_verdicts = {"云底过低", "光线难以穿透", "低云遮挡过多", "机会太小，几乎不烧", "光板天", "云量不足", "不烧"}
         if str(burn_label or "") in special_verdicts:
             try:
                 widget.configure(state="normal")
@@ -4461,13 +4595,7 @@ class FireCloudApp(tk.Tk):
                 seg_start=z["start"]+width*seg_i/n
                 seg_end=z["start"]+width*(seg_i+1)/n
                 dist=(seg_start+seg_end)/2.0
-                # Restrict the time series to actual accepted cloud-hole distance
-                # intervals. A gap is a candidate corridor, not guaranteed illumination.
-                if accepted_gaps is not None and not any(
-                    float(g.get("start_km", 0)) <= dist <= float(g.get("end_km", 0))
-                    for g in accepted_gaps if isinstance(g, dict)
-                ):
-                    continue
+                # Clear gaps are light corridors, not target clouds. Target every real cloud cell.
                 seg_width=max(0.1,seg_end-seg_start)
                 for lo,hi in z["layers"]:
                     if hi <= 1500 or hi <= lo:
@@ -4575,8 +4703,7 @@ class FireCloudApp(tk.Tk):
                     overlap=max(0.0,min(target_band[1],blocker["hi_km"])-max(target_band[0],blocker["lo_km"]))
                     target_thick=max(0.1,target_band[1]-target_band[0])
                     # 高度带大幅重叠通常是同一片连续高云，不把它再次认定为独立屏障。
-                    if overlap/target_thick >= 0.60:
-                        continue
+                    # Even the same height band can block a ray when the geometry intersects it.
                     dx=max(0.0,blocker["dist"]-dist)
                     if dx <= 1.0:
                         continue
@@ -4591,7 +4718,7 @@ class FireCloudApp(tk.Tk):
                     vertical_factor=max(0.0,min(1.0,1.0-vertical_gap/0.75))
                     cover_factor=max(0.0,min(1.0,(float(blocker["cover"])-8.0)/32.0))
                     if vertical_factor > 0.0 and cover_factor > 0.0:
-                        opacity=min(0.70,cover_factor*0.65*vertical_factor)
+                        opacity=min(1.0, max(0.0, float(blocker['cover']) / 100.0) * vertical_factor)
                         zi=blocker["zone_index"]
                         zone_opacity[zi]=max(zone_opacity.get(zi,0.0),opacity)
                 # 这些区间是沿同一观测方向的简化采样，不是独立、可无限相乘的真实遮光片。
@@ -4601,6 +4728,9 @@ class FireCloudApp(tk.Tk):
                 # 两种模式统一采用实况模拟原有的有限异层遮挡衰减，避免同一曲线在不同入口下
                 # 一边考虑光路遮挡、一边完全忽略遮挡。只取最强一处，不对多个采样区间连乘。
                 attenuation = max(0.0, 1.0-strongest_opacity)
+                # Do not count nearly opaque rays as illuminated clouds.
+                if attenuation < 0.12:
+                    attenuation = 0.0
                 contribution=target["weight"]*(target["cover"]/100.0)*lit_fraction
                 weighted_light += contribution*attenuation
                 color_weight += contribution
@@ -4641,6 +4771,14 @@ class FireCloudApp(tk.Tk):
                             "atmospheric_color_quality":round(atmospheric_color_quality,3),
                             "path_transmission":round(transmission,3),
                             "air_transmission":round(air_transmission,3)})
+        # Discard negligible twilight tails: they are not a meaningful visible cloud-color window.
+        _max_area=max((float(x['tintable_cloud_area']) for x in samples),default=0.0)
+        _area_floor=max(1e-8, _max_area*0.03)
+        for point in samples:
+            if point['tintable_cloud_area'] < _area_floor:
+                point['geometry_valid']=False
+                point['brightness']=0.0
+                point['tintable_cloud_area']=0.0
         # 新增本次预测内部的相对亮度：本时窗峰值=100，其余时刻按原始亮度比例缩放。
         # 原始 brightness 不覆盖，避免不同日期的绝对条件强弱信息丢失。
         raw_peak=max((float(x["brightness"]) for x in samples), default=0.0)

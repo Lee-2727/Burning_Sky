@@ -127,7 +127,7 @@ def _record(result):
         except (TypeError, ValueError):
             return None
     probability = numeric(inferred.get("regular_score", inferred.get("score")))
-    burn_scale = numeric(inferred.get("tintable_ratio", inferred.get("burn_scale_index")))
+    tintable_ratio = numeric(inferred.get("tintable_ratio"))
     # 本地云量必须取预测结果的 distance_km == 0 原始天气采样点。
     # inferred.local_scale_clouds 并不是当前引擎稳定输出的字段，不能依赖它。
     samples = (result or {}).get("samples") or []
@@ -140,9 +140,16 @@ def _record(result):
     # 本地高云 = 本地中云 + 本地高云；云量按百分比显示，封顶 100%。
     local_high_cloud = (min(100.0, max(0.0, local_mid_cloud) + max(0.0, local_high_layer_cloud))
                         if local_mid_cloud is not None and local_high_layer_cloud is not None else None)
-    # 三个百分比相乘后归一化，评分保持 0–100 的直观范围。
-    fire_score = (probability * burn_scale * local_high_cloud / 10000.0
-                  if probability is not None and burn_scale is not None and local_high_cloud is not None else None)
+    # Reuse the engine's visible-horizon scale rather than the 0-km cloud sample.
+    burn_scale = numeric(inferred.get("burn_scale_index"))
+    if burn_scale is None:
+        visible = inferred.get('visible_cloud_cover') or {}
+        mid = numeric(visible.get('mid'))
+        high = numeric(visible.get('high'))
+        burn_scale = (round(min(100.0, mid+high)*tintable_ratio/100.0, 2)
+                      if mid is not None and high is not None and tintable_ratio is not None else None)
+    fire_score = (round(probability * burn_scale / 100.0, 2)
+                  if probability is not None and burn_scale is not None else None)
     return {
         "probability": probability,
         "color_score": numeric(inferred.get("color_score")),

@@ -1552,7 +1552,7 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
         score = min(score, 20)
         inferred["regular_score"] = score
         inferred["score"] = score
-        verdict, rule = "潜在霞云距为0，常规概率封顶20%", "zero_potential_fire_cloud_range_cap_20pct"
+        verdict, rule = "云量不足", "zero_potential_fire_cloud_range_cap_20pct"
 
     if verdict is not None:
         inferred["verdict_override"] = verdict
