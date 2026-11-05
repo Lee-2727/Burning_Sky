@@ -460,6 +460,47 @@ if not run and st.session_state.get('rainbow_only_web_result') is not None:
 if run and st.session_state.get("show_multi_day_overview"):
     st.session_state["show_multi_day_overview"] = False
 
+# Read published overview JSON from GitHub as well as the deployment's local copy.
+# Streamlit Cloud does not necessarily pull GitHub Actions data-only commits.
+@st.cache_data(ttl=60, show_spinner=False)
+def _published_overview_json(filename):
+    import json, os, re, subprocess
+    from urllib.parse import quote
+    import requests
+    root = os.path.dirname(os.path.abspath(__file__))
+    local_path = os.path.join(root, "data", filename)
+    local = None
+    try:
+        with open(local_path, encoding="utf-8") as f:
+            local = json.load(f)
+    except (OSError, ValueError):
+        pass
+    repo = os.environ.get("BURNING_SKY_GITHUB_REPOSITORY") or os.environ.get("GITHUB_REPOSITORY", "")
+    if not repo:
+        try:
+            remote = subprocess.run(["git", "remote", "get-url", "origin"], cwd=root,
+                                    capture_output=True, text=True, timeout=2)
+            m = re.search(r"github\.com[:/]([^/\s]+/[^/\s]+?)(?:\.git)?$", remote.stdout.strip())
+            if m:
+                repo = m.group(1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    if repo and re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+        branch = os.environ.get("BURNING_SKY_GITHUB_BRANCH", "main")
+        url = f"https://raw.githubusercontent.com/{repo}/{quote(branch, safe='')}/data/{quote(filename)}"
+        try:
+            import time
+            response = requests.get(url, params={"_": str(int(time.time() // 60))}, timeout=7,
+                                    headers={"Cache-Control": "no-cache"})
+            response.raise_for_status()
+            published = response.json()
+            if isinstance(published, dict):
+                return published, "GitHub 最新发布文件"
+        except (requests.RequestException, ValueError):
+            pass
+    return local, "部署本地文件（远端未取得）"
+
+
 if st.session_state.get("show_multi_day_overview"):
     st.title("未来多日概览")
     if st.button("← 返回单次预报", key="back_to_single_forecast"):
@@ -472,8 +513,9 @@ if st.session_state.get("show_multi_day_overview"):
         _status_path = os.path.join(_data_dir, "overview_status.json")
         try:
             import json as _status_json
-            with open(_status_path, "r", encoding="utf-8") as _sf:
-                _update_status = _status_json.load(_sf)
+            _update_status, _status_origin = _published_overview_json("overview_status.json")
+            if not isinstance(_update_status, dict):
+                raise FileNotFoundError("overview_status.json")
             _state = _update_status.get("state", "unknown")
             _completed_models = _update_status.get("completed_models", [])
             _model_total = _update_status.get("model_total", 5)
@@ -487,7 +529,7 @@ if st.session_state.get("show_multi_day_overview"):
             elif _state == "between_models":
                 st.info(f"⏳ 多模概览正在准备下一个模式。已完成 {_model_index}/{_model_total} 个模式：{', '.join(_completed_models)}。状态更新时间：{_update_status.get('updated_at', '未知')}。")
             elif _state == "completed":
-                st.success(f"✅ {_active_direction}本轮五模式三日数据已完整发布。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
+                st.success(f"✅ {_active_direction}本轮三模式三日数据已完整发布。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
             elif _state == "failed":
                 st.error(f"❌ {_active_direction}本轮更新失败（{_update_status.get('failure_count', 0)} 项）。已保留上一次完整发布的数据。原因：{_update_status.get('message', '请查看 GitHub Actions 日志')}。")
             else:
@@ -500,9 +542,9 @@ if st.session_state.get("show_multi_day_overview"):
             with open(_city_cfg, "r", encoding="utf-8-sig") as _cf:
                 _overview_cities = [line.split(",")[0].strip() for line in _cf if line.strip() and not line.lstrip().startswith("#")]
         except Exception:
-            _overview_cities = ["合肥", "深圳"]
+            _overview_cities = ["合肥", "海口"]
         if not _overview_cities:
-            _overview_cities = ["合肥", "深圳"]
+            _overview_cities = ["合肥", "海口"]
         _overview_city = st.selectbox("概览城市", _overview_cities, index=0, key="overview_city_select")
         _overview_path = os.path.join(_data_dir, f"overview_{_overview_city}.json")
         _overview = None
@@ -510,21 +552,13 @@ if st.session_state.get("show_multi_day_overview"):
             import json as _json
             _city_snapshot = None
             _aggregate_snapshot = None
-            try:
-                with open(_overview_path, "r", encoding="utf-8") as _f:
-                    _city_snapshot = _json.load(_f)
-            except Exception:
-                pass
-            try:
-                with open(os.path.join(_data_dir, "overview.json"), "r", encoding="utf-8") as _f:
-                    _aggregate = _json.load(_f)
-                _cities = _aggregate.get("cities", {}) if isinstance(_aggregate, dict) else {}
-                if isinstance(_cities, dict) and _overview_city in _cities:
-                    _aggregate_snapshot = _cities[_overview_city]
-                elif _overview_city == "合肥" and isinstance(_aggregate, dict) and _aggregate.get("days"):
-                    _aggregate_snapshot = _aggregate
-            except Exception:
-                pass
+            _city_snapshot, _city_origin = _published_overview_json(f"overview_{_overview_city}.json")
+            _aggregate, _aggregate_origin = _published_overview_json("overview.json")
+            _cities = _aggregate.get("cities", {}) if isinstance(_aggregate, dict) else {}
+            if isinstance(_cities, dict) and _overview_city in _cities:
+                _aggregate_snapshot = _cities[_overview_city]
+            elif _overview_city == "合肥" and isinstance(_aggregate, dict) and _aggregate.get("days"):
+                _aggregate_snapshot = _aggregate
 
             def _snapshot_freshness(_snapshot):
                 if not isinstance(_snapshot, dict):
@@ -535,19 +569,35 @@ if st.session_state.get("show_multi_day_overview"):
 
             # Both files are published by the updater. If one is stale or only
             # partially deployed, display whichever copy contains the newer result.
-            _candidates = [("城市独立文件", x) for x in (_city_snapshot,)
+            _candidates = [(f"城市独立文件 · {_city_origin}", x) for x in (_city_snapshot,)
                            if isinstance(x, dict) and x.get("days")]
-            _candidates += [("总览汇总文件", x) for x in (_aggregate_snapshot,)
+            _candidates += [(f"总览汇总文件 · {_aggregate_origin}", x) for x in (_aggregate_snapshot,)
                             if isinstance(x, dict) and x.get("days")]
             _overview_source, _overview = (max(_candidates, key=lambda item: _snapshot_freshness(item[1]))
                                            if _candidates else (None, None))
+            if len(_candidates) > 1 and _overview is not None:
+                import copy as _copy
+                _overview = _copy.deepcopy(_overview)
+                _merged_days = {d.get("date"): d for d in _overview.get("days", []) if isinstance(d, dict)}
+                _direction_times = dict(_overview.get("direction_updated_at", {}))
+                for _name, _candidate in _candidates:
+                    _candidate_times = _candidate.get("direction_updated_at", {})
+                    for _dir in ("morning", "evening"):
+                        if str(_candidate_times.get(_dir) or "") > str(_direction_times.get(_dir) or ""):
+                            for _day in _candidate.get("days", []):
+                                _date = _day.get("date")
+                                if _date in _merged_days:
+                                    _merged_days[_date][_dir] = _copy.deepcopy(_day.get(_dir, {}))
+                            _direction_times[_dir] = _candidate_times[_dir]
+                _overview["direction_updated_at"] = _direction_times
+                _overview_source += "（按朝/晚霞独立合并）"
         except Exception:
             _overview_source, _overview = None, None
         if not _overview or not _overview.get("days"):
-            st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、五种天气模式的朝霞与晚霞结果。")
+            st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、三种天气模式的朝霞与晚霞结果。")
         else:
-            st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 预报范围：包含今天的未来三日 · 五模式 · 数据来源：{_overview_source} · 数据更新时间：{_overview.get('updated_at', '未知')}。")
-            _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global", "CMA GRAPES Global", "ECMWF (AI)"]
+            st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 预报范围：包含今天的未来三日 · 三模式 · 数据来源：{_overview_source} · 数据更新时间：{_overview.get('updated_at', '未知')}。")
+            _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global"]
             _model_short = {"ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON", "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)"}
             _direction_times = _overview.get("direction_updated_at", {})
             for _direction, _direction_title in (("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")):
@@ -717,11 +767,11 @@ def _web_finalize_special_verdict(inferred, summary):
     except (TypeError, ValueError): score = 0.0
 
     if is_profile and base_km is not None and base_km < 0.5:
-        score, verdict, rule = 0, "云底过底", "profile_cloud_base_below_500m_web_summary"
+        score, verdict, rule = 0, "云底过低", "profile_cloud_base_below_500m_web_summary"
     elif low is not None and low >= 90:
         score, verdict, rule = 0, "低云遮挡过多", "local_low_cloud_at_least_90pct_web_summary"
     elif local_100km_total is not None and local_100km_total < 5:
-        score, verdict, rule = 0, "本地100km云量不足", "local_100km_mean_total_cloud_below_5pct_web_final"
+        score, verdict, rule = 0, "云量不足", "local_100km_mean_total_cloud_below_5pct_web_final"
     elif total is not None and total < 10:
         verdict, rule = "光板天", "local_total_cloud_below_10pct_web_summary"
     elif score < 20:
@@ -875,7 +925,7 @@ if results:
             if rainbow:
                 st.markdown('**🌈 彩虹分析**')
                 _rainbow_sunset_overlap=False
-                if key == 'evening':  # use the direction of this rendered result on every Streamlit rerun
+                if _chosen_direction=='evening':
                     try:
                         from datetime import datetime, timedelta, timezone
                         _sunset_dt,_=engine.find_sunset(forecast_date,8,lat,lon)

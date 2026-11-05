@@ -96,6 +96,7 @@ def _new_runner(city, day, model_label):
     }
     runner.vars = {k: _Value(v) for k, v in values.items()}
     runner.direction_results = {}
+    runner.skip_rainbow_for_overview = True
     runner.last_report = ""
     runner.last_fetch_time = None
     runner.aod_manual_override = False
@@ -255,11 +256,11 @@ def main():
     direction_title = "朝霞" if direction == "morning" else "晚霞"
     dates = [now.date() + timedelta(days=i) for i in range(3)]
     cities = list(CITY_CONFIG)
-    models = list(engine.WEATHER_MODEL_CATALOG)
-    if len(models) != 5:
-        raise SystemExit(f"Expected five enabled models, found {len(models)}")
-    if cities != ["合肥", "深圳"]:
-        raise SystemExit(f"Expected only 合肥 and 深圳 in overview_cities.txt; found {cities}")
+    models = [m for m in engine.WEATHER_MODEL_CATALOG if m["label"] in ("ECMWF IFS 0.25°", "GFS Global", "ICON Global")]
+    if len(models) != 3:
+        raise SystemExit(f"Expected three enabled models, found {len(models)}")
+    if cities != ["合肥", "海口"]:
+        raise SystemExit(f"Expected only 合肥 and 海口 in overview_cities.txt; found {cities}")
 
     snapshots = {}
     for city, (lat, lon, elev) in CITY_CONFIG.items():
@@ -310,7 +311,7 @@ def main():
         "next_update": "北京时间每日 00:00/04:00/20:00 朝霞；08:00/12:00/16:00 晚霞",
     }
     print("Updater version: split-direction-atomic-v1", flush=True)
-    print(f"Direction: {direction_title}; cities: {' → '.join(cities)}; models: 5; days: 3", flush=True)
+    print(f"Direction: {direction_title}; cities: {' → '.join(cities)}; models: 3; days: 3", flush=True)
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
     _publish_files(status, include_results=False)
 
@@ -387,7 +388,7 @@ def main():
                  "cities": {city: snapshots[city] for city in cities}}
     _write_json_atomic(ROOT / "data" / "overview.json", aggregate)
     status.update(state="completed", completed_at=completed_at, updated_at=completed_at,
-                  failure_count=0, message=f"{direction_title}五模式三日数据已完整发布。")
+                  failure_count=0, message=f"{direction_title}三模式三日数据已完整发布。")
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
     _publish_files(status, include_results=True)
     print(f"Completed and atomically published {direction_title}: {len(cities)} cities × 5 models × 3 days", flush=True)

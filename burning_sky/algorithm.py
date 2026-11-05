@@ -1408,7 +1408,7 @@ def apply_path_score_pair(inferred, geometry, boundaries, samples=None):
     new_rule_notes = []
     if profile_based and isinstance(profile_base_agl, (int, float)) and profile_base_agl < 0.5:
         regular = 0
-        verdict_override = "云底过底"
+        verdict_override = "云底过低"
         new_rule_notes.append(
             f"本地剖面推算云底离地高度约 {profile_base_agl * 1000:.0f} m，低于500 m，常规概率直接归零。")
     elif isinstance(local_low, (int, float)) and local_low >= 90:
@@ -1518,13 +1518,13 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
     rule = None
     if profile_based and isinstance(profile_base_for_rule, (int, float)) and float(profile_base_for_rule) < 0.5:
         inferred["regular_score"] = 0
-        verdict, rule = "云底过底", "profile_cloud_base_below_500m"
+        verdict, rule = "云底过低", "profile_cloud_base_below_500m"
     elif isinstance(local_low, (int, float)) and float(local_low) >= 90:
         inferred["regular_score"] = 0
         verdict, rule = "低云遮挡过多", "local_low_cloud_at_least_90pct"
     elif isinstance(local_100km_mean_total, (int, float)) and local_100km_mean_total < 5:
         inferred["regular_score"] = 0
-        verdict, rule = "本地100km云量不足", "local_100km_mean_total_cloud_below_5pct"
+        verdict, rule = "云量不足", "local_100km_mean_total_cloud_below_5pct"
     elif (gap_status == "continuous_cloud" and not gaps and
           isinstance(path_mean, (int, float)) and float(path_mean) > 50):
         # apply_path_score_pair() may already have applied the 0.5 factor.
@@ -1547,7 +1547,7 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
                           (isinstance(potential_range, (int, float)) and potential_range <= 0))
     strict_zero_rule = rule in ("profile_cloud_base_below_500m", "local_low_cloud_at_least_90pct",
                                 "local_100km_mean_total_cloud_below_5pct")
-    preserve_verdict = verdict in ("光线难以穿透", "光板天", "机会太小，几乎不烧", "本地100km云量不足")
+    preserve_verdict = verdict in ("光线难以穿透", "光板天", "机会太小，几乎不烧", "云量不足")
     if no_potential_range and not strict_zero_rule and not preserve_verdict:
         score = min(score, 20)
         inferred["regular_score"] = score

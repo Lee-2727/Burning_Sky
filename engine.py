@@ -1266,19 +1266,22 @@ class FireCloudApp(tk.Tk):
                 else:
                     extended_scan_complete = False
 
-                # 彩虹位于反太阳方向：只额外查询 5 个稀疏点，失败不影响霞光主预报。
-                self._set_main_progress(base_progress + 37, f"{direction_name}：估算反太阳方向彩虹条件……")
-                try:
-                    rainbow_result = self._estimate_rainbow_opportunity(
-                        data["lat"], data["lon"], azimuth, event_utc, model_id,
-                        minute_range=self._rainbow_window(direction_key))
-                    self.rainbow_only_result=rainbow_result
-                    self.rainbow_only_metadata={'utc_offset':data['utc_offset'],'date':str(data['date'])}
-                    self.after(0,lambda r=rainbow_result:self._update_rainbow_summary(r))
-                except Exception as rainbow_exc:
-                    rainbow_result = {"score": None, "label": "暂不可估", "distance_km": None,
-                                      "precip_probability": None, "precipitation": None,
-                                      "note": f"反太阳方向降水数据不可用：{rainbow_exc}"}
+                # 后台多模概览跳过彩虹专用采样与计算；单次单模式保持原逻辑。
+                if getattr(self, "skip_rainbow_for_overview", False):
+                    rainbow_result = {}
+                else:
+                    self._set_main_progress(base_progress + 37, f"{direction_name}：估算反太阳方向彩虹条件……")
+                    try:
+                        rainbow_result = self._estimate_rainbow_opportunity(
+                            data["lat"], data["lon"], azimuth, event_utc, model_id,
+                            minute_range=self._rainbow_window(direction_key))
+                        self.rainbow_only_result = rainbow_result
+                        self.rainbow_only_metadata = {'utc_offset': data['utc_offset'], 'date': str(data['date'])}
+                        self.after(0, lambda r=rainbow_result: self._update_rainbow_summary(r))
+                    except Exception as rainbow_exc:
+                        rainbow_result = {"score": None, "label": "暂不可估", "distance_km": None,
+                                          "precip_probability": None, "precipitation": None,
+                                          "note": f"反太阳方向降水数据不可用：{rainbow_exc}"}
 
                 self._set_main_progress(base_progress + 39, f"{direction_name}：细化气溶胶路径……")
                 try:
@@ -4093,7 +4096,7 @@ class FireCloudApp(tk.Tk):
 
     @staticmethod
     def _set_judgment_text(widget, regular_score, color_score, burn_label):
-        special_verdicts = {"云底过底", "光线难以穿透", "低云遮挡过多", "机会太小，几乎不烧", "光板天"}
+        special_verdicts = {"云底过低", "光线难以穿透", "低云遮挡过多", "机会太小，几乎不烧", "光板天"}
         if str(burn_label or "") in special_verdicts:
             try:
                 widget.configure(state="normal")
