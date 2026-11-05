@@ -721,25 +721,37 @@ if st.session_state.get("show_multi_day_overview"):
             resp = _gh_requests.request(method,_api_base+path,headers=_headers,timeout=12,**kwargs)
             if not resp.ok: raise RuntimeError(f"GitHub API HTTP {resp.status_code}: {resp.text[:220]}")
             return resp.json() if resp.content else None
+        _display = None  # Published result is optional; never read before assignment.
         _active = []
         _latest = None
+        _workflow_ready = False
+        _workflow_error = ""
         if _configured:
             try:
+                # Validate the workflow itself before listing runs. A 404 here can mean
+                # missing workflow on the default branch, wrong repository, or denied access.
+                _workflow = _gh_call("GET", "/actions/workflows/manual-overview.yml")
+                _workflow_ready = bool(_workflow.get("id"))
                 _runs = _gh_call("GET","/actions/workflows/manual-overview.yml/runs",params={"per_page":30,"event":"workflow_dispatch"}).get("workflow_runs",[])
                 _active = [r for r in _runs if r.get("status") in ("queued","in_progress","waiting","pending","requested")]
                 _matching = [r for r in _runs if _cache_id in (r.get("display_title") or "")]
                 _latest = _matching[0] if _matching else None
-            except Exception as _e: st.warning("无法查询后台任务："+str(_e))
+            except Exception as _e:
+                _workflow_error = str(_e)
+                if "HTTP 404" in _workflow_error:
+                    st.error("GitHub 找不到手动概览工作流。请确认 .github/workflows/manual-overview.yml 已上传到仓库默认分支、Secrets 的仓库名正确，且 Token 有 Actions 读写权限。GitHub 404 也可能表示权限不足。")
+                else:
+                    st.warning("无法查询后台任务："+_workflow_error)
         else:
             st.warning("需要在 Streamlit Secrets 设置 BURNING_SKY_GITHUB_TOKEN 和 BURNING_SKY_GITHUB_REPOSITORY 才能启动/停止后台任务。")
         _btn_start,_btn_stop,_btn_refresh = st.columns([2,1,1])
         with _btn_start:
-            _do_run = st.button("▶ 启动 GitHub 后台更新",type="primary",disabled=not _configured or bool(_active),key="manual_overview_submit")
+            _do_run = st.button("▶ 启动 GitHub 后台更新",type="primary",disabled=not _configured or not _workflow_ready or bool(_active),key="manual_overview_submit")
         with _btn_stop:
-            _do_stop = st.button("■ 停止任务",disabled=not _configured or not _active,key="manual_overview_cancel")
+            _do_stop = st.button("■ 停止任务",disabled=not _configured or not _workflow_ready or not _active,key="manual_overview_cancel")
         with _btn_refresh:
             _do_refresh = st.button("刷新状态",key="manual_overview_refresh")
-        if _do_run:
+        if _do_run and _workflow_ready:
             try:
                 _gh_call("POST","/actions/workflows/manual-overview.yml/dispatches",json={"ref":_branch,"inputs":{"place":_mplace,"lat":str(_mlat),"lon":str(_mlon),"elev":str(_melev),"date":_mdate.isoformat(),"request_id":_cache_id}})
                 st.success("已提交 GitHub Actions 后台任务，可以关闭网页。")
