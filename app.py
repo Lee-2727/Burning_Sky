@@ -925,10 +925,11 @@ if results:
             if rainbow:
                 st.markdown('**🌈 彩虹分析**')
                 _rainbow_sunset_overlap=False
-                if _chosen_direction=='evening':
+                if key == 'evening':
                     try:
                         from datetime import datetime, timedelta, timezone
-                        _sunset_dt,_=engine.find_sunset(forecast_date,8,lat,lon)
+                        _result_date = __import__("datetime").date.fromisoformat(meta["date"])
+                        _sunset_dt,_=engine.find_sunset(_result_date,8,float(meta["lat"]),float(meta["lon"]))
                         _sunset_utc=(_sunset_dt-timedelta(hours=8)).replace(tzinfo=timezone.utc)
                         _rainbow_sunset_overlap=any(
                             float(_rr.get('primary_index') or 0)>30 and
