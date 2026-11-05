@@ -1,0 +1,73 @@
+name: Burning Sky manual three-model three-day
+run-name: Manual overview ${{ inputs.request_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      place:
+        required: true
+        type: string
+      lat:
+        required: true
+        type: string
+      lon:
+        required: true
+        type: string
+      elev:
+        required: true
+        type: string
+      date:
+        required: true
+        type: string
+      request_id:
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: burning-sky-manual-overview
+  cancel-in-progress: false
+jobs:
+  manual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Calculate manual overview
+        env:
+          PYTHONUNBUFFERED: '1'
+          MANUAL_PLACE: ${{ inputs.place }}
+          MANUAL_LAT: ${{ inputs.lat }}
+          MANUAL_LON: ${{ inputs.lon }}
+          MANUAL_ELEV: ${{ inputs.elev }}
+          MANUAL_DATE: ${{ inputs.date }}
+          MANUAL_ID: ${{ inputs.request_id }}
+        run: |
+          python -u scripts/manual_overview_action.py \
+            --place "$MANUAL_PLACE" --lat "$MANUAL_LAT" --lon "$MANUAL_LON" \
+            --elev "$MANUAL_ELEV" --date "$MANUAL_DATE" --request_id "$MANUAL_ID"
+      - name: Publish complete/partial result (preserve previous results)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="data/manual_overview_runs/${{ inputs.request_id }}.json"
+          if [[ ! -f "$FILE" ]]; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$FILE"
+          git diff --cached --quiet && exit 0
+          git commit -m "Publish manual overview ${{ inputs.request_id }} [skip ci]"
+          for attempt in 1 2 3 4 5; do
+            git fetch origin "${GITHUB_REF_NAME}"
+            if git rebase "origin/${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}"; then exit 0; fi
+            git rebase --abort || true
+            sleep 5
+          done
+          exit 1
