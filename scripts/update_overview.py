@@ -20,7 +20,7 @@ CITY_CONFIG_FILE = ROOT / "overview_cities.txt"
 
 # Requests are processed conservatively within each model batch; each completed
 # model batch is published before the next model starts.
-REQUEST_INTERVAL_SECONDS = 20
+REQUEST_INTERVAL_SECONDS = 0  # 真正限速在 engine 的每次 HTTP 发出前执行
 
 def load_city_config():
     cities = []

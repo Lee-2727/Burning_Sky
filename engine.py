@@ -22,6 +22,7 @@ import json
 import urllib.parse
 import urllib.request
 import urllib.error
+from burning_sky.api_rate_limit import limited_urlopen
 import time
 import os
 import re
@@ -162,7 +163,7 @@ def _get_model_metadata_signature(model_id):
             url = f"{host}/data/{candidate_id}/static/meta.json"
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": "FireCloudForecast/1.4.0"})
-                with urllib.request.urlopen(req, timeout=min(3.0, max(0.5, deadline-time.time()))) as response:
+                with limited_urlopen(req, timeout=min(3.0, max(0.5, deadline-time.time()))) as response:
                     data = json.loads(response.read().decode("utf-8"))
                 if isinstance(data, dict) and any(k in data for k in (
                     "last_run_initialisation_time", "last_run_availability_time", "last_run_modification_time"
@@ -258,7 +259,7 @@ def _request_json_impl(req, timeout=20, retries=3, cache_key=None, cache_ttl=Non
         last_error = None
         for attempt in range(max(0, retries) + 1):
             try:
-                with urllib.request.urlopen(req, timeout=timeout) as response:
+                with limited_urlopen(req, timeout=timeout) as response:
                     data = json.loads(response.read().decode("utf-8"))
                 if cache_key:
                     _HTTP_JSON_CACHE[cache_key] = (time.time(), data)
@@ -2480,7 +2481,7 @@ class FireCloudApp(tk.Tk):
                 win.after(0, lambda: status.set("读取中国省级行政区边界……"))
                 geo_url = "https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json"
                 req = urllib.request.Request(geo_url, headers={"User-Agent": "FireCloudForecast/1.1.1"})
-                with urllib.request.urlopen(req, timeout=25) as response:
+                with limited_urlopen(req, timeout=25) as response:
                     geo = json.loads(response.read().decode("utf-8"))
                 polygons = self._geojson_polygons(geo)
                 if not polygons:
@@ -3798,7 +3799,7 @@ class FireCloudApp(tk.Tk):
             for url in urls:
                 try:
                     req = urllib.request.Request(url, headers={"User-Agent": "FireCloudForecast/0.5.1"})
-                    with urllib.request.urlopen(req, timeout=8) as response:
+                    with limited_urlopen(req, timeout=8) as response:
                         candidate_payload = json.loads(response.read().decode("utf-8"))
                     if isinstance(candidate_payload, dict) and any(
                         key in candidate_payload for key in (
