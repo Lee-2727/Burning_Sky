@@ -1,0 +1,153 @@
+{
+  "identity": {
+    "place": "合肥",
+    "lat": 31.8206,
+    "lon": 117.2272,
+    "elev": 30.0,
+    "date": "2026-11-07",
+    "models": [
+      "ECMWF IFS 0.25°",
+      "GFS Global",
+      "ICON Global"
+    ]
+  },
+  "obtained_at": "2026-11-06T23:29:56+08:00",
+  "records": [
+    {
+      "date": "2026-11-07",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 3,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-07",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-07",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 15,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-07",
+      "model": "GFS Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-07",
+      "model": "ICON Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 11,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-07",
+      "model": "ICON Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-08",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-08",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-08",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-08",
+      "model": "GFS Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-08",
+      "model": "ICON Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-08",
+      "model": "ICON Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-09",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 50,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-09",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 41,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-09",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-09",
+      "model": "ICON Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    }
+  ],
+  "errors": [
+    "2026-11-09 GFS Global evening: 预测结果不完整：概率、色彩分或火烧云规模缺失",
+    "2026-11-09 ICON Global evening: 预测结果不完整：概率、色彩分或火烧云规模缺失"
+  ],
+  "completed": 18,
+  "total": 18,
+  "state": "partial",
+  "request_id": "08668364e70716d8d68af640"
+}
