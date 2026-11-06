@@ -3,8 +3,8 @@
   "state": "failed",
   "direction": "both",
   "direction_title": "朝霞与晚霞",
-  "started_at": "2026-11-06 16:47:07 CST",
-  "updated_at": "2026-11-06 17:13:48 CST",
+  "started_at": "2026-11-06 20:49:28 CST",
+  "updated_at": "2026-11-06 21:15:17 CST",
   "current_model": "GFS Global",
   "model_index": 2,
   "model_total": 2,
@@ -21,15 +21,15 @@
   "task_progress": 60,
   "task_total": 60,
   "next_update": "北京时间每日 03:00 朝霞与晚霞",
-  "failure_count": 4,
+  "failure_count": 5,
   "last_error": {
-    "city": "南京",
-    "date": "2026-11-06",
+    "city": "武汉",
+    "date": "2026-11-07",
     "model": "ECMWF IFS 0.25°",
     "direction": "morning",
     "error": "预测流程未返回有效概率结果"
   },
-  "failed_at": "2026-11-06 17:13:48 CST",
+  "failed_at": "2026-11-06 21:15:17 CST",
   "failures": [
     {
       "city": "合肥",
@@ -58,7 +58,14 @@
       "model": "ECMWF IFS 0.25°",
       "direction": "morning",
       "error": "预测流程未返回有效概率结果"
+    },
+    {
+      "city": "武汉",
+      "date": "2026-11-07",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "error": "预测流程未返回有效概率结果"
     }
   ],
-  "message": "本轮朝霞与晚霞有 4 项失败；保留上一次完整发布的数据。"
+  "message": "本轮朝霞与晚霞有 5 项失败；保留上一次完整发布的数据。"
 }
