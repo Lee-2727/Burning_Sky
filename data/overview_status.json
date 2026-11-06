@@ -3,69 +3,44 @@
   "state": "failed",
   "direction": "both",
   "direction_title": "朝霞与晚霞",
-  "started_at": "2026-11-06 20:49:28 CST",
-  "updated_at": "2026-11-06 21:15:17 CST",
-  "current_model": "GFS Global",
-  "model_index": 2,
-  "model_total": 2,
+  "started_at": "2026-11-07 00:42:09 CST",
+  "updated_at": "2026-11-07 00:49:06 CST",
+  "current_model": "ICON Global",
+  "model_index": 3,
+  "model_total": 3,
   "completed_models": [],
   "cities": [
-    "合肥",
-    "上海",
-    "南京",
-    "武汉",
-    "海口"
+    "合肥"
   ],
-  "city_progress": 5,
-  "city_total": 5,
-  "task_progress": 60,
-  "task_total": 60,
-  "next_update": "北京时间每日 03:00 朝霞与晚霞",
-  "failure_count": 5,
+  "city_progress": 1,
+  "city_total": 1,
+  "task_progress": 18,
+  "task_total": 18,
+  "next_update": "北京时间每日 03:00、09:00、14:30、21:00 朝霞与晚霞",
+  "failure_count": 2,
   "last_error": {
-    "city": "武汉",
-    "date": "2026-11-07",
-    "model": "ECMWF IFS 0.25°",
-    "direction": "morning",
+    "city": "合肥",
+    "date": "2026-11-09",
+    "model": "ICON Global",
+    "direction": "evening",
     "error": "预测流程未返回有效概率结果"
   },
-  "failed_at": "2026-11-06 21:15:17 CST",
+  "failed_at": "2026-11-07 00:49:06 CST",
   "failures": [
     {
       "city": "合肥",
-      "date": "2026-11-06",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "morning",
-      "error": "预测流程未返回有效概率结果"
-    },
-    {
-      "city": "上海",
-      "date": "2026-11-06",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "evening",
-      "error": "预测流程未返回有效概率结果"
-    },
-    {
-      "city": "上海",
-      "date": "2026-11-06",
+      "date": "2026-11-09",
       "model": "GFS Global",
       "direction": "evening",
       "error": "预测流程未返回有效概率结果"
     },
     {
-      "city": "南京",
-      "date": "2026-11-06",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "morning",
-      "error": "预测流程未返回有效概率结果"
-    },
-    {
-      "city": "武汉",
-      "date": "2026-11-07",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "morning",
+      "city": "合肥",
+      "date": "2026-11-09",
+      "model": "ICON Global",
+      "direction": "evening",
       "error": "预测流程未返回有效概率结果"
     }
   ],
-  "message": "本轮朝霞与晚霞有 5 项失败；保留上一次完整发布的数据。"
+  "message": "本轮朝霞与晚霞有 2 项失败；保留上一次完整发布的数据。"
 }
