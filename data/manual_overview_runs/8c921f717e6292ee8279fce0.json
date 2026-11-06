@@ -11,27 +11,133 @@
       "ICON Global"
     ]
   },
-  "obtained_at": "2026-11-07T02:32:29+08:00",
-  "records": [],
+  "obtained_at": "2026-11-07T03:44:44+08:00",
+  "records": [
+    {
+      "date": "2026-11-08",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-08",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-08",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-08",
+      "model": "GFS Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-08",
+      "model": "ICON Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-08",
+      "model": "ICON Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-09",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 48,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-09",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 51,
+      "color_score": 41,
+      "burn_scale": 7.49
+    },
+    {
+      "date": "2026-11-09",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-09",
+      "model": "ICON Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-09",
+      "model": "ICON Global",
+      "direction": "evening",
+      "probability": 10,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-10",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 71,
+      "color_score": 39,
+      "burn_scale": 6.76
+    },
+    {
+      "date": "2026-11-10",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 18,
+      "color_score": 30,
+      "burn_scale": 11.65
+    },
+    {
+      "date": "2026-11-10",
+      "model": "ICON Global",
+      "direction": "morning",
+      "probability": 61,
+      "color_score": 12,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-10",
+      "model": "ICON Global",
+      "direction": "evening",
+      "probability": 20,
+      "color_score": 10,
+      "burn_scale": 0.0
+    }
+  ],
   "errors": [
-    "2026-11-08 ECMWF IFS 0.25° morning: No master specified and tkinter is configured to not support default root",
-    "2026-11-08 ECMWF IFS 0.25° evening: No master specified and tkinter is configured to not support default root",
-    "2026-11-08 GFS Global morning: No master specified and tkinter is configured to not support default root",
-    "2026-11-08 GFS Global evening: No master specified and tkinter is configured to not support default root",
-    "2026-11-08 ICON Global morning: No master specified and tkinter is configured to not support default root",
-    "2026-11-08 ICON Global evening: No master specified and tkinter is configured to not support default root",
-    "2026-11-09 ECMWF IFS 0.25° morning: No master specified and tkinter is configured to not support default root",
-    "2026-11-09 ECMWF IFS 0.25° evening: No master specified and tkinter is configured to not support default root",
-    "2026-11-09 GFS Global morning: No master specified and tkinter is configured to not support default root",
-    "2026-11-09 GFS Global evening: No master specified and tkinter is configured to not support default root",
-    "2026-11-09 ICON Global morning: No master specified and tkinter is configured to not support default root",
-    "2026-11-09 ICON Global evening: No master specified and tkinter is configured to not support default root",
-    "2026-11-10 ECMWF IFS 0.25° morning: No master specified and tkinter is configured to not support default root",
-    "2026-11-10 ECMWF IFS 0.25° evening: No master specified and tkinter is configured to not support default root",
-    "2026-11-10 GFS Global morning: No master specified and tkinter is configured to not support default root",
-    "2026-11-10 GFS Global evening: No master specified and tkinter is configured to not support default root",
-    "2026-11-10 ICON Global morning: No master specified and tkinter is configured to not support default root",
-    "2026-11-10 ICON Global evening: No master specified and tkinter is configured to not support default root"
+    "2026-11-09 GFS Global evening: 预测结果不完整：概率、色彩分或火烧云规模缺失",
+    "2026-11-10 ECMWF IFS 0.25° evening: 预测结果不完整：概率、色彩分或火烧云规模缺失",
+    "2026-11-10 GFS Global evening: 预测结果不完整：概率、色彩分或火烧云规模缺失"
   ],
   "completed": 18,
   "total": 18,
