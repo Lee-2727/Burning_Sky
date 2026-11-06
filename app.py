@@ -248,8 +248,11 @@ st.markdown("""<style>
 }
 </style>""", unsafe_allow_html=True)
 with st.sidebar:
-    if st.button("未来多日概览", use_container_width=True, key="open_multi_day_overview"):
-        st.session_state["show_multi_day_overview"] = True
+    if st.button("自动多模概览", use_container_width=True, key="open_multi_day_overview"):
+        st.session_state["overview_page"] = "automatic"
+        st.rerun()
+    if st.button("手动多模概览", use_container_width=True, key="open_manual_overview"):
+        st.session_state["overview_page"] = "manual"
         st.rerun()
     st.header("预报设置")
     place_query = st.text_input("地点名称（输入前几个字联想）", "合肥", key="place_query")
@@ -345,7 +348,7 @@ with st.sidebar:
         st.session_state.pop("rainbow_only_web_result", None)
         st.session_state.pop("rainbow_web_meta", None)
         st.session_state.pop("rainbow_observer_result", None)
-        st.session_state["show_multi_day_overview"] = False
+        st.session_state["overview_page"] = "single"
     query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
 
 # Rainbow-only execution: do not invoke the fire-cloud forecast task.
@@ -375,7 +378,7 @@ if rainbow_only_web:
         st.error('独立彩虹分析失败：'+str(_exc))
     finally:
         engine._CASE_REQUEST_CONTEXT=None
-    st.session_state['show_multi_day_overview']=False
+    st.session_state['overview_page']='single'
 if rainbow_observer_submit:
     from burning_sky.rainbow_observer import evaluate_observer
     try:
@@ -466,8 +469,8 @@ if not run and st.session_state.get('rainbow_only_web_result') is not None:
 
 # 在多日概览页面点击左侧任一查询按钮时，优先执行单次查询。
 # 清除概览页面状态，避免 st.stop() 截断查询流程，也避免下次 rerun 又跳回概览。
-if run and st.session_state.get("show_multi_day_overview"):
-    st.session_state["show_multi_day_overview"] = False
+if run and st.session_state.get("overview_page", "single") != "single":
+    st.session_state["overview_page"] = "single"
 
 # Read published overview JSON from GitHub as well as the deployment's local copy.
 # Streamlit Cloud does not necessarily pull GitHub Actions data-only commits.
@@ -510,10 +513,11 @@ def _published_overview_json(filename):
     return local, "部署本地文件（远端未取得）"
 
 
-if st.session_state.get("show_multi_day_overview"):
-    st.title("未来多日概览")
+if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
+    _overview_page = st.session_state["overview_page"]
+    st.title("自动多模概览" if _overview_page == "automatic" else "手动多模概览")
     if st.button("← 返回单次预报", key="back_to_single_forecast"):
-        st.session_state["show_multi_day_overview"] = False
+        st.session_state["overview_page"] = "single"
         st.rerun()
     @st.fragment(run_every="30s")
     def _render_multi_day_overview():
@@ -603,9 +607,9 @@ if st.session_state.get("show_multi_day_overview"):
         except Exception:
             _overview_source, _overview = None, None
         if not _overview or not _overview.get("days"):
-            st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、三种天气模式的朝霞与晚霞结果。")
+            st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、EC/GFS 双模式的朝霞与晚霞结果。")
         else:
-            st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 预报范围：包含今天的未来三日 · 三模式 · 数据来源：{_overview_source} · 数据更新时间：{_overview.get('updated_at', '未知')}。")
+            st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 预报范围：包含今天的未来三日 · 双模式 · 数据来源：{_overview_source} · 数据更新时间：{_overview.get('updated_at', '未知')}。")
             _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global"]
             _model_short = {"ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON", "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)"}
             _direction_times = _overview.get("direction_updated_at", {})
@@ -646,10 +650,11 @@ if st.session_state.get("show_multi_day_overview"):
                                 color = "#A12A83"  # 紫红色
                             return f"color: {color}; font-weight: 700;"
                         st.dataframe(_df, use_container_width=True, hide_index=True)
-    _render_multi_day_overview()
+    if _overview_page == "automatic":
+        _render_multi_day_overview()
+        st.stop()
 
     # Separate manual overview: no input is inherited from the sidebar.
-    st.divider()
     st.subheader("手动查询多日概览")
     st.caption("独立的 EC / GFS / ICON 三模式、三日、朝晚霞查询（共 18 项）。仅点击查询才联网。")
     import hashlib as _mh

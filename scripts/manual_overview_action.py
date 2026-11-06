@@ -43,14 +43,20 @@ def main():
         tmp.replace(output)
     publish('running')
     limited=False
+    old_info, old_error = engine.messagebox.showinfo, engine.messagebox.showerror
+    engine.messagebox.showinfo = lambda *args, **kwargs: None
+    engine.messagebox.showerror = lambda title, msg, **kwargs: setattr(engine.messagebox, 'last_error', (str(title), str(msg)))
     for i in range(3):
         for model in models:
             for direction in ('morning','evening'):
                 day=start+timedelta(days=i)
                 try:
-                    runner=_new_runner(a.place,day,model)
+                    engine.messagebox.last_error = None
+                    runner=_new_runner(a.place,day,model,coordinates=(lat,lon,elev))
                     runner.vars['lat'].set(str(lat));runner.vars['lon'].set(str(lon));runner.vars['elevation'].set(str(elev))
                     runner._fetch_weather_task(direction)
+                    if engine.messagebox.last_error:
+                        raise RuntimeError(engine.messagebox.last_error[1])
                     result=runner.direction_results.get(direction)
                     if not result: raise RuntimeError('预测未返回结果')
                     inf=result.get('inferred') or {}
@@ -68,6 +74,7 @@ def main():
                 if limited: break
             if limited: break
         if limited: break
+    engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
     publish('completed' if len(records)==18 and not errors else 'partial')
     print(f'OUTPUT {output} records={len(records)} errors={len(errors)}',flush=True)
 
