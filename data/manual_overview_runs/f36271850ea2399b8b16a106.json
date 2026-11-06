@@ -1,0 +1,40 @@
+{
+  "identity": {
+    "place": "合肥",
+    "lat": 31.8206,
+    "lon": 117.2272,
+    "elev": 30.0,
+    "date": "2026-11-06",
+    "models": [
+      "ECMWF IFS 0.25°",
+      "GFS Global",
+      "ICON Global"
+    ]
+  },
+  "obtained_at": "2026-11-06T08:48:16+08:00",
+  "records": [],
+  "errors": [
+    "2026-11-06 ECMWF IFS 0.25° morning: No master specified and tkinter is configured to not support default root",
+    "2026-11-06 ECMWF IFS 0.25° evening: No master specified and tkinter is configured to not support default root",
+    "2026-11-06 GFS Global morning: No master specified and tkinter is configured to not support default root",
+    "2026-11-06 GFS Global evening: No master specified and tkinter is configured to not support default root",
+    "2026-11-06 ICON Global morning: No master specified and tkinter is configured to not support default root",
+    "2026-11-06 ICON Global evening: No master specified and tkinter is configured to not support default root",
+    "2026-11-07 ECMWF IFS 0.25° morning: No master specified and tkinter is configured to not support default root",
+    "2026-11-07 ECMWF IFS 0.25° evening: No master specified and tkinter is configured to not support default root",
+    "2026-11-07 GFS Global morning: No master specified and tkinter is configured to not support default root",
+    "2026-11-07 GFS Global evening: No master specified and tkinter is configured to not support default root",
+    "2026-11-07 ICON Global morning: No master specified and tkinter is configured to not support default root",
+    "2026-11-07 ICON Global evening: No master specified and tkinter is configured to not support default root",
+    "2026-11-08 ECMWF IFS 0.25° morning: No master specified and tkinter is configured to not support default root",
+    "2026-11-08 ECMWF IFS 0.25° evening: No master specified and tkinter is configured to not support default root",
+    "2026-11-08 GFS Global morning: No master specified and tkinter is configured to not support default root",
+    "2026-11-08 GFS Global evening: No master specified and tkinter is configured to not support default root",
+    "2026-11-08 ICON Global morning: No master specified and tkinter is configured to not support default root",
+    "2026-11-08 ICON Global evening: No master specified and tkinter is configured to not support default root"
+  ],
+  "completed": 18,
+  "total": 18,
+  "state": "partial",
+  "request_id": "f36271850ea2399b8b16a106"
+}
