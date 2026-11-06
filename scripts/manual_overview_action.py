@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import time
+import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -42,13 +43,41 @@ def main():
         tmp.write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
         tmp.replace(output)
     publish('running')
+    def automatic_priority_pending():
+        """Yield before scheduled runs, including queued runs waiting for concurrency."""
+        now = datetime.now(TZ)
+        scheduled_minutes = (180, 540, 870, 1260)
+        minute = now.hour * 60 + now.minute
+        # Leave a small admission window around scheduled starts, even if Actions is delayed.
+        if any(-5 <= minute - target <= 20 for target in scheduled_minutes):
+            return True
+        token = os.environ.get('GH_COORDINATION_TOKEN', '')
+        repo = os.environ.get('GITHUB_REPOSITORY', '')
+        if not token or not repo:
+            return False
+        req = urllib.request.Request(
+            f'https://api.github.com/repos/{repo}/actions/workflows/update-overview.yml/runs?per_page=15',
+            headers={'Authorization':f'Bearer {token}', 'Accept':'application/vnd.github+json'})
+        try:
+            with urllib.request.urlopen(req, timeout=8) as response:
+                runs = json.load(response).get('workflow_runs', [])
+            return any(run.get('status') in ('queued','in_progress','waiting','pending','requested') for run in runs)
+        except Exception as exc:
+            print(f'Coordination status unavailable: {exc}; deferring manual work conservatively', flush=True)
+            return True
+
     limited=False
+    deferred=False
     old_info, old_error = engine.messagebox.showinfo, engine.messagebox.showerror
     engine.messagebox.showinfo = lambda *args, **kwargs: None
     engine.messagebox.showerror = lambda title, msg, **kwargs: setattr(engine.messagebox, 'last_error', (str(title), str(msg)))
     for i in range(3):
         for model in models:
             for direction in ('morning','evening'):
+                if automatic_priority_pending():
+                    deferred=True
+                    print('Manual overview yielding to scheduled update; remaining work can be resubmitted later.',flush=True)
+                    break
                 day=start+timedelta(days=i)
                 try:
                     engine.messagebox.last_error = None
@@ -71,11 +100,11 @@ def main():
                     if '429' in reason or 'limit exceeded' in reason.lower() or '限流' in reason: limited=True
                 publish('running')
                 print(f'MANUAL_OVERVIEW_PROGRESS {len(records)+len(errors)}/18',flush=True)
-                if limited: break
-            if limited: break
-        if limited: break
+                if limited or deferred: break
+            if limited or deferred: break
+        if limited or deferred: break
     engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
-    publish('completed' if len(records)==18 and not errors else 'partial')
+    publish('completed' if len(records)==18 and not errors else ('deferred' if deferred else 'partial'))
     print(f'OUTPUT {output} records={len(records)} errors={len(errors)}',flush=True)
 
 if __name__=='__main__': main()
