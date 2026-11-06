@@ -16,10 +16,10 @@ import urllib.request
 
 _LOCK = threading.RLock()
 _STATE = Path(os.environ.get('BURNING_SKY_RATE_STATE', '/tmp/burning_sky_open_meteo_rate.json'))
-# Only manual overview is paced. Foreground and scheduled requests retain
-# their original immediate-send behavior (including HTTP 429 propagation).
-_PROFILE = os.environ.get('BURNING_SKY_REQUEST_PROFILE', '').lower()
-_POLICY = {'manual': (7.6, 8)}
+# Explicit profiles: scheduled restores the previously working task-level pacing;
+# manual uses an 8/min rolling window; interactive remains 10/min.
+_PROFILE = os.environ.get('BURNING_SKY_REQUEST_PROFILE', 'interactive').lower()
+_POLICY = {'manual': (7.6, 8), 'interactive': (4.0, 10)}
 _MIN_INTERVAL, _MAX_PER_MINUTE = _POLICY.get(_PROFILE, (0.0, 0))
 _COOLDOWN = 20 * 60
 
@@ -92,6 +92,6 @@ def limited_urlopen(req, *args, **kwargs):
     try:
         return urllib.request.urlopen(req, *args, **kwargs)
     except urllib.error.HTTPError as exc:
-        if exc.code == 429 and _is_open_meteo(req) and _PROFILE == 'manual':
+        if exc.code == 429 and _is_open_meteo(req):
             _mark_429()
         raise

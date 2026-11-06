@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-# Foreground queries use the original unpaced request path.
+# The Streamlit foreground query is interactive; GitHub Actions remains batch-limited.
+os.environ["BURNING_SKY_REQUEST_PROFILE"] = "interactive"
 import re
 import math
 import io
@@ -836,7 +837,19 @@ if run:
         engine._CASE_REQUEST_CONTEXT = {"mode": "capture", "cache": _web_case_cache}
     try:
         with st.spinner(f"{'正在读取案例缓存' if use_case_cache else '正在获取天气、云层剖面与 CAMS AOD'}，并计算{_direction_text}……"):
-            runner._fetch_weather_task(_query_dir)
+            if _query_dir == "both":
+                # Run each direction as a separate calculation invocation. The
+                # engine's 'both' loop shares function-local intermediate values
+                # between sunrise and sunset; in particular optional raytrace
+                # diagnostics can survive via locals() checks. A separate call
+                # makes the evening path identical to evening-only queries.
+                # The same runner and request-cache context are retained, so
+                # no extra cache reset or API throttle is introduced.
+                runner._fetch_weather_task("morning")
+                if not engine.messagebox.last_error:
+                    runner._fetch_weather_task("evening")
+            else:
+                runner._fetch_weather_task(_query_dir)
     finally:
         engine._CASE_REQUEST_CONTEXT = None
     if engine.messagebox.last_error:
