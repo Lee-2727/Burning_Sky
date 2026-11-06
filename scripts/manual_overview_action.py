@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import engine
-from scripts.update_overview import _new_runner
+from scripts.update_overview import _new_runner, _record
 
 TZ = ZoneInfo('Asia/Shanghai')
 
@@ -88,12 +88,15 @@ def main():
                         raise RuntimeError(engine.messagebox.last_error[1])
                     result=runner.direction_results.get(direction)
                     if not result: raise RuntimeError('预测未返回结果')
-                    inf=result.get('inferred') or {}
-                    if any(not isinstance(inf.get(k), (int, float)) for k in ('regular_score', 'color_score', 'burn_scale_index')):
-                        raise RuntimeError('预测结果不完整：概率、色彩分或火烧云规模缺失')
+                    extracted = _record(result)  # Same validated extraction/fallback as automatic overview.
+                    required = ('probability', 'color_score', 'burn_scale')
+                    missing = [key for key in required if extracted.get(key) is None]
+                    if missing:
+                        raise RuntimeError('预测结果不完整：缺少 ' + ', '.join(missing))
                     records.append({'date':day.isoformat(),'model':model,'direction':direction,
-                                    'probability':inf.get('regular_score'), 'color_score':inf.get('color_score'),
-                                    'burn_scale':inf.get('burn_scale_index')})
+                                    'probability':extracted['probability'],
+                                    'color_score':extracted['color_score'],
+                                    'burn_scale':extracted['burn_scale']})
                 except Exception as exc:
                     reason=str(exc)
                     errors.append(f'{day} {model} {direction}: {reason}')

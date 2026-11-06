@@ -701,8 +701,7 @@ if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
         if _cache_file.exists():
             try: _cached = json.loads(_cache_file.read_text(encoding="utf-8"))
             except (OSError, ValueError): pass
-        if _cached:
-            st.info("已自动读取缓存，数据获得时间："+str(_cached.get("obtained_at", "未知"))+"。点击查询才重新联网。")
+        # Local cache is only an offline fallback; remote publication is authoritative.
         # GitHub Actions async manual overview: never run 18 forecasts inside Streamlit.
         import requests as _gh_requests
         import time as _gh_time
@@ -787,19 +786,44 @@ if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
             st.caption("关闭网页不影响后台运行。停止按钮会取消当前手动概览工作流的活动任务。")
         elif _latest:
             st.caption(f"最近一次相同条件的后台任务：{_latest.get('status')} / {_latest.get('conclusion') or '未结束'}")
-        # GitHub raw data is authoritative after publication; the Streamlit instance may be stale.
-        if _repo and _gh_re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",_repo):
+        # Fetch the selected identity's published artifact from GitHub Contents API.
+        # This avoids raw.githubusercontent.com CDN staleness and prevents old local
+        # cache from silently masquerading as a newly dispatched run.
+        _result_warning = None
+        if _configured:
             try:
-                from urllib.parse import quote as _quote
-                _url=f"https://raw.githubusercontent.com/{_repo}/{_quote(_branch,safe='')}/data/manual_overview_runs/{_cache_id}.json"
-                _resp=_gh_requests.get(_url,params={"v":str(int(_gh_time.time()//30))},timeout=8,headers={"Cache-Control":"no-cache"})
-                if _resp.ok:
-                    _published=_resp.json()
-                    if _published.get("identity")==_identity:
-                        _display=_published
-                        st.caption(f"已发布结果：{_display.get('completed',0)}/18 · {_display.get('state','未知')} · {_display.get('obtained_at','')}")
-            except (_gh_requests.RequestException,ValueError): pass
-        if _display is None: _display = _cached
+                import base64 as _b64
+                _path = f"/contents/data/manual_overview_runs/{_cache_id}.json"
+                _blob = _gh_call("GET", _path, params={"ref": _branch, "_": int(_gh_time.time())})
+                _published = json.loads(_b64.b64decode(_blob["content"]).decode("utf-8"))
+                if (_published.get("identity") == _identity
+                        and _published.get("request_id") == _cache_id):
+                    _display = _published
+                else:
+                    _result_warning = "已发布文件与当前地点、日期、模式或任务编号不匹配，拒绝显示旧结果。"
+            except Exception as _e:
+                _result_warning = "尚未获取到当前条件的已发布结果：" + str(_e)[:180]
+        elif _cached and _cached.get("identity") == _identity and _cached.get("request_id") == _cache_id:
+            _display = _cached
+            st.caption("离线本地缓存（未验证 GitHub 最新状态）")
+        # A workflow may finish successfully without publishing a fresh result.
+        # Compare the artifact timestamp to the matching run's creation timestamp.
+        if _display is not None and _latest:
+            try:
+                _published_at = _MDT.fromisoformat(_display["obtained_at"])
+                _run_started = _MDT.fromisoformat(_latest["created_at"].replace("Z", "+00:00"))
+                if _published_at < _run_started:
+                    _display = None
+                    _result_warning = "本次后台任务尚未发布对应结果；仓库中仍是上次同条件查询的旧文件。"
+            except (ValueError, KeyError, TypeError):
+                _display = None
+                _result_warning = "无法核验本次任务与结果文件的时间，请刷新后重试。"
+        if _display is not None:
+            st.caption(f"当前查询结果：{_display.get('completed',0)}/{_display.get('total',18)} · {_display.get('state','未知')} · {_display.get('obtained_at','')} · ID {_cache_id}")
+        elif _result_warning:
+            st.warning(_result_warning)
+        if _display is None and _active:
+            st.info("任务正在执行或排队，等待本次结果发布。")
         if _display:
             _rows = [{"日期":r["date"],"时段":"朝霞" if r["direction"]=="morning" else "晚霞",
                       "模式":r["model"],"常规概率":r.get("probability"),"色彩分":r.get("color_score"),
@@ -811,7 +835,7 @@ if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
                     st.subheader(("🌄 " if _period_title == "朝霞" else "🌆 ") + _period_title)
                     _period_df = _manual_df[_manual_df["时段"] == _period_title]
                     _date_columns = st.columns(3)
-                    for _col, _date in zip(_date_columns, sorted(_period_df["日期"].unique())):
+                    for _col, _date in zip(_date_columns, [(_mdate + _MTD(days=_di)).isoformat() for _di in range(3)]):
                         with _col:
                             st.markdown(f"**{_date}**")
                             _day_rows = []
