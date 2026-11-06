@@ -1011,7 +1011,7 @@ def _burn_label(inferred, summary):
     if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
         value, label = engine.calculate_burn_scale(
             inferred.get("mid"), inferred.get("high"), inferred.get("tintable_ratio"))
-    return (label or "暂不可判定"), value
+    return (label or "光路待核验"), value
 
 def _path_sampling_table(details):
     """Extract only the along-path sampling rows from the legacy detailed report."""

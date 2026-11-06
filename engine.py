@@ -1762,6 +1762,17 @@ class FireCloudApp(tk.Tk):
                         '严格主光路未验证，连续云面不作为独立受光证据')
                 tintable_text = "暂不可估" if tintable_ratio is None else f"约 {tintable_ratio}%"
                 local_cover = min(100.0, cloud_sum/range_width) if range_width > 0 else 0.0
+                # A proven lack of illuminated clouds is a physical zero, not missing data.
+                # Do not turn unresolved/error ray tracing into a fabricated zero.
+                _scale_zero_reason = None
+                if tintable_ratio is None and local_cover < 5.0:
+                    _scale_zero_reason = '本地潜在霞云距内中高云不足5%'
+                elif tintable_ratio is None and search_stage == 'spherical_raytrace_no_clear_path':
+                    _scale_zero_reason = '严格球面光路确认无无遮挡光路'
+                if _scale_zero_reason is not None:
+                    tintable_ratio = 0.0
+                    tintable_text = '约 0%'
+                    inferred['tintable_ratio_diagnostic'] = _scale_zero_reason
                 burn_scale_index, burn_scale_label = (None, '暂不可估') if tintable_ratio is None else calculate_burn_scale(local_cover, 0.0, tintable_ratio)
                 # 视野内低云提示仍保留原几何可见距离定义，不参与规模计算。
                 visible_cover = visible_cloud_coverage(samples)
