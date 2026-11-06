@@ -85,8 +85,8 @@ class _HeadlessForecast(engine.FireCloudApp):
         pass
 
 
-def _new_runner(city, day, model_label, coordinates=None):
-    lat, lon, elevation_m = coordinates if coordinates is not None else CITY_CONFIG[city]
+def _new_runner(city, day, model_label):
+    lat, lon, elevation_m = CITY_CONFIG[city]
     runner = object.__new__(_HeadlessForecast)
     values = {
         "place": city, "date": day.isoformat(), "lat": f"{lat:.6f}", "lon": f"{lon:.6f}",
@@ -169,47 +169,103 @@ def _write_json_atomic(path, payload):
     tmp.replace(path)
 
 
-def _publish_files(status, include_results=False):
-    """Commit only final validated snapshots; sync upstream before publishing."""
+def _publish_model_batch(model_label, status):
+    """Publish status/results safely; never fail on an absent optional history folder."""
     if os.environ.get("GITHUB_ACTIONS", "").lower() != "true":
         return
     branch = os.environ.get("GITHUB_REF_NAME", "main")
-    subprocess.run(["git", "config", "user.name", "github-actions[bot]"], cwd=ROOT, check=True)
-    subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=ROOT, check=True)
-    paths = [ROOT / "data" / "overview_status.json"]
-    if include_results:
-        paths += [ROOT / "data" / "overview.json"]
-        paths += [ROOT / "data" / f"overview_{city}.json" for city in CITY_CONFIG]
-    existing = [str(x.relative_to(ROOT)) for x in paths if x.is_file()]
-    if existing:
-        subprocess.run(["git", "add", "-f", "--", *existing], cwd=ROOT, check=True)
-    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT).returncode:
-        subprocess.run(["git", "commit", "-m", "chore: daily overview [skip ci]"], cwd=ROOT, check=True)
-    # Forecast may have modified unrelated tracked or untracked runtime files.
-    subprocess.run(["git", "stash", "push", "--include-untracked", "-m", "temporary overview runtime"], cwd=ROOT, check=True)
-    for attempt in range(5):
-        subprocess.run(["git", "fetch", "origin", branch], cwd=ROOT, check=True)
-        rebased = subprocess.run(["git", "rebase", f"origin/{branch}"], cwd=ROOT)
-        if rebased.returncode:
-            subprocess.run(["git", "rebase", "--abort"], cwd=ROOT)
-            raise RuntimeError("Overview publish conflict: upstream changed the same result file; no force push")
-        if subprocess.run(["git", "push", "origin", f"HEAD:{branch}"], cwd=ROOT).returncode == 0:
-            return
-        time.sleep(5)
-    raise RuntimeError("Overview publish failed after five retries")
+    try:
+        subprocess.run(["git", "config", "user.name", "github-actions[bot]"], cwd=ROOT, check=True)
+        subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=ROOT, check=True)
+
+        # Build an explicit list of paths that actually exist. The previous
+        # implementation always staged data/overview_history/, which is not
+        # present in a clean checkout and made `git add` fail before status
+        # could ever be pushed. Also avoid shell-style wildcard arguments to
+        # subprocess; expand city snapshots in Python instead.
+        data_dir = ROOT / "data"
+        publish_paths = [data_dir / "overview.json", data_dir / "overview_status.json"]
+        publish_paths.extend(sorted(data_dir.glob("overview_*.json")))
+        history_dir = data_dir / "overview_history"
+        if history_dir.is_dir():
+            publish_paths.extend(p for p in history_dir.rglob("*") if p.is_file())
+        existing = [str(p.relative_to(ROOT)) for p in publish_paths if p.is_file()]
+        if existing:
+            subprocess.run(["git", "add", "-f", "--", *existing], cwd=ROOT, check=True)
+
+        changed = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT).returncode != 0
+        if changed:
+            subprocess.run(["git", "commit", "-m", f"chore: publish {model_label} overview batch"], cwd=ROOT, check=True)
+        # Always try pushing HEAD, even when there are no newly staged files:
+        # a previous push may have failed after its local commit succeeded.
+        subprocess.run(["git", "push", "origin", f"HEAD:{branch}"], cwd=ROOT, check=True)
+        print(f"Published status/results to {branch}: {model_label}", flush=True)
+    except Exception as exc:
+        print(f"WARNING: incremental publish failed for {model_label}: {exc}", flush=True)
+        status["publish_error"] = str(exc)[:800]
+        _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+
+
+def _publish_files(status, include_results=False):
+    """Publish live status alone, or atomically publish a completed direction batch."""
+    if os.environ.get("GITHUB_ACTIONS", "").lower() != "true":
+        return
+    branch = os.environ.get("GITHUB_REF_NAME", "main")
+    try:
+        subprocess.run(["git", "config", "user.name", "github-actions[bot]"], cwd=ROOT, check=True)
+        subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=ROOT, check=True)
+        paths = [ROOT / "data" / "overview_status.json"]
+        if include_results:
+            paths += [ROOT / "data" / "overview.json"]
+            paths += sorted((ROOT / "data").glob("overview_*.json"))
+        existing = [str(x.relative_to(ROOT)) for x in paths if x.is_file()]
+        if existing:
+            subprocess.run(["git", "add", "-f", "--", *existing], cwd=ROOT, check=True)
+        changed = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT).returncode != 0
+        if changed:
+            msg = "chore: publish completed " + status.get("direction_title", "") + " overview" if include_results else "chore: publish overview live status"
+            subprocess.run(["git", "commit", "-m", msg], cwd=ROOT, check=True)
+        subprocess.run(["git", "push", "origin", f"HEAD:{branch}"], cwd=ROOT, check=True)
+        print(f"Published {'completed direction results' if include_results else 'live status'} to {branch}", flush=True)
+    except Exception as exc:
+        print(f"WARNING: publish failed: {exc}", flush=True)
+        status["publish_error"] = str(exc)[:800]
+        _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+
+
+def _scheduled_direction(now):
+    """Push deploys initialize morning; scheduled runs follow Beijing 6-slot cycle."""
+    event = os.environ.get("GITHUB_EVENT_NAME", "")
+    forced = os.environ.get("BURNING_SKY_DIRECTION", "").strip().lower()
+    if forced in ("morning", "evening"):
+        return forced
+    if event in ("push", "workflow_dispatch"):
+        return "morning"
+    slots = {0: "morning", 4: "morning", 8: "evening", 12: "evening", 16: "evening", 20: "morning"}
+    # GitHub cron can start late; select the nearest configured slot within 90 minutes.
+    candidates = []
+    for hour, direction in slots.items():
+        delta = abs((now.hour * 60 + now.minute) - hour * 60)
+        delta = min(delta, 1440 - delta)
+        candidates.append((delta, direction, hour))
+    delta, direction, hour = min(candidates)
+    if delta > 90:
+        raise SystemExit(f"Not within a configured update window: {now:%Y-%m-%d %H:%M %Z}")
+    print(f"Scheduled slot: {hour:02d}:00 Beijing; direction={direction}", flush=True)
+    return direction
 
 
 def main():
     now = datetime.now(TZ)
-    direction = "both"
-    direction_title = "朝霞与晚霞"
+    direction = _scheduled_direction(now)
+    direction_title = "朝霞" if direction == "morning" else "晚霞"
     dates = [now.date() + timedelta(days=i) for i in range(3)]
     cities = list(CITY_CONFIG)
     models = [m for m in engine.WEATHER_MODEL_CATALOG if m["label"] in ("ECMWF IFS 0.25°", "GFS Global", "ICON Global")]
     if len(models) != 3:
         raise SystemExit(f"Expected three enabled models, found {len(models)}")
-    if cities != ["合肥"]:
-        raise SystemExit(f"Expected only Hefei in overview_cities.txt; found {cities}")
+    if cities != ["合肥", "海口"]:
+        raise SystemExit(f"Expected only 合肥 and 海口 in overview_cities.txt; found {cities}")
 
     snapshots = {}
     for city, (lat, lon, elev) in CITY_CONFIG.items():
@@ -256,12 +312,13 @@ def main():
         "current_model": models[0]["label"], "model_index": 1,
         "model_total": len(models), "completed_models": [],
         "cities": cities, "city_progress": 0, "city_total": len(cities),
-        "task_progress": 0, "task_total": len(cities) * len(dates) * len(models) * 2,
-        "next_update": "北京时间每日 03:00、09:00、14:30、21:00 朝霞与晚霞",
+        "task_progress": 0, "task_total": len(cities) * len(dates) * len(models),
+        "next_update": "北京时间每日 00:00/04:00/20:00 朝霞；08:00/12:00/16:00 晚霞",
     }
-    print("Updater version: daily-both-directions-v2", flush=True)
+    print("Updater version: split-direction-atomic-v1", flush=True)
     print(f"Direction: {direction_title}; cities: {' → '.join(cities)}; models: 3; days: 3", flush=True)
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+    _publish_files(status, include_results=False)
 
     old_info, old_error = engine.messagebox.showinfo, engine.messagebox.showerror
     engine.messagebox.showinfo = lambda *a, **k: None
@@ -270,44 +327,52 @@ def main():
     task_index = 0
     limit_hit = False
     try:
-        for city_index, city in enumerate(cities, 1):
-            snapshot = snapshots[city]
-            for model_index, model in enumerate(models, 1):
-                label = model["label"]
-                status.update(current_model=label, model_index=model_index,
-                              updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
+        for model_index, model in enumerate(models, 1):
+            label = model["label"]
+            status.update(current_model=label, model_index=model_index,
+                          updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
+            _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+            _publish_files(status, include_results=False)
+            print(f"\n===== MODEL {model_index}/{len(models)}: {label} · {direction_title} =====", flush=True)
+            for city_index, city in enumerate(cities, 1):
+                snapshot = snapshots[city]
                 for day_index, day in enumerate(dates):
+                    if task_index:
+                        time.sleep(REQUEST_INTERVAL_SECONDS)
                     runner = _new_runner(city, day, label)
-                    for period in ("morning", "evening"):
-                        if task_index:
-                            time.sleep(REQUEST_INTERVAL_SECONDS)
-                        engine.messagebox.last_error = None
-                        try:
-                            runner._fetch_weather_task(period)
-                        except Exception as exc:
-                            engine.messagebox.last_error = ("Forecast error", str(exc))
-                        result = runner.direction_results.get(period)
-                        record = _record(result) if result else None
-                        error = engine.messagebox.last_error
-                        if error or not isinstance(record, dict) or any(not isinstance(record.get(k), (int, float)) for k in ("probability", "color_score", "burn_scale")):
-                            reason = str(error[1]) if error else "预测流程未返回有效概率结果"
-                            failures.append({"city": city, "date": day.isoformat(), "model": label, "direction": period, "error": reason[:1000]})
-                            if "429" in reason or "limit exceeded" in reason.lower() or "限流" in reason:
-                                limit_hit = True
-                            print(f"ERROR: {city} {day} {label} {period}: {reason[:500]}", flush=True)
-                        else:
-                            snapshot["days"][day_index][period][label] = record
-                        task_index += 1
-                        status.update(task_progress=task_index, city_progress=city_index,
-                                      updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
-                                      failure_count=len(failures), last_error=(failures[-1] if failures else None))
-                        _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-                        print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {period}: {task_index}/{status['task_total']}", flush=True)
-                        if limit_hit:
-                            break
-                    if limit_hit: break
-                if limit_hit: break
-            if limit_hit: break
+                    engine.messagebox.last_error = None
+                    print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: starting", flush=True)
+                    try:
+                        runner._fetch_weather_task(direction)
+                    except Exception as exc:
+                        engine.messagebox.last_error = ("Forecast error", str(exc))
+                    result = runner.direction_results.get(direction)
+                    record = _record(result) if result else None
+                    error = engine.messagebox.last_error
+                    if error or not isinstance(record, dict) or any(not isinstance(record.get(k), (int, float)) for k in ("probability", "color_score", "burn_scale")):
+                        reason = str(error[1]) if error else "预测流程未返回有效概率结果"
+                        failures.append({"city": city, "date": day.isoformat(), "model": label, "error": reason[:1000]})
+                        if "Hourly API request limit exceeded" in reason or "429" in reason:
+                            limit_hit = True
+                        print(f"ERROR: {city} {day} {label} {direction_title}: {reason[:500]}", flush=True)
+                    else:
+                        snapshot["days"][day_index][direction][label] = record
+                    task_index += 1
+                    status.update(task_progress=task_index, city_progress=city_index,
+                                  updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
+                                  failure_count=len(failures), last_error=(failures[-1] if failures else None))
+                    _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+                    print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: {'valid' if not error and record and all(isinstance(record.get(k),(int,float)) for k in ('probability','color_score','burn_scale')) else 'failed'} ({task_index}/{status['task_total']})", flush=True)
+                    if limit_hit:
+                        print("Hourly API limit detected; stopping this batch early to avoid wasting further requests.", flush=True)
+                        break
+                if limit_hit:
+                    break
+            if limit_hit:
+                break
+            status["completed_models"].append(label)
+            _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+            _publish_files(status, include_results=False)
     finally:
         engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
 
@@ -321,7 +386,7 @@ def main():
 
     completed_at = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
     for city, snapshot in snapshots.items():
-        snapshot["direction_updated_at"].update(morning=completed_at, evening=completed_at)
+        snapshot["direction_updated_at"][direction] = completed_at
         snapshot["updated_at"] = completed_at
         _write_json_atomic(ROOT / "data" / f"overview_{city}.json", snapshot)
     aggregate = {"schema_version": 2, "updated_at": datetime.now(TZ).isoformat(timespec="seconds"),
@@ -331,7 +396,7 @@ def main():
                   failure_count=0, message=f"{direction_title}三模式三日数据已完整发布。")
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
     _publish_files(status, include_results=True)
-    print(f"Completed and atomically published {direction_title}: {len(cities)} cities × 3 models × 3 days", flush=True)
+    print(f"Completed and atomically published {direction_title}: {len(cities)} cities × 5 models × 3 days", flush=True)
 
 
 if __name__ == "__main__":

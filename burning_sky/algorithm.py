@@ -548,21 +548,37 @@ def estimate_path_cloud_boundaries(samples, local_cloud_reach_km=None):
                          "reaches_limit": bool(reach is not None and j == len(relevant)-1 and gap_end >= reach)})
         i = j + 1
 
+    # Potential cloud range is a *spatial target-cloud edge*, not the last
+    # discrete sample whose mid/high cover happens to exceed 25 percent.
+    # Use half-cell boundaries, tolerate sparse intermediate cloud coverage,
+    # and stop at a CONFIRMED clear-sky interval, not a single weak-cloud point.
     near_candidates = [r for r in cloudy if float(r.get("distance_km", 0)) <= 50.0]
     near_edge = near_candidates[0] if near_candidates else (cloudy[0] if cloudy else None)
-    # 本地连续中高云区：从近端第一片云开始，遇到第一个明确云洞前的最后一个云点。
     fire_cloud_range = None
+    range_diagnostics = {"method":"cloud_cell_edges_with_confirmed_clear_gap",
+                         "cloud_threshold_pct":10.0,"clear_threshold_pct":15.0}
     if near_edge is not None:
-        fire_cloud_range = float(near_edge.get("distance_km", 0))
-        for row in relevant:
-            d = float(row.get("distance_km", 0))
-            if d < fire_cloud_range:
-                continue
-            if is_gap(row):
+        start_d = float(near_edge.get("distance_km",0))
+        near_rows = [r for r in relevant if float(r.get("distance_km",0)) >= start_d]
+        # Consecutive clear points establish a real gap; weak mid/high cover
+        # alone must not truncate the target cloud region.
+        stop_at = None
+        for gap in gaps:
+            if gap["start_km"] >= start_d and gap["size_km"] >= 15:
+                stop_at = gap["start_km"]
                 break
-            amount = midhigh(row)
-            if amount is not None and amount >= 25.0:
-                fire_cloud_range = d
+        targets = [r for r in near_rows
+                   if (stop_at is None or float(r.get("distance_km",0)) < stop_at)
+                   and midhigh(r) is not None and midhigh(r) >= 10.0]
+        if targets:
+            last_d = float(targets[-1].get("distance_km",0))
+            distances = [float(r.get("distance_km",0)) for r in relevant]
+            next_dist = next((d for d in distances if d > last_d), None)
+            edge = (last_d + next_dist)/2 if next_dist is not None else last_d
+            fire_cloud_range = min(edge, stop_at) if stop_at is not None else edge
+            if reach is not None: fire_cloud_range = min(fire_cloud_range,reach)
+            range_diagnostics.update({"first_cloud_km":start_d,"last_target_sample_km":last_d,
+                                      "confirmed_gap_start_km":stop_at,"edge_km":round(fire_cloud_range,2)})
 
     largest_gap = max(gaps, key=lambda g: g["size_km"], default=None)
     farthest_gap = max(gaps, key=lambda g: g["end_km"], default=None)
@@ -586,6 +602,7 @@ def estimate_path_cloud_boundaries(samples, local_cloud_reach_km=None):
         "cloud_edge_distance_km": cloud_edge_distance,
         "local_cloud_reach_km": reach,
         "fire_cloud_range_km": round(fire_cloud_range, 1) if fire_cloud_range is not None else None,
+        "fire_cloud_range_diagnostics": range_diagnostics,
         "clear_gap_start_km": largest_gap["start_km"] if largest_gap else None,
         "clear_gap_end_km": largest_gap["end_km"] if largest_gap else None,
         "clear_gaps": gaps,

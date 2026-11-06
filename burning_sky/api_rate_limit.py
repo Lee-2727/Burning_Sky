@@ -19,7 +19,7 @@ _STATE = Path(os.environ.get('BURNING_SKY_RATE_STATE', '/tmp/burning_sky_open_me
 # Explicit profiles: scheduled restores the previously working task-level pacing;
 # only manual overview is paced; interactive and scheduled use legacy unpaced requests.
 _PROFILE = os.environ.get('BURNING_SKY_REQUEST_PROFILE', 'interactive').lower()
-_POLICY = {'manual': (7.6, 8), 'scheduled': (7.6, 8)}
+_POLICY = {'manual': (7.6, 8)}
 _MIN_INTERVAL, _MAX_PER_MINUTE = _POLICY.get(_PROFILE, (0.0, 0))
 _COOLDOWN = 20 * 60
 

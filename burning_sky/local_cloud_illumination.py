@@ -31,12 +31,17 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
     targets=[]
     for cell in cells:
         a=max(0.,float(cell['start_km'])); b=float(cell['end_km'])
-        if b>limit+1e-7 or b<=a or float(cell['top_km'])<=1.5 or float(cell['cloud_cover'])<25.:
+        if a>=limit-1e-7 or b<=a or float(cell['top_km'])<=1.5 or float(cell['cloud_cover'])<25.:
             continue
         low=float(cell['bottom_km']); high=float(cell['top_km'])
         if high<=low: continue
-        cell['target_weight']=(b-a)*(high-low)*_clip(float(cell['cloud_cover'])/100.)
-        targets.append(cell)
+        # Preserve the original upstream obstacle; clip only the target face.
+        # A cell crossing potential_km is partly a valid local cloud target.
+        target=dict(cell)
+        target['_original_cell']=cell
+        target['end_km']=min(b,limit)
+        target['target_weight']=(target['end_km']-a)*(high-low)*_clip(float(cell['cloud_cover'])/100.)
+        targets.append(target)
     den=sum(t['target_weight'] for t in targets)
     if den<=0: return {'available':False,'reason':'霞云距内没有满足连续云面实验条件的中高云剖面','times':[]}
     result=[]
@@ -44,7 +49,7 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
         dt=event_dt+timedelta(minutes=m)
         _,az=solar_position(dt,utc_offset,lat,lon)
         numerator=0.; strict_numerator=0.; possible_numerator=0.
-        biggest=None
+        biggest=None; biggest_possible=None
         for target in targets:
             face=target['end_km']
             p_lat,p_lon=destination(lat,lon,az,face)
@@ -56,13 +61,18 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
             # target itself is excluded by identity, and only upstream cells
             # can shade the sun-facing target face.  Cloud-cover is NEVER a
             # light-transmission coefficient.
-            analysis=analyze_target_face(target,cells,solar_alt)
+            analysis=analyze_target_face(target,[c for c in cells if c is not target.get('_original_cell')],solar_alt)
             fraction=_clip(analysis.get('possible_face_height_fraction_proxy',0.))
             strict_fraction=fraction
             # Diagnostic upper bound: only fully overcast upstream cells are
             # assumed to be definite opaque obstacles; not a probability.
-            hard=[c for c in cells if float(c['cloud_cover'])>=99.999]
+            hard=[c for c in cells if c is not target.get('_original_cell') and float(c['cloud_cover'])>=99.999]
             possible_fraction=_clip(analyze_target_face(target,hard,solar_alt).get('possible_face_height_fraction_proxy',0.))
+            possible_dominance=target['target_weight']*possible_fraction
+            if biggest_possible is None or possible_dominance>biggest_possible['dominance']:
+                biggest_possible={'dominance':possible_dominance,'face_km':face,
+                                  'solar_altitude_deg':solar_alt,'height_km':(a,b),
+                                  'illumination_fraction':possible_fraction}
             w=target['target_weight']; numerator+=w*fraction
             strict_numerator+=w*strict_fraction; possible_numerator+=w*possible_fraction
             dominance=w*fraction
@@ -73,7 +83,8 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
         frac=_clip(numerator/den); lower=_clip(strict_numerator/den); upper=_clip(possible_numerator/den)
         result.append({'datetime':dt,'minutes_from_event':m,'fraction':frac,
                        'strict_fraction':lower,'possible_fraction':upper,
-                       'dominant':biggest if biggest and biggest['dominance']>1e-9 else None})
+                       'dominant':biggest if biggest and biggest['dominance']>1e-9 else None,
+                       'possible_dominant':biggest_possible if biggest_possible and biggest_possible['dominance']>1e-9 else None})
     return {'available':True,'potential_km':limit,'target_count':len(targets),
             'target_weight':den,'times':result,'method':'continuous_target_faces_analytic_restored',
             'caveat':'原连续云面解析求交的严格无遮挡代理量；目标云自身不作为上游遮挡；云量仅用于目标权重，不作为透射率；非实测染色比例'}

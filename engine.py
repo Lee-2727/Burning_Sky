@@ -15,6 +15,7 @@ Python 3.11 / Tkinter，无第三方依赖。
 8. 云底剖面属于数值模式推算，不是实测；气溶胶垂直分布仍按教程公式做 L 情景，评分未经过实况校准。
 """
 
+import copy
 import math
 import colorsys
 from burning_sky.cloud_overrides import parse_overrides, apply_overrides, apply_overrides_to_profiles
@@ -1396,6 +1397,14 @@ class FireCloudApp(tk.Tk):
                     profiles = [{"distance_km": d, "estimated_base_km": None,
                                  "status": f"剖面获取失败：{profile_exc}", "levels": []}
                                 for d in distances]
+                raw_profiles_before_reconstruction = copy.deepcopy(profiles)
+                # Experimental cloud-height reconstruction: complete only missing layer
+                # evidence; keep provenance for the user-facing diagnostic.
+                try:
+                    from burning_sky.cloud_height_reconstruction import reconstruct as _reconstruct_cloud_heights
+                    _cloud_height_sources = _reconstruct_cloud_heights(profiles, samples)
+                except Exception as _reconstruct_exc:
+                    _cloud_height_sources = {"error":str(_reconstruct_exc),"counts":{},"percentages":{}}
                 # Keep rendered pressure section and spherical ray tracing aligned
                 # with the edited cloud corridor, without any additional API call.
                 apply_overrides_to_profiles(profiles, samples, _manual_overrides)
@@ -1409,8 +1418,10 @@ class FireCloudApp(tk.Tk):
                     ground_elevation_m=data.get("elevation_m", 0.0))
                 local_profile = next((p for p in profiles if abs(float(p.get("distance_km", 999999))) < 0.01), None)
                 local_low_above_ground = has_local_low_cloud_above_ground(local_profile.get("levels") if local_profile else None)
+                inferred_cloud_height_sources = _cloud_height_sources
                 inferred = infer_from_cloud_path(samples, effective_aod,
                                                  local_low_cloud_above_ground=local_low_above_ground)
+                inferred["cloud_height_reconstruction"] = inferred_cloud_height_sources
                 farthest = geometry["farthest"]
                 local_geometry = next((r for r in geometry.get("rows", []) if r.get("distance_km") == 0), None)
                 local_reach = local_geometry.get("reach_km") if local_geometry else None
@@ -1725,6 +1736,79 @@ class FireCloudApp(tk.Tk):
                 _primary_path_verified = (search_stage in (
                     'spherical_raytrace_targets_verified', 'spherical_raytrace_clear')
                     or _observed_gap_verified)
+                # Scenario estimate is NOT strict verification.  Only allow a
+                # separately labelled estimate when the continuous local-face
+                # geometry is positive, a sampled upstream clear gap exists,
+                # and the cached profile extends beyond the source-check limit.
+                # FIX3: An unresolved primary ray is not proof of zero light.
+                # The local-face estimator has TWO independent geometric envelopes:
+                # strict (all sampled cloud cells opaque) and possible (only fully
+                # overcast cells definite blockers). FIX2 incorrectly required
+                # strict_fraction > 0 before it could report an estimate, making
+                # the possible envelope unreachable in precisely this case.
+                _height_estimated = sum(_cloud_height_sources.get('counts', {}).get(k, 0)
+                                        for k in ('humidity', 'prior')) > 0
+                _scenario_times = _local_light.get('times') or []
+                _scenario_possible_peak = max((float(t.get('possible_fraction') or 0)
+                                               for t in _scenario_times), default=0.0)
+                _scenario_strict_peak = max((float(t.get('strict_fraction') or 0)
+                                             for t in _scenario_times), default=0.0)
+                _estimated_path_eligible = bool(
+                    not _primary_path_verified
+                    and search_stage == 'spherical_raytrace_unresolved'
+                    and _observed_gaps
+                    and _profile_end >= _source_check_km
+                    and _local_light.get('available')
+                    and _height_estimated)
+                # FIX6: persist ACTUAL spherical analytic face-ray geometry for
+                # visualization.  Never infer a curve from a nonzero percentage.
+                # Each recorded ray has a specific minute, target face, altitude,
+                # illuminated height, and conservative/possible obstruction model.
+                _plot_traces = []
+                if _local_light.get('available'):
+                    from burning_sky.spherical_raytrace import profile_cloud_cells as _plot_cells
+                    from burning_sky.critical_light_envelope import analyze_target_face as _plot_analyze
+                    _plot_clouds = _plot_cells(profiles, threshold=25.0,
+                                               blur_horizontal_km=0., blur_vertical_km=0.)
+                    for _row in _scenario_times:
+                        _dominant = _row.get('dominant') or _row.get('possible_dominant')
+                        if not _dominant:
+                            continue
+                        _face = float(_dominant['face_km'])
+                        _lo, _hi = map(float, _dominant['height_km'])
+                        _angle = float(_dominant['solar_altitude_deg'])
+                        _target = {'start_km': _face, 'end_km': _face,
+                                   'bottom_km': _lo, 'top_km': _hi}
+                        _upstream = [c for c in _plot_clouds
+                                     if float(c['start_km']) >= _face - 1e-7]
+                        for _kind, _blockers in (
+                            ('strict', _upstream),
+                            ('possible', [c for c in _upstream
+                                          if float(c.get('cloud_cover', 0)) >= 99.999])):
+                            _bands = _plot_analyze(_target, _blockers, _angle).get(
+                                'possible_face_height_bands_km', [])
+                            if not _bands:
+                                continue
+                            _band = max(_bands, key=lambda z:z[1]-z[0])
+                            _plot_traces.append({
+                                'time': _row['datetime'].isoformat(),
+                                'kind': _kind, 'target_face_km': _face,
+                                'target_height_km': round((_band[0]+_band[1])/2, 6),
+                                'solar_altitude_deg': _angle,
+                                'cloud_height_estimated': bool(_height_estimated),
+                                'source': 'continuous_face_spherical_geometry',
+                                'status': 'geometric_candidate_not_full_path_verified'})
+                inferred['spherical_face_plot_traces'] = _plot_traces
+                inferred['estimated_light_envelope'] = {
+                    'strict_lower_pct': round(100*_scenario_strict_peak, 2),
+                    'possible_upper_pct': round(100*_scenario_possible_peak, 2),
+                    'sampled_minutes': len(_scenario_times),
+                    'interpretation': '两种遮挡假设下的几何包络，不是统计置信区间；中心值是情景代理值'}
+                inferred['estimated_path_eligible'] = _estimated_path_eligible
+                inferred['cloud_height_estimation_warning'] = (
+                    '包含估算云高，光路和染色数值为情景估计而非严格证实；'
+                    '请结合云高来源占比解读。' if sum(_cloud_height_sources.get('counts',{}).get(k,0)
+                    for k in ('humidity','prior')) else '')
                 inferred['primary_path_gate'] = {
                     'verified': bool(_primary_path_verified),
                     'evidence': ('spherical_raytrace' if search_stage in (
@@ -1740,27 +1824,44 @@ class FireCloudApp(tk.Tk):
                     inferred['verdict'] = '严格主光路未证实透光'
                 elif _observed_gap_verified:
                     inferred['verdict'] = '明确晴空间隔及连续云面严格光路均存在有效受光时刻' 
-                if _local_light.get('available') and _primary_path_verified:
+                if _local_light.get('available') and (_primary_path_verified or _estimated_path_eligible):
                     _best_local = max(_local_light['times'],key=lambda x:x['fraction'])
-                    tintable_ratio = round(100*_best_local['fraction'],1)
-                    inferred['tintable_ratio_diagnostic'] = (
-                        '霞云距内中高云连续目标严格无遮挡受光加权；不采用部分云量透射；'
-                        '同一分钟的峰值，不累加不同时间')
+                    inferred['tintable_ratio_kind'] = ('verified' if _primary_path_verified else 'estimated_scenario')
+                    if _estimated_path_eligible:
+                        # FIX3: Do not depend on a positive strict_fraction.  The
+                        # center is a transparent *scenario proxy* midway between
+                        # the pessimistic and optimistic geometric envelopes.
+                        # In particular, zero is a computed scenario zero, not a
+                        # verified absence of light.
+                        _estimate_fraction = .5*(_scenario_strict_peak+_scenario_possible_peak)
+                        tintable_ratio = round(100*_estimate_fraction,1)
+                        inferred['verdict'] = '云高回退几何情景估算（主光路未证实）'
+                        inferred.setdefault('score_notes', []).append(
+                            '估算染色采用严格/可能遮挡两种几何包络的中点；不是已证实受光，也不是统计概率。')
+                        inferred['tintable_ratio_diagnostic'] = (
+                            f'云高情景：下界{100*_scenario_strict_peak:.1f}%～'
+                            f'上界{100*_scenario_possible_peak:.1f}%；'
+                            f'中心估算{tintable_ratio:.1f}%；严格主光路未证实。')
+                    else:
+                        tintable_ratio = round(100*_best_local['fraction'],1)
+                        inferred['tintable_ratio_diagnostic'] = (
+                            '霞云距内中高云连续目标严格无遮挡受光加权；不采用部分云量透射；同一分钟的峰值')
                     inferred['local_cloud_illumination'] = {
                         'potential_km':_local_light['potential_km'],
                         'target_count':_local_light['target_count'],
                         'peak_minute':_best_local['minutes_from_event'],
                         'peak_fraction':round(_best_local['fraction'],5),
-                        'strict_peak_fraction':round(max(p['strict_fraction'] for p in _local_light['times']),5),
-                        'possible_peak_fraction':round(max(p['possible_fraction'] for p in _local_light['times']),5),
+                        'strict_peak_fraction':round(_scenario_strict_peak,5),
+                        'possible_peak_fraction':round(_scenario_possible_peak,5),
                         'caveat':_local_light['caveat']}
                 else:
-                    # The continuous local cloud estimator cannot override the primary spherical-path verdict.
                     tintable_ratio = 0 if search_stage == 'spherical_raytrace_no_clear_path' else None
-                    inferred['tintable_ratio_diagnostic'] = ('严格主光路未证实有效通道；连续云面不得生成受光占比'
+                    inferred['tintable_ratio_diagnostic'] = ('严格主光路确认无无遮挡光路'
                         if search_stage == 'spherical_raytrace_no_clear_path' else
-                        '严格主光路未验证，连续云面不作为独立受光证据')
-                tintable_text = "暂不可估" if tintable_ratio is None else f"约 {tintable_ratio}%"
+                        '云高补齐后仍无可用连续云面目标或剖面覆盖不足；需检查具体缺失原因')
+                tintable_text = ("暂不可估" if tintable_ratio is None else
+                                 f"估算约 {tintable_ratio}%（严格光路未证实）" if _estimated_path_eligible
+                                 else f"约 {tintable_ratio}%")
                 local_cover = min(100.0, cloud_sum/range_width) if range_width > 0 else 0.0
                 # A proven lack of illuminated clouds is a physical zero, not missing data.
                 # Do not turn unresolved/error ray tracing into a fabricated zero.
@@ -1904,7 +2005,7 @@ class FireCloudApp(tk.Tk):
                                             accepted_gaps=boundaries.get("clear_gaps") or []) if curve_zones else {"samples": [], "peak": None, "note": "缺少可用云量采样，未生成动态曲线。"}
                 # Debug17: share exactly the same local target light field as
                 # tintable ratio. Do not use sparse target witnesses as hard gate.
-                if _local_light.get('available') and _primary_path_verified:
+                if _local_light.get('available') and (_primary_path_verified or _estimated_path_eligible) and (_scenario_strict_peak > 0 or _scenario_possible_peak > 0):
                     from burning_sky.local_cloud_illumination import apply_to_curve
                     _vis = curve_data.get('visibility_km')
                     _vis_factor = (1.0 if _vis is None else
@@ -1944,7 +2045,7 @@ class FireCloudApp(tk.Tk):
                 summary = summary.replace('色彩评分 '+str(int(_base_color_score) if '_base_color_score' in locals() else inferred.get('color_score'))+'/100',
                                           '色彩评分 '+str(inferred.get('color_score'))+'/100')
                 results[direction_key] = {"summary": summary, "details": "\n".join(detail_lines), "inferred": inferred,
-                                          "samples": samples, "raw_details": raw_details, "profiles": profiles, "geometry": geometry,
+                                          "samples": samples, "raw_details": raw_details, "raw_profiles": raw_profiles_before_reconstruction, "profiles": profiles, "geometry": geometry,
                                           "distances": distances, "max_reach": max_reach, "aod": effective_aod,
                                           "rainbow": rainbow_result, "dynamic_light_curve": dynamic_curve,
                                           "origin": (data["lat"], data["lon"]), "azimuth": azimuth, "event_dt": event_dt,
@@ -3353,7 +3454,18 @@ class FireCloudApp(tk.Tk):
         used_fallback = False
         for sm in sorted(samples, key=lambda x: x.get("distance_km", 0)):
             prof = profile_by_distance.get(sm.get("distance_km"), {})
-            if prof.get("levels"):
+            # Display-only fallback: pressure levels may exist but contain no
+            # detectable cloud even when the independent layer-cover forecast does.
+            # Do not feed these illustrative layers into the physical ray tracer.
+            pressure_has_cloud = any(
+                isinstance(lv.get("cloud_cover"), (int, float)) and lv["cloud_cover"] >= 25
+                for lv in prof.get("levels", [])
+            )
+            layer_has_cloud = any(
+                isinstance(sm.get(key), (int, float)) and sm[key] >= 10
+                for key in ("cloud_cover_low", "cloud_cover_mid", "cloud_cover_high")
+            )
+            if prof.get("levels") and (pressure_has_cloud or not layer_has_cloud):
                 chart_profiles.append(prof)
                 continue
             # API 剖面缺失时，利用已有低/中/高云量绘制粗略高度带，保证图仍可用。
@@ -3368,6 +3480,8 @@ class FireCloudApp(tk.Tk):
             chart_profiles.append({"distance_km": sm.get("distance_km"), "estimated_base_km": None,
                                    "status": "分层云量高度带近似（剖面数据缺失）", "levels": levels,
                                    "fallback_layer_bands": True})
+        raw_profiles = result.get("raw_profiles") or []
+        view_var = tk.StringVar(value="reconstructed")
         valid = [p for p in chart_profiles if p.get("levels")]
         if len(valid) < 1:
             messagebox.showinfo("剖面数据不足", "本次既没有有效气压层剖面，也没有可用的低/中/高云量数据，暂时无法绘图。")
@@ -3381,13 +3495,17 @@ class FireCloudApp(tk.Tk):
         outer.pack(fill="both", expand=True)
         note = ("横轴：沿太阳方向的地表距离；纵轴：相对当地球面的高度。灰阶表示云量。"
                 "仅绘制连续有效光束的上下临界紫线，并在两线之间填充紫红散点；"
-                "被遮挡、未证实和仅用于采样的光线不显示。"
-                "使用与图中相同的气压层云块进行连续光路求交；临界线仍为分钟采样边界。" +
-                ("部分点缺少气压层剖面，已用低/中/高云量典型高度带补画。" if used_fallback else ""))
+                "严格验证曲线为紫色实线；逐分钟解析球面几何候选为紫色虚线，绝不冒充严格验证。"
+                "所有紫色线均使用实际计算的太阳角度、目标云高及球面几何生成；没有轨迹数据则不画。" +
+                ("部分点的气压层未识别出云，绘图使用估算高度带；请查看云高来源统计。" if used_fallback else ""))
         ttk.Label(outer, text=note, wraplength=1020).pack(anchor="w", pady=(0, 6))
         ttk.Label(outer, text=("Debug16 视野建议：以太阳方位为中心±15°、半径随云层可见性延伸至最多约300–350km；"
                               "30km仅作为近景细采样圈。当前气象输入仍是中心线一维剖面，尚不能计算真实扇形云面积或更新常规概率。"),
                   wraplength=1020, foreground="#7c3aed").pack(anchor="w", pady=(0, 6))
+        views = ttk.Frame(outer)
+        views.pack(anchor="w", pady=(0,5))
+        ttk.Radiobutton(views,text="三级重建云场",variable=view_var,value="reconstructed",command=lambda: draw()).pack(side="left",padx=(0,12))
+        ttk.Radiobutton(views,text="原始气压层",variable=view_var,value="raw",command=lambda: draw()).pack(side="left")
         canvas = tk.Canvas(outer, bg="#fbfcfe", highlightthickness=1, highlightbackground="#cbd5e1")
         canvas.pack(fill="both", expand=True)
         # The raytrace debug is the source of truth for blockage labels.
@@ -3448,7 +3566,7 @@ class FireCloudApp(tk.Tk):
             left, right, top, bottom = 66, 90, 24, 54
             plot_w, plot_h = max(100, width-left-right), max(100, height-top-bottom)
             sample_by_dist = {x.get("distance_km"): x for x in samples}
-            profs = sorted(valid, key=lambda p: p.get("distance_km", 0))
+            profs = sorted(([p for p in raw_profiles if p.get("levels")] if view_var.get()=="raw" and raw_profiles else valid), key=lambda p: p.get("distance_km", 0))
             distances = [p["distance_km"] for p in profs]
             max_dist = max(distances) if distances else 1
             plot_dist = max_dist + ((distances[-1]-distances[-2])/2 if len(distances) > 1 else 0)
@@ -3557,9 +3675,50 @@ class FireCloudApp(tk.Tk):
                                            fill='#bb398d',outline='')
                 draw_curve(alt_low)
                 draw_curve(alt_high)
-            if not runs:
+            # FIX6: show individually computed face rays, even if no TWO
+            # consecutive strict full-path samples exist.  These are candidate
+            # rays, not strict verification: draw them dashed and label clearly.
+            # Each line is anchored at its ACTUAL target face and height, and
+            # uses the exact spherical formula of the ray tracer.
+            candidate_traces = (result.get('inferred') or {}).get('spherical_face_plot_traces') or []
+            visible_candidates = 0
+            # Keep one representative strict and possible ray per time; sample
+            # across the actual candidate list to avoid overpainting the cloud.
+            for kind, color in (('strict', '#7531ae'), ('possible', '#b16ad4')):
+                kind_traces = [r for r in candidate_traces if r.get('kind') == kind]
+                stride = max(1, math.ceil(len(kind_traces)/12))
+                for trace in kind_traces[::stride]:
+                    face = float(trace['target_face_km'])
+                    h0 = float(trace['target_height_km'])
+                    alt = float(trace['solar_altitude_deg'])
+                    pts = []
+                    # Draw only the computed ray from the cloud's sunward face
+                    # towards the available upstream cloud-data boundary.
+                    for k in range(181):
+                        d = face + (plot_dist-face)*k/180
+                        upstream = d-face
+                        if _earth_occluded(h0, alt, upstream):
+                            break
+                        h = _ray_height_km(h0, alt, upstream)
+                        if not math.isfinite(h) or h < 0 or h > max_h:
+                            if len(pts)>=4:
+                                canvas.create_line(*pts, fill=color, width=1.8, dash=(5,4))
+                            pts=[]
+                            continue
+                        pts.extend((xmap(d), ymap(h)))
+                    if len(pts)>=4:
+                        canvas.create_line(*pts, fill=color, width=1.8, dash=(5,4))
+                        visible_candidates += 1
+                        canvas.create_oval(xmap(face)-2,ymap(h0)-2,
+                                           xmap(face)+2,ymap(h0)+2,
+                                           fill=color,outline='')
+            if visible_candidates:
+                canvas.create_text(left+plot_w/2, top+12,
+                    text='紫色虚线：逐分钟球面几何候选光路（非严格全程验证）',
+                    fill='#7531ae',font=('Microsoft YaHei UI',10))
+            if not runs and not visible_candidates:
                 canvas.create_text(left+plot_w/2, top+24,
-                    text='未找到由连续有效采样光线构成的透光区间（不绘制无效光线）',
+                    text='本次没有可绘制的球面验证光路或候选几何轨迹',
                     fill='#8b3274',font=('Microsoft YaHei UI',10))
             if rays and 0<=target_base<=max_h:
                 xx,yy=xmap(0),ymap(target_base)

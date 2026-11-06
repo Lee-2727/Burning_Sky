@@ -248,11 +248,8 @@ st.markdown("""<style>
 }
 </style>""", unsafe_allow_html=True)
 with st.sidebar:
-    if st.button("自动多模概览", use_container_width=True, key="open_multi_day_overview"):
-        st.session_state["overview_page"] = "automatic"
-        st.rerun()
-    if st.button("手动多模概览", use_container_width=True, key="open_manual_overview"):
-        st.session_state["overview_page"] = "manual"
+    if st.button("未来多日概览", use_container_width=True, key="open_multi_day_overview"):
+        st.session_state["show_multi_day_overview"] = True
         st.rerun()
     st.header("预报设置")
     place_query = st.text_input("地点名称（输入前几个字联想）", "合肥", key="place_query")
@@ -348,7 +345,7 @@ with st.sidebar:
         st.session_state.pop("rainbow_only_web_result", None)
         st.session_state.pop("rainbow_web_meta", None)
         st.session_state.pop("rainbow_observer_result", None)
-        st.session_state["overview_page"] = "single"
+        st.session_state["show_multi_day_overview"] = False
     query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
 
 # Rainbow-only execution: do not invoke the fire-cloud forecast task.
@@ -378,7 +375,7 @@ if rainbow_only_web:
         st.error('独立彩虹分析失败：'+str(_exc))
     finally:
         engine._CASE_REQUEST_CONTEXT=None
-    st.session_state['overview_page']='single'
+    st.session_state['show_multi_day_overview']=False
 if rainbow_observer_submit:
     from burning_sky.rainbow_observer import evaluate_observer
     try:
@@ -462,14 +459,15 @@ if not run and st.session_state.get('rainbow_only_web_result') is not None:
     with st.expander('详细分析（各时段、采样点及系数）'):
         st.json([{k:v for k,v in r.items() if k!='details'} for r in _rb.get('timeline',[])])
         st.json(_rb.get('environment_sources',{}))
-        st.json([{'time': r.get('time'), 'details': r.get('details', [])} for r in _rb.get('timeline', []) if r.get('details')])
+        st.json(_sm['row'].get('details',[]))
     st.caption('数字为未经历史校准的概率式评分，不是统计发生概率。')
+    st.caption('火烧云规模：0% 不烧；大于0%且不足10% 微烧；10%–不足30% 小烧；30%–不足60% 中烧；60%–100% 大烧。')
     if rainbow_only_web: st.stop()
 
 # 在多日概览页面点击左侧任一查询按钮时，优先执行单次查询。
 # 清除概览页面状态，避免 st.stop() 截断查询流程，也避免下次 rerun 又跳回概览。
-if run and st.session_state.get("overview_page", "single") != "single":
-    st.session_state["overview_page"] = "single"
+if run and st.session_state.get("show_multi_day_overview"):
+    st.session_state["show_multi_day_overview"] = False
 
 # Read published overview JSON from GitHub as well as the deployment's local copy.
 # Streamlit Cloud does not necessarily pull GitHub Actions data-only commits.
@@ -512,11 +510,10 @@ def _published_overview_json(filename):
     return local, "部署本地文件（远端未取得）"
 
 
-if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
-    _overview_page = st.session_state["overview_page"]
-    st.title("自动多模概览" if _overview_page == "automatic" else "手动多模概览")
+if st.session_state.get("show_multi_day_overview"):
+    st.title("未来多日概览")
     if st.button("← 返回单次预报", key="back_to_single_forecast"):
-        st.session_state["overview_page"] = "single"
+        st.session_state["show_multi_day_overview"] = False
         st.rerun()
     @st.fragment(run_every="30s")
     def _render_multi_day_overview():
@@ -547,7 +544,7 @@ if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
             else:
                 st.caption(f"多模概览后台状态：{_state} · 状态更新时间：{_update_status.get('updated_at', '未知')} · 下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
         except Exception:
-            st.caption("后台更新状态尚未发布；等待 GitHub Actions 启动。计划时刻：北京时间每日 03:00、09:00、14:30、21:00 更新合肥朝霞与晚霞。")
+            st.caption("后台更新状态尚未发布；等待 GitHub Actions 启动。计划时刻：北京时间每日 00:00/04:00/20:00 更新朝霞，08:00/12:00/16:00 更新晚霞。")
         _city_cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overview_cities.txt")
         _overview_cities = []
         try:
@@ -606,7 +603,7 @@ if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
         except Exception:
             _overview_source, _overview = None, None
         if not _overview or not _overview.get("days"):
-            st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、EC/GFS/ICON 三模式的朝霞与晚霞结果。")
+            st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、三种天气模式的朝霞与晚霞结果。")
         else:
             st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 预报范围：包含今天的未来三日 · 三模式 · 数据来源：{_overview_source} · 数据更新时间：{_overview.get('updated_at', '未知')}。")
             _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global"]
@@ -649,11 +646,10 @@ if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
                                 color = "#A12A83"  # 紫红色
                             return f"color: {color}; font-weight: 700;"
                         st.dataframe(_df, use_container_width=True, hide_index=True)
-    if _overview_page == "automatic":
-        _render_multi_day_overview()
-        st.stop()
+    _render_multi_day_overview()
 
     # Separate manual overview: no input is inherited from the sidebar.
+    st.divider()
     st.subheader("手动查询多日概览")
     st.caption("独立的 EC / GFS / ICON 三模式、三日、朝晚霞查询（共 18 项）。仅点击查询才联网。")
     import hashlib as _mh
@@ -701,7 +697,8 @@ if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
         if _cache_file.exists():
             try: _cached = json.loads(_cache_file.read_text(encoding="utf-8"))
             except (OSError, ValueError): pass
-        # Local cache is only an offline fallback; remote publication is authoritative.
+        if _cached:
+            st.info("已自动读取缓存，数据获得时间："+str(_cached.get("obtained_at", "未知"))+"。点击查询才重新联网。")
         # GitHub Actions async manual overview: never run 18 forecasts inside Streamlit.
         import requests as _gh_requests
         import time as _gh_time
@@ -728,7 +725,6 @@ if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
             return resp.json() if resp.content else None
         _display = None  # Published result is optional; never read before assignment.
         _active = []
-        _scheduled_active = []
         _latest = None
         _workflow_ready = False
         _workflow_error = ""
@@ -740,8 +736,6 @@ if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
                 _workflow_ready = bool(_workflow.get("id"))
                 _runs = _gh_call("GET","/actions/workflows/manual-overview.yml/runs",params={"per_page":30,"event":"workflow_dispatch"}).get("workflow_runs",[])
                 _active = [r for r in _runs if r.get("status") in ("queued","in_progress","waiting","pending","requested")]
-                _scheduled_runs = _gh_call("GET","/actions/workflows/update-overview.yml/runs",params={"per_page":15}).get("workflow_runs",[])
-                _scheduled_active = [r for r in _scheduled_runs if r.get("status") in ("queued","in_progress","waiting","pending","requested")]
                 _matching = [r for r in _runs if _cache_id in (r.get("display_title") or "")]
                 _latest = _matching[0] if _matching else None
             except Exception as _e:
@@ -754,20 +748,13 @@ if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
             st.warning("需要在 Streamlit Secrets 设置 BURNING_SKY_GITHUB_TOKEN 和 BURNING_SKY_GITHUB_REPOSITORY 才能启动/停止后台任务。")
         _btn_start,_btn_stop,_btn_refresh = st.columns([2,1,1])
         with _btn_start:
-            _do_run = st.button("▶ 启动 GitHub 后台更新",type="primary",disabled=not _configured or not _workflow_ready or bool(_active) or bool(_scheduled_active),key="manual_overview_submit")
+            _do_run = st.button("▶ 启动 GitHub 后台更新",type="primary",disabled=not _configured or not _workflow_ready or bool(_active),key="manual_overview_submit")
         with _btn_stop:
             _do_stop = st.button("■ 停止任务",disabled=not _configured or not _workflow_ready or not _active,key="manual_overview_cancel")
         with _btn_refresh:
             _do_refresh = st.button("刷新状态",key="manual_overview_refresh")
-        if _scheduled_active:
-            st.info("自动多模概览任务正在运行或排队，优先完成自动更新；暂不接受手动多模任务。单次单模式查询不受影响。")
         if _do_run and _workflow_ready:
             try:
-                # Recheck immediately before dispatch to reduce stale-page duplicate submissions.
-                _check_manual = _gh_call("GET","/actions/workflows/manual-overview.yml/runs",params={"per_page":15}).get("workflow_runs",[])
-                _check_auto = _gh_call("GET","/actions/workflows/update-overview.yml/runs",params={"per_page":15}).get("workflow_runs",[])
-                if any(r.get("status") in ("queued","in_progress","waiting","pending","requested") for r in _check_manual + _check_auto):
-                    raise RuntimeError("已有自动或手动多模任务正在进行，请等待完成后重试。")
                 _gh_call("POST","/actions/workflows/manual-overview.yml/dispatches",json={"ref":_branch,"inputs":{"place":_mplace,"lat":str(_mlat),"lon":str(_mlon),"elev":str(_melev),"date":_mdate.isoformat(),"request_id":_cache_id}})
                 st.success("已提交 GitHub Actions 后台任务，可以关闭网页。")
                 st.rerun()
@@ -786,67 +773,24 @@ if st.session_state.get("overview_page", "single") in ("automatic", "manual"):
             st.caption("关闭网页不影响后台运行。停止按钮会取消当前手动概览工作流的活动任务。")
         elif _latest:
             st.caption(f"最近一次相同条件的后台任务：{_latest.get('status')} / {_latest.get('conclusion') or '未结束'}")
-        # Fetch the selected identity's published artifact from GitHub Contents API.
-        # This avoids raw.githubusercontent.com CDN staleness and prevents old local
-        # cache from silently masquerading as a newly dispatched run.
-        _result_warning = None
-        if _configured:
+        # GitHub raw data is authoritative after publication; the Streamlit instance may be stale.
+        if _repo and _gh_re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",_repo):
             try:
-                import base64 as _b64
-                _path = f"/contents/data/manual_overview_runs/{_cache_id}.json"
-                _blob = _gh_call("GET", _path, params={"ref": _branch, "_": int(_gh_time.time())})
-                _published = json.loads(_b64.b64decode(_blob["content"]).decode("utf-8"))
-                if (_published.get("identity") == _identity
-                        and _published.get("request_id") == _cache_id):
-                    _display = _published
-                else:
-                    _result_warning = "已发布文件与当前地点、日期、模式或任务编号不匹配，拒绝显示旧结果。"
-            except Exception as _e:
-                _result_warning = "尚未获取到当前条件的已发布结果：" + str(_e)[:180]
-        elif _cached and _cached.get("identity") == _identity and _cached.get("request_id") == _cache_id:
-            _display = _cached
-            st.caption("离线本地缓存（未验证 GitHub 最新状态）")
-        # A workflow may finish successfully without publishing a fresh result.
-        # Compare the artifact timestamp to the matching run's creation timestamp.
-        if _display is not None and _latest:
-            try:
-                _published_at = _MDT.fromisoformat(_display["obtained_at"])
-                _run_started = _MDT.fromisoformat(_latest["created_at"].replace("Z", "+00:00"))
-                if _published_at < _run_started:
-                    _display = None
-                    _result_warning = "本次后台任务尚未发布对应结果；仓库中仍是上次同条件查询的旧文件。"
-            except (ValueError, KeyError, TypeError):
-                _display = None
-                _result_warning = "无法核验本次任务与结果文件的时间，请刷新后重试。"
-        if _display is not None:
-            st.caption(f"当前查询结果：{_display.get('completed',0)}/{_display.get('total',18)} · {_display.get('state','未知')} · {_display.get('obtained_at','')} · ID {_cache_id}")
-        elif _result_warning:
-            st.warning(_result_warning)
-        if _display is None and _active:
-            st.info("任务正在执行或排队，等待本次结果发布。")
+                from urllib.parse import quote as _quote
+                _url=f"https://raw.githubusercontent.com/{_repo}/{_quote(_branch,safe='')}/data/manual_overview_runs/{_cache_id}.json"
+                _resp=_gh_requests.get(_url,params={"v":str(int(_gh_time.time()//30))},timeout=8,headers={"Cache-Control":"no-cache"})
+                if _resp.ok:
+                    _published=_resp.json()
+                    if _published.get("identity")==_identity:
+                        _display=_published
+                        st.caption(f"已发布结果：{_display.get('completed',0)}/18 · {_display.get('state','未知')} · {_display.get('obtained_at','')}")
+            except (_gh_requests.RequestException,ValueError): pass
+        if _display is None: _display = _cached
         if _display:
             _rows = [{"日期":r["date"],"时段":"朝霞" if r["direction"]=="morning" else "晚霞",
                       "模式":r["model"],"常规概率":r.get("probability"),"色彩分":r.get("color_score"),
                       "火烧云规模":r.get("burn_scale")} for r in _display.get("records",[])]
-            if _rows:
-                _manual_df = pd.DataFrame(_rows)
-                _short_models = {"ECMWF IFS 0.25°":"EC", "GFS Global":"GFS", "ICON Global":"ICON"}
-                for _period_title in ("朝霞", "晚霞"):
-                    st.subheader(("🌄 " if _period_title == "朝霞" else "🌆 ") + _period_title)
-                    _period_df = _manual_df[_manual_df["时段"] == _period_title]
-                    _date_columns = st.columns(3)
-                    for _col, _date in zip(_date_columns, [(_mdate + _MTD(days=_di)).isoformat() for _di in range(3)]):
-                        with _col:
-                            st.markdown(f"**{_date}**")
-                            _day_rows = []
-                            for _model in _models:
-                                _match = _period_df[(_period_df["日期"] == _date) & (_period_df["模式"] == _model)]
-                                _v = _match.iloc[0] if not _match.empty else None
-                                def _fmt(_key, _suffix=""):
-                                    _n = _v[_key] if _v is not None else None
-                                    return f"{_n:.0f}{_suffix}" if isinstance(_n, (int, float)) and pd.notna(_n) else "—"
-                                _day_rows.append({"模式":_short_models.get(_model,_model),"常规概率":_fmt("常规概率","%"),"色彩分":_fmt("色彩分"),"火烧云规模":_fmt("火烧云规模","%")})
-                            st.dataframe(pd.DataFrame(_day_rows),use_container_width=True,hide_index=True)
+            if _rows: st.dataframe(pd.DataFrame(_rows),use_container_width=True,hide_index=True)
             if _display.get("errors"):
                 with st.expander("失败详情"):
                     st.text("\n".join(_display["errors"]))
@@ -1006,13 +950,7 @@ def _web_finalize_special_verdict(inferred, summary):
     try: score = float(score)
     except (TypeError, ValueError): score = 0.0
 
-    mid = _pct(r"中\s*([0-9]+(?:\.[0-9]+)?)\s*%", inferred.get("mid"))
-    high = _pct(r"高\s*([0-9]+(?:\.[0-9]+)?)\s*%", inferred.get("high"))
-    low_base = is_profile and base_km is not None and base_km < 0.5
-    # Cloud-base height alone is not a meaningful dominant obstruction when low cloud is sparse.
-    if low_base and low is not None and low < 15 and mid is not None and high is not None and mid + high < 10:
-        verdict, rule = "可能少云", "sparse_low_and_mid_high_cloud_web_summary"
-    elif low_base and low is not None and low >= 15:
+    if is_profile and base_km is not None and base_km < 0.5:
         score, verdict, rule = 0, "云底过低", "profile_cloud_base_below_500m_web_summary"
     elif low is not None and low >= 90:
         score, verdict, rule = 0, "低云遮挡过多", "local_low_cloud_at_least_90pct_web_summary"
@@ -1033,7 +971,6 @@ def _web_finalize_special_verdict(inferred, summary):
         "web_summary_profile_base_km": base_km,
         "web_summary_profile_based": is_profile,
         "web_summary_local_low_cloud_pct": low,
-        "web_summary_local_mid_high_cloud_pct": (mid + high if mid is not None and high is not None else None),
         "web_summary_local_total_cloud_pct": total,
         "web_summary_local_100km_mean_total_cloud_pct": local_100km_total,
         "web_final_verdict": verdict or "未触发网页兜底规则",
@@ -1230,7 +1167,7 @@ if results:
             color_palette = {"平平无奇": "#e2c76a", "普通": "#c99b24", "绚烂": "#e67e22", "史诗": "#d62828", "世纪": "#9d174d"}
             color_hex = color_palette.get(color_class, "#4b5563")
             special_verdict = inferred.get("verdict_override")
-            if burn_index is not None and burn_index <= 0 and special_verdict not in ('光板天', '云底过低', '低云遮挡过多', '光线难以穿透', '云量不足', '可能少云'):
+            if burn_index is not None and burn_index <= 0 and special_verdict not in ('光板天', '云底过低', '低云遮挡过多', '光线难以穿透', '云量不足'):
                 special_verdict = '不烧'
             if special_verdict:
                 st.markdown(
