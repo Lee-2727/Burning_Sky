@@ -31,32 +31,116 @@ import csv
 import hashlib
 import threading
 import zipfile
+import sys
+
+
 # Tkinter is optional at import time so the same runtime can serve desktop and web.
+# A GUI can only work when a display is really reachable. GitHub Actions runners and
+# containers have no X server: the first Tk() attempt fails with TclError, which also
+# leaves tkinter's internal default-root switch disabled, so every later dialog raises
+# "No master specified and tkinter is configured to not support default root".
+# Detect that before importing tkinter and use the headless stubs instead. The web
+# client additionally forces BURNING_SKY_HEADLESS=1, so Streamlit never opens dialogs.
+def gui_is_available():
+    """True only when a real Tk window could be created in this process."""
+    if os.environ.get("BURNING_SKY_HEADLESS", "").strip().lower() in ("1", "true", "yes", "on"):
+        return False
+    if sys.platform.startswith("linux"):
+        return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    return True
+
+
 try:
+    if not gui_is_available():
+        raise ModuleNotFoundError("headless environment: Tk GUI disabled")
     import tkinter as tk
     from tkinter import ttk, messagebox, filedialog
+    GUI_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
     from types import SimpleNamespace
+    GUI_AVAILABLE = False
+
+    def _null_call(*args, **kwargs):
+        return None
+
+    class _NullWidget:
+        """无界面运行时替代任意 Tk 控件：所有方法调用都安全地返回 None。"""
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __getattr__(self, name):
+            return _null_call
+
+        def __setitem__(self, key, value):
+            pass
+
+        def __getitem__(self, key):
+            return ""
+
     class _HeadlessTk:
-        pass
+        """无主窗口时仍需存在的 Tk 兼容入口（after/mainloop 等）。"""
+        def after(self, *args, **kwargs):
+            return None
+
+        def after_idle(self, *args, **kwargs):
+            return None
+
+        def after_cancel(self, *args, **kwargs):
+            return None
+
+        def mainloop(self, *args, **kwargs):
+            return None
+
+        def destroy(self, *args, **kwargs):
+            return None
+
+        def withdraw(self, *args, **kwargs):
+            return None
+
+        def update_idletasks(self, *args, **kwargs):
+            return None
+
+        def winfo_exists(self, *args, **kwargs):
+            return 0
+
+    class _HeadlessNamespace(SimpleNamespace):
+        """任意属性都返回一个空控件替身，旧界面代码保持可导入、可调用。"""
+        def __getattr__(self, name):
+            value = type(name, (_NullWidget,), {})
+            setattr(self, name, value)
+            return value
+
     class _HeadlessMessageBox:
         last_error = None
         last_info = None
+
         @classmethod
         def showerror(cls, title, message, **kwargs):
             cls.last_error = (str(title), str(message))
             return None
+
+        @classmethod
+        def showwarning(cls, title, message, **kwargs):
+            cls.last_info = (str(title), str(message))
+            return None
+
         @classmethod
         def showinfo(cls, title, message, **kwargs):
             cls.last_info = (str(title), str(message))
             return None
+
         @classmethod
         def askyesno(cls, *args, **kwargs):
             return False
-    tk = SimpleNamespace(Tk=_HeadlessTk, TclError=Exception)
-    ttk = SimpleNamespace()
+
+        @classmethod
+        def askokcancel(cls, *args, **kwargs):
+            return False
+
+    tk = _HeadlessNamespace(Tk=_HeadlessTk, TclError=Exception)
+    ttk = _HeadlessNamespace()
     messagebox = _HeadlessMessageBox
-    filedialog = SimpleNamespace()
+    filedialog = _HeadlessNamespace()
 
 if not hasattr(messagebox, "last_error"):
     messagebox.last_error = None
@@ -67,10 +151,17 @@ if not getattr(messagebox, "_firecloud_tracking_wrapped", False):
     _original_showinfo = getattr(messagebox, "showinfo", None)
     def _tracked_showerror(title, message, **kwargs):
         messagebox.last_error = (str(title), str(message))
-        return _original_showerror(title, message, **kwargs) if _original_showerror else None
+        # 计算流程不能被弹窗异常中断：无显示环境、后台任务或云端部署都可能失败。
+        try:
+            return _original_showerror(title, message, **kwargs) if _original_showerror else None
+        except Exception:
+            return None
     def _tracked_showinfo(title, message, **kwargs):
         messagebox.last_info = (str(title), str(message))
-        return _original_showinfo(title, message, **kwargs) if _original_showinfo else None
+        try:
+            return _original_showinfo(title, message, **kwargs) if _original_showinfo else None
+        except Exception:
+            return None
     messagebox.showerror = _tracked_showerror
     messagebox.showinfo = _tracked_showinfo
     messagebox._firecloud_tracking_wrapped = True

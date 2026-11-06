@@ -48,7 +48,8 @@ def main():
             for direction in ('morning','evening'):
                 day=start+timedelta(days=i)
                 try:
-                    runner=_new_runner(a.place,day,model)
+                    # 手动概览支持任意 Excel 地点，不能只依赖 overview_cities.txt 里的坐标。
+                    runner=_new_runner(a.place,day,model, lat=lat, lon=lon, elevation_m=elev)
                     runner.vars['lat'].set(str(lat));runner.vars['lon'].set(str(lon));runner.vars['elevation'].set(str(elev))
                     runner._fetch_weather_task(direction)
                     result=runner.direction_results.get(direction)

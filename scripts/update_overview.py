@@ -85,8 +85,14 @@ class _HeadlessForecast(engine.FireCloudApp):
         pass
 
 
-def _new_runner(city, day, model_label):
-    lat, lon, elevation_m = CITY_CONFIG[city]
+def _new_runner(city, day, model_label, lat=None, lon=None, elevation_m=None):
+    """headless 预测进程。
+
+    手动多日概览可以查询 overview_cities.txt 之外的任意地点，因此允许显式传入坐标；
+    省略坐标时仍按城市配置表取默认值（定时任务保持原行为）。
+    """
+    if lat is None or lon is None or elevation_m is None:
+        lat, lon, elevation_m = CITY_CONFIG[city]
     runner = object.__new__(_HeadlessForecast)
     values = {
         "place": city, "date": day.isoformat(), "lat": f"{lat:.6f}", "lon": f"{lon:.6f}",

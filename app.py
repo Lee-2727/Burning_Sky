@@ -5,6 +5,10 @@ from __future__ import annotations
 import os
 # The Streamlit foreground query is interactive; GitHub Actions remains batch-limited.
 os.environ["BURNING_SKY_REQUEST_PROFILE"] = "interactive"
+# Streamlit 没有图形界面：禁止共用引擎弹出 Tk 对话框，否则无显示主机上会抛出
+# "No master specified and tkinter is configured to not support default root"。
+# 结果仍通过 engine.messagebox.last_error / last_info 读取。
+os.environ["BURNING_SKY_HEADLESS"] = "1"
 import re
 import math
 import io
@@ -233,7 +237,7 @@ def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
     return img
 
 st.title("🌇 Burning Sky")
-# 仅为“未来多日概览”入口设置低饱和蓝色，不影响其他按钮。
+# 仅为“未来多日概览 / 手动查询多日概览”两个入口设置低饱和蓝色，不影响其他按钮。
 st.markdown("""<style>
 .st-key-open_multi_day_overview button {
     background: #718EAA !important;
@@ -246,10 +250,27 @@ st.markdown("""<style>
     border-color: #627F9B !important;
     color: #FFFFFF !important;
 }
+.st-key-open_manual_overview button {
+    background: #FFFFFF !important;
+    color: #4A6480 !important;
+    border: 1px solid #718EAA !important;
+    font-weight: 600 !important;
+}
+.st-key-open_manual_overview button:hover {
+    background: #EDF1F6 !important;
+    border-color: #627F9B !important;
+    color: #3C5468 !important;
+}
 </style>""", unsafe_allow_html=True)
 with st.sidebar:
     if st.button("未来多日概览", use_container_width=True, key="open_multi_day_overview"):
         st.session_state["show_multi_day_overview"] = True
+        st.session_state["show_manual_overview"] = False
+        st.rerun()
+    # 手动多日概览已从概览页独立出来，入口就放在“未来多日概览”按钮下方。
+    if st.button("手动查询多日概览", use_container_width=True, key="open_manual_overview"):
+        st.session_state["show_manual_overview"] = True
+        st.session_state["show_multi_day_overview"] = False
         st.rerun()
     st.header("预报设置")
     place_query = st.text_input("地点名称（输入前几个字联想）", "合肥", key="place_query")
@@ -346,6 +367,9 @@ with st.sidebar:
         st.session_state.pop("rainbow_web_meta", None)
         st.session_state.pop("rainbow_observer_result", None)
         st.session_state["show_multi_day_overview"] = False
+        # 在“手动查询多日概览”页面里点左侧“查询朝霞/查询晚霞”时，
+        # 立即退出概览页，让本次单次查询结果在本轮就渲染出来。
+        st.session_state["show_manual_overview"] = False
     query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
 
 # Rainbow-only execution: do not invoke the fire-cloud forecast task.
@@ -376,6 +400,7 @@ if rainbow_only_web:
     finally:
         engine._CASE_REQUEST_CONTEXT=None
     st.session_state['show_multi_day_overview']=False
+    st.session_state['show_manual_overview']=False
 if rainbow_observer_submit:
     from burning_sky.rainbow_observer import evaluate_observer
     try:
@@ -464,10 +489,12 @@ if not run and st.session_state.get('rainbow_only_web_result') is not None:
     st.caption('火烧云规模：0% 不烧；大于0%且不足10% 微烧；10%–不足30% 小烧；30%–不足60% 中烧；60%–100% 大烧。')
     if rainbow_only_web: st.stop()
 
-# 在多日概览页面点击左侧任一查询按钮时，优先执行单次查询。
+# 在“未来多日概览 / 手动查询多日概览”页面点击左侧任一查询按钮时，优先执行单次查询。
 # 清除概览页面状态，避免 st.stop() 截断查询流程，也避免下次 rerun 又跳回概览。
 if run and st.session_state.get("show_multi_day_overview"):
     st.session_state["show_multi_day_overview"] = False
+if run and st.session_state.get("show_manual_overview"):
+    st.session_state["show_manual_overview"] = False
 
 # Read published overview JSON from GitHub as well as the deployment's local copy.
 # Streamlit Cloud does not necessarily pull GitHub Actions data-only commits.
@@ -648,25 +675,137 @@ if st.session_state.get("show_multi_day_overview"):
                         st.dataframe(_df, use_container_width=True, hide_index=True)
     _render_multi_day_overview()
 
-    # Separate manual overview: no input is inherited from the sidebar.
-    st.divider()
-    st.subheader("手动查询多日概览")
-    st.caption("独立的 EC / GFS / ICON 三模式、三日、朝晚霞查询（共 18 项）。仅点击查询才联网。")
+    st.stop()
+
+# -----------------------------------------------------------------------------
+# 手动查询多日概览：独立页面（入口在左侧栏“未来多日概览”按钮下方）。
+# 这里只提交 GitHub Actions 后台任务并读取已发布结果，不在网页里跑 18 次预测。
+# -----------------------------------------------------------------------------
+_MANUAL_MODEL_ORDER = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global"]
+_MODEL_SHORT = {
+    "ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON",
+    "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)",
+}
+_ACTIVE_RUN_STATES = ("queued", "in_progress", "waiting", "pending", "requested")
+_MANUAL_DISPATCH_COOLDOWN_SECONDS = 30
+
+
+def _overview_score_color(value):
+    """与自动多日概览相同的常规概率配色。"""
+    try:
+        score = float(str(value).replace("%", "").strip())
+    except (TypeError, ValueError):
+        return ""
+    if score < 20:
+        color = "#D6B84C"   # 淡黄
+    elif score < 40:
+        color = "#C99A16"   # 金色
+    elif score < 60:
+        color = "#E47724"   # 橘色
+    elif score < 80:
+        color = "#D83A32"   # 红色
+    else:
+        color = "#A12A83"   # 紫红色
+    return f"color: {color}; font-weight: 700;"
+
+
+def _overview_styled(frame, subset=None):
+    """给概览表格上色；Styler 不可用时退回普通表格，绝不让展示失败。"""
+    try:
+        styler = getattr(frame.style, "map", None) or getattr(frame.style, "applymap", None)
+        if styler is not None:
+            return styler(_overview_score_color, subset=subset or ["常规概率"])
+    except Exception:
+        pass
+    return frame
+
+
+def _manual_direction_frame(records_by_model):
+    """单个“日期 + 朝霞/晚霞”单元格：每种模式一行，缺失显示 —。"""
+    rows = []
+    for model in _MANUAL_MODEL_ORDER:
+        record = records_by_model.get(model) or {}
+        probability = record.get("probability")
+        color_score = record.get("color_score")
+        burn_scale = record.get("burn_scale")
+        rows.append({
+            "模式": _MODEL_SHORT.get(model, model),
+            "常规概率": (f"{probability:.0f}%" if isinstance(probability, (int, float)) else "—"),
+            "色彩分": (f"{color_score:.0f}" if isinstance(color_score, (int, float)) else "—"),
+            "火烧云规模": (f"{burn_scale:.0f}%" if isinstance(burn_scale, (int, float)) else "—"),
+        })
+    return pd.DataFrame(rows)
+
+
+def _manual_records_by_day(display):
+    """records -> {日期: {'morning': {模式: 记录}, 'evening': {模式: 记录}}}"""
+    by_day = {}
+    for record in (display or {}).get("records", []) or []:
+        if not isinstance(record, dict):
+            continue
+        day_key = str(record.get("date") or "")
+        direction = record.get("direction")
+        if not day_key or direction not in ("morning", "evening"):
+            continue
+        by_day.setdefault(day_key, {"morning": {}, "evening": {}}) \
+              [direction][str(record.get("model"))] = record
+    return by_day
+
+
+def _render_manual_overview_result(display, expected_dates):
+    """按 日期 → 朝霞/晚霞 → 模式 展示，与自动多日概览的表格布局保持一致。"""
+    by_day = _manual_records_by_day(display)
+    dates = [d for d in expected_dates]
+    dates.extend(sorted(d for d in by_day if d not in dates))
+    for day_key in dates:
+        day_records = by_day.get(day_key) or {"morning": {}, "evening": {}}
+        st.markdown(f"**{day_key}**")
+        columns = st.columns(2)
+        for column, (direction, title) in zip(columns, (("morning", "🌄 朝霞"), ("evening", "🌆 晚霞"))):
+            with column:
+                st.markdown(title)
+                frame = _manual_direction_frame(day_records.get(direction, {}))
+                try:
+                    st.dataframe(_overview_styled(frame), use_container_width=True, hide_index=True)
+                except Exception:
+                    # 某些 Streamlit 版本不接受 Styler：退回普通表格，绝不让结果区报错。
+                    st.dataframe(frame, use_container_width=True, hide_index=True)
+
+
+if st.session_state.get("show_manual_overview"):
+    st.title("手动查询多日概览")
+    _nav_cols = st.columns([1.3, 1.3, 3.4])
+    with _nav_cols[0]:
+        if st.button("← 返回单次预报", key="back_from_manual_overview"):
+            st.session_state["show_manual_overview"] = False
+            st.rerun()
+    with _nav_cols[1]:
+        if st.button("未来多日概览 →", key="manual_to_overview"):
+            st.session_state["show_manual_overview"] = False
+            st.session_state["show_multi_day_overview"] = True
+            st.rerun()
+    st.caption("独立的 EC / GFS / ICON 三模式、三日、朝晚霞查询（共 18 项）。网页只提交后台任务和读取已发布结果，不在网页里联网计算。")
+    st.caption("想马上看某一天的单次结果时，直接点击左侧『查询朝霞』或『查询晚霞』，网页会自动切到查询结果界面。")
     import hashlib as _mh
     from pathlib import Path as _MP
     from datetime import datetime as _MDT, timedelta as _MTD
     from zoneinfo import ZoneInfo as _MZone
+    from urllib.parse import quote as _quote
     _mtz = _MZone("Asia/Shanghai")
     _today = _MDT.now(_mtz).date()
     _cache_dir = _MP(_APP_DIR) / "data" / "manual_overview_cache"
-    _cache_dir.mkdir(parents=True, exist_ok=True)
-    for _file in _cache_dir.glob("*.json"):
-        try:
-            _meta = json.loads(_file.read_text(encoding="utf-8"))
-            if _MDT.fromisoformat(_meta["obtained_at"]).astimezone(_mtz).date() < _today - _MTD(days=1):
-                _file.unlink(missing_ok=True)
-        except (OSError, ValueError, KeyError, TypeError):
-            pass
+    try:
+        _cache_dir.mkdir(parents=True, exist_ok=True)
+        for _file in _cache_dir.glob("*.json"):
+            try:
+                _meta = json.loads(_file.read_text(encoding="utf-8"))
+                if _MDT.fromisoformat(_meta["obtained_at"]).astimezone(_mtz).date() < _today - _MTD(days=1):
+                    _file.unlink(missing_ok=True)
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+    except OSError:
+        # 只读部署（例如 Streamlit Cloud 的临时容器）没有写权限，缓存目录缺失不影响查询。
+        pass
     with st.container(border=True):
         _mq = st.text_input("查询地点（独立 Excel 联想）", value="合肥", key="manual_overview_query")
         _names = []
@@ -699,102 +838,152 @@ if st.session_state.get("show_multi_day_overview"):
             except (OSError, ValueError): pass
         if _cached:
             st.info("已自动读取缓存，数据获得时间："+str(_cached.get("obtained_at", "未知"))+"。点击查询才重新联网。")
-        # GitHub Actions async manual overview: never run 18 forecasts inside Streamlit.
-        import requests as _gh_requests
-        import time as _gh_time
-        import re as _gh_re
-        import subprocess as _gh_subprocess
-        def _gh_secret(name, default=""):
-            try: return str(st.secrets.get(name, default))
-            except Exception: return str(os.environ.get(name, default))
-        _repo = _gh_secret("BURNING_SKY_GITHUB_REPOSITORY") or _gh_secret("GITHUB_REPOSITORY")
-        if not _repo:
-            try:
-                _remote = _gh_subprocess.run(["git","remote","get-url","origin"],cwd=_APP_DIR,capture_output=True,text=True,timeout=2)
-                _match = _gh_re.search(r"github\.com[:/]([^/\s]+/[^/\s]+?)(?:\.git)?$",_remote.stdout.strip())
-                if _match: _repo = _match.group(1)
-            except (OSError, _gh_subprocess.TimeoutExpired): pass
-        _branch = _gh_secret("BURNING_SKY_GITHUB_BRANCH", "main")
-        _token = _gh_secret("BURNING_SKY_GITHUB_TOKEN")
-        _configured = bool(_token and _gh_re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", _repo))
-        _api_base = f"https://api.github.com/repos/{_repo}"
-        _headers = {"Authorization":f"Bearer {_token}","Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}
-        def _gh_call(method,path,**kwargs):
-            resp = _gh_requests.request(method,_api_base+path,headers=_headers,timeout=12,**kwargs)
-            if not resp.ok: raise RuntimeError(f"GitHub API HTTP {resp.status_code}: {resp.text[:220]}")
-            return resp.json() if resp.content else None
-        _display = None  # Published result is optional; never read before assignment.
-        _active = []
-        _latest = None
-        _workflow_ready = False
-        _workflow_error = ""
-        if _configured:
-            try:
-                # Validate the workflow itself before listing runs. A 404 here can mean
-                # missing workflow on the default branch, wrong repository, or denied access.
-                _workflow = _gh_call("GET", "/actions/workflows/manual-overview.yml")
-                _workflow_ready = bool(_workflow.get("id"))
-                _runs = _gh_call("GET","/actions/workflows/manual-overview.yml/runs",params={"per_page":30,"event":"workflow_dispatch"}).get("workflow_runs",[])
-                _active = [r for r in _runs if r.get("status") in ("queued","in_progress","waiting","pending","requested")]
-                _matching = [r for r in _runs if _cache_id in (r.get("display_title") or "")]
-                _latest = _matching[0] if _matching else None
-            except Exception as _e:
-                _workflow_error = str(_e)
-                if "HTTP 404" in _workflow_error:
-                    st.error("GitHub 找不到手动概览工作流。请确认 .github/workflows/manual-overview.yml 已上传到仓库默认分支、Secrets 的仓库名正确，且 Token 有 Actions 读写权限。GitHub 404 也可能表示权限不足。")
-                else:
-                    st.warning("无法查询后台任务："+_workflow_error)
+    # GitHub Actions async manual overview: never run 18 forecasts inside Streamlit.
+    import requests as _gh_requests
+    import time as _gh_time
+    import re as _gh_re
+    import subprocess as _gh_subprocess
+    def _gh_secret(name, default=""):
+        try: return str(st.secrets.get(name, default))
+        except Exception: return str(os.environ.get(name, default))
+    _repo = _gh_secret("BURNING_SKY_GITHUB_REPOSITORY") or _gh_secret("GITHUB_REPOSITORY")
+    if not _repo:
+        try:
+            _remote = _gh_subprocess.run(["git","remote","get-url","origin"],cwd=_APP_DIR,capture_output=True,text=True,timeout=2)
+            _match = _gh_re.search(r"github\.com[:/]([^/\s]+/[^/\s]+?)(?:\.git)?$",_remote.stdout.strip())
+            if _match: _repo = _match.group(1)
+        except (OSError, _gh_subprocess.TimeoutExpired): pass
+    _branch = _gh_secret("BURNING_SKY_GITHUB_BRANCH", "main")
+    _token = _gh_secret("BURNING_SKY_GITHUB_TOKEN")
+    _configured = bool(_token and _gh_re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", _repo))
+    _api_base = f"https://api.github.com/repos/{_repo}"
+    _headers = {"Authorization":f"Bearer {_token}","Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}
+    def _gh_call(method,path,**kwargs):
+        resp = _gh_requests.request(method,_api_base+path,headers=_headers,timeout=12,**kwargs)
+        if not resp.ok: raise RuntimeError(f"GitHub API HTTP {resp.status_code}: {resp.text[:220]}")
+        return resp.json() if resp.content else None
+    def _list_manual_runs(page_size=30):
+        return _gh_call("GET","/actions/workflows/manual-overview.yml/runs",
+                        params={"per_page":page_size}).get("workflow_runs",[])
+    def _active_manual_runs(page_size=30):
+        return [r for r in _list_manual_runs(page_size) if r.get("status") in _ACTIVE_RUN_STATES]
+    _display = None  # Published result is optional; never read before assignment.
+    _display_origin = "本地缓存"
+    _active = []
+    _latest = None
+    _workflow_ready = False
+    _workflow_error = ""
+    if _configured:
+        try:
+            # Validate the workflow itself before listing runs. A 404 here can mean
+            # missing workflow on the default branch, wrong repository, or denied access.
+            _workflow = _gh_call("GET", "/actions/workflows/manual-overview.yml")
+            _workflow_ready = bool(_workflow.get("id"))
+            _runs = _list_manual_runs()
+            _active = [r for r in _runs if r.get("status") in _ACTIVE_RUN_STATES]
+            _matching = [r for r in _runs if _cache_id in (r.get("display_title") or "")]
+            _latest = _matching[0] if _matching else None
+        except Exception as _e:
+            _workflow_error = str(_e)
+            if "HTTP 404" in _workflow_error:
+                st.error("GitHub 找不到手动概览工作流。请确认 .github/workflows/manual-overview.yml 已上传到仓库默认分支、Secrets 的仓库名正确，且 Token 有 Actions 读写权限。GitHub 404 也可能表示权限不足。")
+            else:
+                st.warning("无法查询后台任务："+_workflow_error)
+    else:
+        st.warning("需要在 Streamlit Secrets 设置 BURNING_SKY_GITHUB_TOKEN 和 BURNING_SKY_GITHUB_REPOSITORY 才能启动/停止后台任务。")
+
+    # 同一个仓库里只允许一个手动多日概览任务：已有任务时阻止再次启动。
+    _manual_busy = bool(_active)
+    if _manual_busy:
+        _busy_run = _active[0]
+        st.warning("⏳ 已有一个手动多日概览任务正在进行："
+                   f"{_busy_run.get('display_title','')} · {_busy_run.get('status')} · 运行编号 {_busy_run.get('run_number','?')}。"
+                   "请等待上一个手动多日概览任务完成后再启动新的任务。")
+    _btn_start,_btn_stop,_btn_refresh = st.columns([2,1,1])
+    with _btn_start:
+        _do_run = st.button("▶ 启动 GitHub 后台更新",type="primary",
+                            disabled=not _configured or not _workflow_ready or _manual_busy,
+                            key="manual_overview_submit",
+                            help="已有一个手动多日概览任务进行时，启动会被阻止。")
+    with _btn_stop:
+        _do_stop = st.button("■ 停止任务",disabled=not _configured or not _workflow_ready or not _active,key="manual_overview_cancel")
+    with _btn_refresh:
+        _do_refresh = st.button("刷新状态",key="manual_overview_refresh")
+    if _do_run and _workflow_ready:
+        # 提交前再确认一次：既防止重复点击，也防止两个页面/两个用户同时启动。
+        _blocked_reason = ""
+        try:
+            _last_dispatch = float(st.session_state.get("manual_overview_dispatch_at") or 0.0)
+        except (TypeError, ValueError):
+            _last_dispatch = 0.0
+        if _last_dispatch and (_gh_time.time() - _last_dispatch) < _MANUAL_DISPATCH_COOLDOWN_SECONDS:
+            _blocked_reason = "刚刚已提交过一次后台任务。请等待上一个手动多日概览任务完成后再启动新的任务。"
         else:
-            st.warning("需要在 Streamlit Secrets 设置 BURNING_SKY_GITHUB_TOKEN 和 BURNING_SKY_GITHUB_REPOSITORY 才能启动/停止后台任务。")
-        _btn_start,_btn_stop,_btn_refresh = st.columns([2,1,1])
-        with _btn_start:
-            _do_run = st.button("▶ 启动 GitHub 后台更新",type="primary",disabled=not _configured or not _workflow_ready or bool(_active),key="manual_overview_submit")
-        with _btn_stop:
-            _do_stop = st.button("■ 停止任务",disabled=not _configured or not _workflow_ready or not _active,key="manual_overview_cancel")
-        with _btn_refresh:
-            _do_refresh = st.button("刷新状态",key="manual_overview_refresh")
-        if _do_run and _workflow_ready:
+            try:
+                if _active_manual_runs():
+                    _blocked_reason = "请等待上一个手动多日概览任务完成后再启动新的任务。"
+            except Exception as _guard_error:
+                _blocked_reason = "无法确认后台任务状态，已阻止本次启动："+str(_guard_error)
+        if _blocked_reason:
+            st.error(_blocked_reason)
+        else:
             try:
                 _gh_call("POST","/actions/workflows/manual-overview.yml/dispatches",json={"ref":_branch,"inputs":{"place":_mplace,"lat":str(_mlat),"lon":str(_mlon),"elev":str(_melev),"date":_mdate.isoformat(),"request_id":_cache_id}})
+                st.session_state["manual_overview_dispatch_at"] = _gh_time.time()
                 st.success("已提交 GitHub Actions 后台任务，可以关闭网页。")
                 st.rerun()
             except Exception as _e: st.error("启动失败："+str(_e))
-        if _do_stop:
-            try:
-                # Only cancel the run started by this manual overview workflow.
-                for _r in _active:
-                    _gh_call("POST",f"/actions/runs/{_r['id']}/cancel")
-                st.info("已请求取消后台任务。GitHub 可能需要片刻才停止。")
-                st.rerun()
-            except Exception as _e: st.error("取消失败："+str(_e))
-        if _active:
-            _r = _active[0]
-            st.info(f"GitHub Actions 运行中：{_r.get('display_title','')} · {_r.get('status')} · 运行编号 {_r.get('run_number','?')}")
-            st.caption("关闭网页不影响后台运行。停止按钮会取消当前手动概览工作流的活动任务。")
-        elif _latest:
-            st.caption(f"最近一次相同条件的后台任务：{_latest.get('status')} / {_latest.get('conclusion') or '未结束'}")
-        # GitHub raw data is authoritative after publication; the Streamlit instance may be stale.
-        if _repo and _gh_re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",_repo):
-            try:
-                from urllib.parse import quote as _quote
-                _url=f"https://raw.githubusercontent.com/{_repo}/{_quote(_branch,safe='')}/data/manual_overview_runs/{_cache_id}.json"
-                _resp=_gh_requests.get(_url,params={"v":str(int(_gh_time.time()//30))},timeout=8,headers={"Cache-Control":"no-cache"})
-                if _resp.ok:
-                    _published=_resp.json()
-                    if _published.get("identity")==_identity:
-                        _display=_published
-                        st.caption(f"已发布结果：{_display.get('completed',0)}/18 · {_display.get('state','未知')} · {_display.get('obtained_at','')}")
-            except (_gh_requests.RequestException,ValueError): pass
-        if _display is None: _display = _cached
-        if _display:
-            _rows = [{"日期":r["date"],"时段":"朝霞" if r["direction"]=="morning" else "晚霞",
-                      "模式":r["model"],"常规概率":r.get("probability"),"色彩分":r.get("color_score"),
-                      "火烧云规模":r.get("burn_scale")} for r in _display.get("records",[])]
-            if _rows: st.dataframe(pd.DataFrame(_rows),use_container_width=True,hide_index=True)
-            if _display.get("errors"):
-                with st.expander("失败详情"):
-                    st.text("\n".join(_display["errors"]))
+    if _do_stop:
+        try:
+            # Only cancel the run started by this manual overview workflow.
+            for _r in _active:
+                _gh_call("POST",f"/actions/runs/{_r['id']}/cancel")
+            st.info("已请求取消后台任务。GitHub 可能需要片刻才停止。")
+            st.rerun()
+        except Exception as _e: st.error("取消失败："+str(_e))
+    if _active:
+        _r = _active[0]
+        st.info(f"GitHub Actions 运行中：{_r.get('display_title','')} · {_r.get('status')} · 运行编号 {_r.get('run_number','?')}")
+        st.caption("关闭网页不影响后台运行。停止按钮会取消当前手动概览工作流的活动任务。")
+    elif _latest:
+        st.caption(f"最近一次相同条件的后台任务：{_latest.get('status')} / {_latest.get('conclusion') or '未结束'}")
+    # GitHub raw data is authoritative after publication; the Streamlit instance may be stale.
+    if _repo and _gh_re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",_repo):
+        try:
+            _url=f"https://raw.githubusercontent.com/{_repo}/{_quote(_branch,safe='')}/data/manual_overview_runs/{_cache_id}.json"
+            _resp=_gh_requests.get(_url,params={"v":str(int(_gh_time.time()//30))},timeout=8,headers={"Cache-Control":"no-cache"})
+            if _resp.ok:
+                _published=_resp.json()
+                if _published.get("identity")==_identity:
+                    _display=_published
+                    _display_origin="GitHub 已发布文件"
+        except (_gh_requests.RequestException,ValueError): pass
+    if _display is None: _display = _cached
+
+    st.divider()
+    st.subheader("查询结果")
+    if not _display:
+        st.info("本次条件还没有已发布的结果。启动后台任务后，每完成一项都会更新进度；也可以等待 GitHub Actions 发布后点击“刷新状态”。")
+    else:
+        _result_identity = _display.get("identity") or _identity
+        try:
+            _result_start = date.fromisoformat(str(_result_identity.get("date")))
+        except (TypeError, ValueError):
+            _result_start = _mdate
+        _expected_dates = [(_result_start + _MTD(days=_i)).isoformat() for _i in range(3)]
+        _state_labels = {"running":"后台计算中（结果会逐项补充）", "completed":"全部完成",
+                         "partial":"部分完成（未完成项见失败详情）"}
+        st.caption(f"来源：{_display_origin} · "
+                   f"进度 {_display.get('completed', 0)}/{_display.get('total', 18)} · "
+                   f"状态：{_state_labels.get(str(_display.get('state')), _display.get('state', '未知'))} · "
+                   f"数据获得时间：{_display.get('obtained_at', '未知')}")
+        st.caption("表格列与自动更新的多日概览一致：常规概率为未经实况校准的经验估计，火烧云规模为可着色中高云占比。")
+        _render_manual_overview_result(_display, _expected_dates)
+        if _display.get("errors"):
+            with st.expander(f"失败详情（{len(_display['errors'])} 项）"):
+                st.text("\n".join(_display["errors"]))
     st.stop()
+
 
 if run:
     engine.messagebox.last_error = None
