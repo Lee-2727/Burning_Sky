@@ -315,12 +315,23 @@ with st.sidebar:
     cloud_base_mode = st.selectbox("云底来源", ["自动剖面推算", "手动指定"])
     st.caption("默认时区为 UTC+8。当前网页版本不自动识别任意地点的时区。")
     st.divider()
+    aod_source = st.selectbox("AOD 数据源", ["CAMS", "CAMS（垂直分布）", "手动输入"], index=0, key="aod_source_selector",
+                              help="CAMS 垂直分布使用相同的 AOD 数值，结合气压层湿度估计光学衰减；不额外请求 NASA")
+    if aod_source == "CAMS（垂直分布）":
+        st.caption("实验模式：CAMS 总 AOD 不变，使用气压层湿度估计垂直消光分布；主要对比色彩分和云色时序。")
+    if aod_source == "手动输入":
+        st.caption("手动 AOD（550 nm）：直接修改数值后点击查询")
+        _manual_cols = st.columns(2)
+        with _manual_cols[0]:
+            st.number_input("朝霞 AOD", min_value=0.0, max_value=5.0, value=0.30, step=0.05, key="manual_morning_aod")
+        with _manual_cols[1]:
+            st.number_input("晚霞 AOD", min_value=0.0, max_value=5.0, value=0.30, step=0.05, key="manual_evening_aod")
     st.subheader("朝霞参数")
     morning_cloud_base = st.number_input("朝霞手动云底/回退值（km）", 0.1, 15.0, 2.0, 0.1)
-    morning_aod_text = st.text_input("朝霞手动 AOD（留空自动获取）", "")
+    morning_aod_text = str(st.session_state.get("manual_morning_aod",0.30)) if aod_source == "手动输入" else ""
     st.subheader("晚霞参数")
     evening_cloud_base = st.number_input("晚霞手动云底/回退值（km）", 0.1, 15.0, 2.0, 0.1)
-    evening_aod_text = st.text_input("晚霞手动 AOD（留空自动获取）", "")
+    evening_aod_text = str(st.session_state.get("manual_evening_aod",0.30)) if aod_source == "手动输入" else ""
     st.divider()
     st.subheader("案例缓存")
     case_upload = st.file_uploader("加载案例 ZIP（桌面端保存的案例文件夹压缩包）", type=["zip"], key="case_zip_upload")
@@ -357,8 +368,8 @@ with st.sidebar:
     run_all = st.button("查询 / 更新朝霞与晚霞", type="primary", use_container_width=True)
     rainbow_only_web = st.button("🌈 单独分析彩虹（不请求火烧云）",use_container_width=True)
     rainbow_web_period = st.radio("彩虹时段",["晚霞","朝霞"],horizontal=True,key="rainbow_web_period")
-    rainbow_observer_text = st.text_input('可选观察点坐标（纬度,经度；留空为区域分析）',key='rainbow_observer_text')
-    rainbow_observer_submit = st.button('分析该观察点（复用彩虹数据）',use_container_width=True)
+    st.caption('彩虹观察者：左侧查询地点（无需另填坐标）')
+    rainbow_observer_submit = st.button('计算查询地点的虹弧覆盖（复用彩虹数据）',use_container_width=True)
     run = run_morning or run_evening or run_all
     if run:
         # A fire-cloud query replaces the standalone rainbow view. Keep the
@@ -371,6 +382,21 @@ with st.sidebar:
         # 立即退出概览页，让本次单次查询结果在本轮就渲染出来。
         st.session_state["show_manual_overview"] = False
     query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
+
+# Right-side AOD controls mirror the sidebar selection; both directions use the
+# same source, while manual numeric values remain direction-specific.
+def _set_aod_source_from_right(widget_key):
+    st.session_state["aod_source_selector"] = st.session_state[widget_key]
+
+_right_aod_options = ["CAMS", "CAMS（垂直分布）", "手动输入"]
+_right_aod_current = st.session_state.get("aod_source_selector", "CAMS")
+_aod_right_cols = st.columns(2)
+for _aod_direction, _aod_col in (("朝霞", _aod_right_cols[0]), ("晚霞", _aod_right_cols[1])):
+    _right_key = "right_aod_" + ("morning" if _aod_direction == "朝霞" else "evening")
+    st.session_state[_right_key] = _right_aod_current
+    with _aod_col:
+        st.selectbox(f"{_aod_direction} AOD 来源（与左侧同步）", _right_aod_options,
+                     key=_right_key, on_change=_set_aod_source_from_right, args=(_right_key,))
 
 # Rainbow-only execution: do not invoke the fire-cloud forecast task.
 if rainbow_only_web:
@@ -393,6 +419,8 @@ if rainbow_only_web:
             _rainbow=WebForecastEngine._estimate_rainbow_opportunity(lat,lon,_sun_az,_event_utc,_model_id,
                 minute_range=WebForecastEngine._rainbow_window(rainbow_web_period))
         st.session_state['rainbow_only_web_result']=_rainbow
+        from burning_sky.rainbow_observer import evaluate_observer
+        st.session_state['rainbow_observer_result']=evaluate_observer(_rainbow,lat,lon)
         st.session_state['rainbow_request_cache']=_web_cache
         st.session_state['rainbow_web_meta']=(forecast_date.isoformat(),model_label,round(lat,5),round(lon,5),rainbow_web_period)
     except Exception as _exc:
@@ -404,10 +432,7 @@ if rainbow_only_web:
 if rainbow_observer_submit:
     from burning_sky.rainbow_observer import evaluate_observer
     try:
-        if not rainbow_observer_text.strip():
-            st.session_state.pop('rainbow_observer_result',None)
-        else:
-            _a,_b=map(float,rainbow_observer_text.replace('，',',').split(','))
+            _a,_b=float(lat),float(lon)
             _period=rainbow_web_period
             _finder=engine.find_sunset if _period=='晚霞' else engine.find_sunrise
             _dt,_az=_finder(forecast_date,8,lat,lon)
@@ -427,13 +452,15 @@ if rainbow_observer_submit:
             else:
                 st.session_state['rainbow_observer_result']=evaluate_observer(_regional,_a,_b)
     except Exception as _exc:
-        st.error('观察点坐标或计算失败：'+str(_exc))
+        st.error('观察点虹弧计算失败：'+str(_exc))
 if not run and st.session_state.get('rainbow_observer_result') is not None:
     _obs=st.session_state['rainbow_observer_result'];_best=_obs.get('best') or {}
-    st.subheader('指定观察点 · 低分辨率几何匹配')
+    st.subheader('查询地点 · 彩虹锥与受光雨区求交（低分辨率估计）')
     _oc=st.columns(2)
     _oc[0].metric('主虹匹配指数',str(_best.get('primary_index',0))+'/100')
     _oc[1].metric('副虹匹配指数',str(_best.get('secondary_index',0))+'/100')
+    st.caption('主虹采样支持弧长：'+str(_best.get('primary_sample_supported_arc_deg','—'))+'° / 理论地平线上方 '+str(_best.get('primary_theoretical_above_horizon_deg','—'))+'°；估计覆盖 '+str(_best.get('primary_estimated_coverage_pct','—'))+'%')
+    st.caption('副虹采样支持弧长：'+str(_best.get('secondary_sample_supported_arc_deg','—'))+'°；估计覆盖 '+str(_best.get('secondary_estimated_coverage_pct','—'))+'%')
     st.caption('主虹方向：'+str(_best.get('primary_side_hint','未知'))+'；副虹方向：'+str(_best.get('secondary_side_hint','未知')))
     st.caption(_obs['completeness']+'。'+_obs['confidence']+'；无需额外API请求。')
     with st.expander('观察点逐时诊断'):
@@ -565,22 +592,22 @@ if st.session_state.get("show_multi_day_overview"):
             elif _state == "between_models":
                 st.info(f"⏳ 多模概览正在准备下一个模式。已完成 {_model_index}/{_model_total} 个模式：{', '.join(_completed_models)}。状态更新时间：{_update_status.get('updated_at', '未知')}。")
             elif _state == "completed":
-                st.success(f"✅ {_active_direction}本轮三模式三日数据已完整发布。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
+                st.success(f"✅ {_active_direction}本轮双模式三日数据已完整发布。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
             elif _state == "failed":
                 st.error(f"❌ {_active_direction}本轮更新失败（{_update_status.get('failure_count', 0)} 项）。已保留上一次完整发布的数据。原因：{_update_status.get('message', '请查看 GitHub Actions 日志')}。")
             else:
                 st.caption(f"多模概览后台状态：{_state} · 状态更新时间：{_update_status.get('updated_at', '未知')} · 下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
         except Exception:
-            st.caption("后台更新状态尚未发布；等待 GitHub Actions 启动。计划时刻：北京时间每日 00:00/04:00/20:00 更新朝霞，08:00/12:00/16:00 更新晚霞。")
+            st.caption("后台更新状态尚未发布；等待 GitHub Actions 启动。计划时刻：北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞。")
         _city_cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overview_cities.txt")
         _overview_cities = []
         try:
             with open(_city_cfg, "r", encoding="utf-8-sig") as _cf:
                 _overview_cities = [line.split(",")[0].strip() for line in _cf if line.strip() and not line.lstrip().startswith("#")]
         except Exception:
-            _overview_cities = ["合肥", "海口"]
+            _overview_cities = ["合肥"]
         if not _overview_cities:
-            _overview_cities = ["合肥", "海口"]
+            _overview_cities = ["合肥"]
         _overview_city = st.selectbox("概览城市", _overview_cities, index=0, key="overview_city_select")
         _overview_path = os.path.join(_data_dir, f"overview_{_overview_city}.json")
         _overview = None
@@ -996,6 +1023,7 @@ if run:
         "elevation": f"{elevation:.0f}",
         "weather_model": model_label,
         "cloud_base_mode": cloud_base_mode,
+        "aod_source": aod_source,
         "morning_cloud_base_km": f"{morning_cloud_base:.2f}",
         "evening_cloud_base_km": f"{evening_cloud_base:.2f}",
         "morning_aod": morning_aod_text.strip(),

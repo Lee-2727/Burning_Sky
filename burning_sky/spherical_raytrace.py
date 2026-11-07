@@ -128,7 +128,8 @@ def profile_cloud_cells(profiles, threshold=25.0, blur_horizontal_km=10.0, blur_
                             if value is not None: segment_cover=float(value)
                 if segment_cover < threshold: continue
                 out.append({'start_km':x,'end_km':y,'bottom_km':bottom,'top_km':top,
-                            'cloud_cover':segment_cover,'raw_cloud_cover':cc,'sample_distance_km':d,'pressure_hpa':lv.get('pressure_hpa')})
+                            'cloud_cover':segment_cover,'raw_cloud_cover':cc,'sample_distance_km':d,'pressure_hpa':lv.get('pressure_hpa'),
+                            'reconstructed_cloud':bool(lv.get('reconstructed_cloud'))})
     return out
 
 

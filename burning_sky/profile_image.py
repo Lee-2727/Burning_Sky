@@ -64,6 +64,18 @@ def render_profile(result, width=1400, height=760):
         if not isinstance(cc,(int,float)):cc=50.
         gray=int(250-205*max(0,min(100,cc))/100)
         d.rectangle((x(cell["start_km"]),y(min(maxh,cell["top_km"])),x(cell["end_km"]),y(max(0,cell["bottom_km"]))),fill=(gray,gray,gray),outline="white",width=1)
+        if cell.get("reconstructed_cloud"):
+            x0,x1=x(cell["start_km"]),x(cell["end_km"])
+            y0,y1=y(min(maxh,cell["top_km"])),y(max(0,cell["bottom_km"]))
+            def dashed(a,b):
+                dx=b[0]-a[0];dy=b[1]-a[1];length=math.hypot(dx,dy)
+                if length<1:return
+                for k in range(0,int(length),13):
+                    q=min(length,k+7)
+                    d.line((a[0]+dx*k/length,a[1]+dy*k/length,
+                            a[0]+dx*q/length,a[1]+dy*q/length),fill="#e11d48",width=3)
+            for a,b in (((x0,y0),(x1,y0)),((x1,y0),(x1,y1)),
+                        ((x1,y1),(x0,y1)),((x0,y1),(x0,y0))):dashed(a,b)
     for p in profiles:
         base=p.get("estimated_base_km")
         if isinstance(base,(int,float)) and 0<=base<=maxh:

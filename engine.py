@@ -415,7 +415,17 @@ def request_json(req, timeout=20, retries=3, cache_key=None, cache_ttl=None):
         if context and context.get("mode") == "replay":
             cache = context.get("cache", {})
             if url not in cache:
-                raise RuntimeError("案例缓存缺少本次查询所需的天气/AOD/云底数据。请关闭‘从案例缓存读取’重新联网查询，或加载包含该日期、模式和方向数据的案例。")
+                from urllib.parse import urlsplit, parse_qsl
+                def _signature(u):
+                    v = urlsplit(u)
+                    return (v.netloc.lower(), v.path, tuple(sorted(parse_qsl(v.query, keep_blank_values=True))))
+                # Parameter ordering and percent-encoding may differ across releases.
+                matches = [v for k, v in cache.items() if _signature(k) == _signature(url)]
+                if len(matches) == 1:
+                    return matches[0]
+                raise RuntimeError("案例原始请求缓存不完整或与当前算法的采样请求不同，无法离线重新计算。\n"
+                                   f"缺失请求：{url[:500]}\n已有请求数：{len(cache)}。"
+                                   "可直接查看已保存的分析结果；如需按新版算法重新计算，必须重新联网获取缺失的采样数据。")
             return cache[url]
     # Reuse previously captured exact URL payloads, including sunshine-path samples.
     if context and context.get('mode')=='capture' and url in context.get('cache',{}):
@@ -701,6 +711,9 @@ class FireCloudApp(tk.Tk):
         # 云底来源模式仍为全局设置；AOD 与手动云底数值分别放在朝霞/晚霞结果区。
         base_row = ttk.Frame(form, style="Card.TFrame")
         base_row.pack(fill="x", pady=5)
+        self._add_var("aod_source", "CAMS")
+        self._add_var("morning_aod", "")
+        self._add_var("evening_aod", "")
         self._add_var("cloud_base_mode", "自动剖面推算")
         ttk.Label(base_row, text="云底来源", style="Card.TLabel").pack(anchor="w", pady=(5, 0))
         ttk.Combobox(
@@ -733,6 +746,25 @@ class FireCloudApp(tk.Tk):
         ttk.Checkbutton(btns, text="朝霞/晚霞单独查询不分析彩虹（支持旧案例缓存）", variable=self.skip_rainbow_single_var).pack(anchor="w", pady=(0, 4))
         self.fetch_buttons["both"] = ttk.Button(btns, text="一键查询朝晚霞", style="Accent.TButton", command=lambda: self.fetch_weather("both"))
         self.fetch_buttons["both"].pack(fill="x", pady=(0, 6))
+        ttk.Label(base_row, text="AOD 数据源", style="Card.TLabel").pack(anchor="w", pady=(6, 0))
+        aod_source_row = ttk.Frame(base_row)
+        aod_source_row.pack(anchor="w", fill="x")
+        ttk.Combobox(aod_source_row, textvariable=self.vars["aod_source"],
+                     values=["CAMS", "CAMS（垂直分布）", "手动输入"], state="readonly", width=14).pack(side="left")
+        # Inline manual AOD fields; all three source selectors share the same variable.
+        self.manual_aod_inline_frame = ttk.Frame(base_row, style="Card.TFrame")
+        ttk.Label(self.manual_aod_inline_frame, text="朝霞 AOD (550 nm)", style="Card.TLabel").pack(side="left", padx=(0, 5))
+        ttk.Entry(self.manual_aod_inline_frame, textvariable=self.vars["morning_aod"], width=9).pack(side="left", padx=(0, 12))
+        ttk.Label(self.manual_aod_inline_frame, text="晚霞 AOD (550 nm)", style="Card.TLabel").pack(side="left", padx=(0, 5))
+        ttk.Entry(self.manual_aod_inline_frame, textvariable=self.vars["evening_aod"], width=9).pack(side="left")
+        def _toggle_manual_aod_fields(*_):
+            if self.vars["aod_source"].get() == "手动输入":
+                self.manual_aod_inline_frame.pack(anchor="w", fill="x", pady=(4, 2))
+            else:
+                self.manual_aod_inline_frame.pack_forget()
+        self.vars["aod_source"].trace_add("write", _toggle_manual_aod_fields)
+        _toggle_manual_aod_fields()
+        ttk.Label(aod_source_row,text="垂直分布使用 CAMS AOD + 气压层湿度约束；缺少廓线时回退原 CAMS",style="Sub.TLabel").pack(side="left",padx=8)
         # Rainbow-only workflow: no cloud-base profiles, CAMS AOD, or fire-cloud requests.
         self.rainbow_period_var = tk.StringVar(value="晚霞")
         ttk.Combobox(btns, textvariable=self.rainbow_period_var, values=("朝霞", "晚霞"), state="readonly", width=12).pack(fill="x", pady=(0, 4))
@@ -821,9 +853,9 @@ class FireCloudApp(tk.Tk):
         self._set_text(self.morning_summary, "朝霞：尚未查询。选择日期与天气预报模式后点击对应的‘查询朝霞’或‘查询晚霞’。")
         self.morning_params_frame = ttk.Frame(right, style="Card.TFrame")
         self.morning_params_frame.pack(fill="x", pady=(0, 6))
-        self._add_var("morning_aod", "")
         self._add_var("morning_cloud_base_km", "2.0")
         ttk.Label(self.morning_params_frame, text="朝霞 AOD（留空使用 CAMS）", style="Card.TLabel").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=2)
+        ttk.Combobox(self.morning_params_frame, textvariable=self.vars["aod_source"], values=["CAMS", "CAMS（垂直分布）", "手动输入"], state="readonly", width=17).grid(row=2, column=0, columnspan=2, sticky="w", pady=(2,5))
         ttk.Entry(self.morning_params_frame, textvariable=self.vars["morning_aod"], width=10).grid(row=0, column=1, sticky="w", padx=(0, 16), pady=2)
         ttk.Button(self.morning_params_frame, text="清空/恢复 CAMS", command=lambda: self.vars["morning_aod"].set("")).grid(row=0, column=2, sticky="w", padx=(0, 14), pady=2)
         ttk.Label(self.morning_params_frame, text="云底绝对高度手动值/回退值（km，海拔；改后需重新查询）", style="Card.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=2)
@@ -886,9 +918,9 @@ class FireCloudApp(tk.Tk):
         self._set_text(self.evening_summary, "晚霞：尚未查询。")
         self.evening_params_frame = ttk.Frame(right, style="Card.TFrame")
         self.evening_params_frame.pack(fill="x", pady=(0, 6))
-        self._add_var("evening_aod", "")
         self._add_var("evening_cloud_base_km", "2.0")
         ttk.Label(self.evening_params_frame, text="晚霞 AOD（留空使用 CAMS）", style="Card.TLabel").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=2)
+        ttk.Combobox(self.evening_params_frame, textvariable=self.vars["aod_source"], values=["CAMS", "CAMS（垂直分布）", "手动输入"], state="readonly", width=17).grid(row=2, column=0, columnspan=2, sticky="w", pady=(2,5))
         ttk.Entry(self.evening_params_frame, textvariable=self.vars["evening_aod"], width=10).grid(row=0, column=1, sticky="w", padx=(0, 16), pady=2)
         ttk.Button(self.evening_params_frame, text="清空/恢复 CAMS", command=lambda: self.vars["evening_aod"].set("")).grid(row=0, column=2, sticky="w", padx=(0, 14), pady=2)
         ttk.Label(self.evening_params_frame, text="云底绝对高度手动值/回退值（km，海拔；改后需重新查询）", style="Card.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=2)
@@ -905,7 +937,7 @@ class FireCloudApp(tk.Tk):
         ttk.Button(evening_actions, text="剖面图", command=lambda: self.show_path_cloud_profile("evening")).pack(side="left", padx=(5, 0))
         ttk.Button(evening_actions, text="二维霞云图", command=lambda: self.show_2d_illumination("evening")).pack(side="left", padx=(5, 0))
         ttk.Button(evening_actions, text="显示晚霞各采样点具体云况", command=lambda: self.show_direction_details("evening")).pack(side="right")
-        ttk.Label(right, text="采样范围根据各点推算的有效云底动态扩展；单次最远限制 600 km。具体云况默认收起，点击上方按钮查看。", style="Sub.TLabel", wraplength=620).pack(anchor="w", pady=(2, 0))
+        ttk.Label(right, text="采样范围根据各点推算的有效云底动态扩展；单次最远限制 1000 km，严格光路按极限云距的 1.3 倍验证。具体云况默认收起，点击上方按钮查看。", style="Sub.TLabel", wraplength=620).pack(anchor="w", pady=(2, 0))
 
         bottom = ttk.Frame(outer)
         bottom.pack(fill="x", pady=(10, 0))
@@ -1136,7 +1168,10 @@ class FireCloudApp(tk.Tk):
                     cache_path = os.path.join(self.loaded_case_path, "request_cache.json")
                     with open(cache_path, "r", encoding="utf-8") as f:
                         cache = json.load(f)
-                    _CASE_REQUEST_CONTEXT = {"mode": "replay", "cache": cache}
+                    _CASE_REQUEST_CONTEXT = {"mode": "replay", "cache": cache,
+                        "saved_rainbows": {k: v.get("rainbow", {}) for k, v in
+                                          (st.get("direction_results") or {}).items()
+                                          if isinstance(v, dict)}}
                 else:
                     self.case_request_cache = {}
                     _target_case_folder = self._case_folder_for_current()
@@ -1150,7 +1185,29 @@ class FireCloudApp(tk.Tk):
                             pass
                     _CASE_REQUEST_CONTEXT = {"mode": "capture", "cache": self.case_request_cache}
                 self._cloud_original_results=None
-                self._fetch_weather_task(direction_key)
+                try:
+                    self._fetch_weather_task(direction_key)
+                except RuntimeError as replay_error:
+                    # An archived result is still useful even if the current version
+                    # generates different sampling URLs. Never request the network.
+                    if not self.case_cache_var.get() or "案例原始请求缓存不完整" not in str(replay_error):
+                        raise
+                    saved = self.loaded_case_state.get("direction_results", {})
+                    if not all(k in saved for k in requested):
+                        raise
+                    self.direction_results = self._restore_case_datetime_fields(saved)
+                    self.last_report = self.loaded_case_state.get("last_report", "")
+                    for key in requested:
+                        result = self.direction_results[key]
+                        prefix = "morning" if key == "morning" else "evening"
+                        self._set_text(getattr(self, f"{prefix}_summary"), result.get("summary", ""))
+                        inf = result.get("inferred", {})
+                        getattr(self, f"{prefix}_score_label").configure(
+                            text=f"{inf.get('regular_score')}%" if inf.get('regular_score') is not None else "—")
+                        getattr(self, f"{prefix}_upper_label").configure(text=f"上限 {inf.get('upper_score', '—')}%")
+                        self._draw_colorbar(key)
+                    self.fetch_status_var.set("已显示案例保存时的结果（未联网）；原始请求缓存不满足新版算法重新计算要求。")
+                    self.after(0, lambda: messagebox.showinfo("案例离线读取", "已恢复案例保存时的分析结果，没有请求天气 API。\n\n当前版本的采样请求与案例缓存不完全一致，因此本次没有按新版算法重新计算。若要重新计算，请取消缓存读取并联网查询。"))
             except Exception as exc:
                 messagebox.showerror("案例缓存/查询失败", str(exc))
             finally:
@@ -1249,7 +1306,11 @@ class FireCloudApp(tk.Tk):
                 cloud_base_km = parse_float(self.vars[cloud_base_key].get(), f"{direction_name}云底高度手动值/回退值")
                 if not 0.1 <= cloud_base_km <= 15.0:
                     raise ValueError(f"{direction_name}云底绝对高度应在 0.1–15 km 之间，请以海拔绝对高度输入。")
-                aod_text = self.vars[aod_key].get().strip()
+                aod_source = self.vars.get("aod_source")
+                aod_source = aod_source.get() if aod_source is not None else "CAMS"
+                aod_text = self.vars[aod_key].get().strip() if aod_source == "手动输入" else ""
+                if aod_source == "手动输入" and not aod_text:
+                    raise ValueError(f"{direction_name}选择手动 AOD，但尚未输入数值。")
                 manual_aod = parse_float(aod_text, f"{direction_name} AOD") if aod_text else None
                 if manual_aod is not None and manual_aod < 0:
                     raise ValueError(f"{direction_name} AOD 不能小于 0。")
@@ -1268,7 +1329,7 @@ class FireCloudApp(tk.Tk):
                     coarse_profiles = [{"distance_km": d, "estimated_base_km": None, "status": f"剖面失败：{exc}", "levels": []} for d in coarse_distances]
                 self._set_main_progress(base_progress + 13, f"{direction_name}：获取气溶胶数据……")
                 try:
-                    coarse_aod = self._fetch_aod_path(coarse_coords, coarse_distances, event_utc)["samples"]
+                    coarse_aod = self._fetch_selected_aod_path(coarse_coords, coarse_distances, event_utc, aod_source)["samples"]
                 except Exception:
                     coarse_aod = [{"distance_km": d, "aod": None} for d in coarse_distances]
                 aod_map = {x["distance_km"]: x.get("aod") for x in coarse_aod}
@@ -1283,10 +1344,11 @@ class FireCloudApp(tk.Tk):
                     reaches.append(math.sqrt(8.0 * 6371.0088 * effective_base) if effective_base > 0 else 0.0)
                 max_reach = max(reaches) if reaches else 0.0
                 # 至少到 200 km；按 50 km 步长向外扩展，并给最远理论范围预留约 100 km 的采样缓冲。
-                sample_limit = min(600, max(200, int(math.ceil((max_reach + 100.0) / 50.0) * 50)))
+                source_scan_target = 1.3 * max_reach
+                sample_limit = min(1000, max(200, int(math.ceil(max(max_reach + 100.0, source_scan_target) / 50.0) * 50)))
                 distances = [0, 25, 50, 100, 150, 200]
                 distances.extend(range(250, sample_limit + 1, 50))
-                distances = sorted(set(d for d in distances if d <= 600))
+                distances = sorted(set(d for d in distances if d <= sample_limit))
                 coords = [destination_point(data["lat"], data["lon"], azimuth, d) for d in distances]
 
                 # 每个纵向距离截面采样 9 点：中心点、垂直光路方向左右各 12/25/40 km，
@@ -1449,6 +1511,9 @@ class FireCloudApp(tk.Tk):
                 else:
                     self._set_main_progress(base_progress + 37, f"{direction_name}：估算反太阳方向彩虹条件……")
                     try:
+                        if _CASE_REQUEST_CONTEXT and _CASE_REQUEST_CONTEXT.get("mode") == "replay":
+                            _CASE_REQUEST_CONTEXT["saved_rainbow"] = (
+                                _CASE_REQUEST_CONTEXT.get("saved_rainbows") or {}).get(direction_key)
                         rainbow_result = self._estimate_rainbow_opportunity(
                             data["lat"], data["lon"], azimuth, event_utc, model_id,
                             minute_range=self._rainbow_window(direction_key))
@@ -1462,11 +1527,12 @@ class FireCloudApp(tk.Tk):
 
                 self._set_main_progress(base_progress + 39, f"{direction_name}：细化气溶胶路径……")
                 try:
-                    aod_result = self._fetch_aod_path(coords, distances, event_utc)
+                    aod_result = self._fetch_selected_aod_path(coords, distances, event_utc, aod_source)
                     aod_samples = aod_result["samples"]
                     aod_weighted = aod_result["weighted_aod"]
                     aod_time = aod_result.get("valid_time")
                 except Exception as exc:
+                    
                     aod_samples = [{"distance_km": d, "aod": None} for d in distances]
                     aod_weighted, aod_time = None, None
                     aod_error = str(exc)
@@ -1489,6 +1555,11 @@ class FireCloudApp(tk.Tk):
                                  "status": f"剖面获取失败：{profile_exc}", "levels": []}
                                 for d in distances]
                 raw_profiles_before_reconstruction = copy.deepcopy(profiles)
+                _vertical_aod = {"status":"未启用", "factor":1.0}
+                if aod_source == "CAMS（垂直分布）":
+                    from burning_sky.aod_vertical_experiment import estimate_vertical_color_factor
+                    _vertical_aod = estimate_vertical_color_factor(raw_profiles_before_reconstruction, effective_aod)
+
                 # Experimental cloud-height reconstruction: complete only missing layer
                 # evidence; keep provenance for the user-facing diagnostic.
                 try:
@@ -1570,7 +1641,7 @@ class FireCloudApp(tk.Tk):
                         _equiv = []
                         inferred['adaptive_target_candidates'] = _adaptive.get('gaps', [])
                         _profile_end = max((float(p.get('distance_km', 0)) for p in profiles), default=0.0)
-                        _source_check_km = 1.5 * float(local_reach or 0)
+                        _source_check_km = 1.3 * float(local_reach or 0)
                         inferred['upstream_source_check'] = {
                             'required_km': round(_source_check_km, 2),
                             'available_km': round(_profile_end, 2),
@@ -1683,7 +1754,7 @@ class FireCloudApp(tk.Tk):
                     gap_text = gap_ranges if all_gaps else '未形成可判读的晴空间隔'
                 if all_gaps and search_stage in ('spherical_raytrace_no_clear_path','spherical_raytrace_unresolved','spherical_raytrace_error'):
                     inferred.setdefault('score_notes', []).append('存在晴空间隔，但球面光路未证实本地目标云层受光；两项独立判定。')
-                cap_note = "已触及 600 km 采样上限；若理论深入距离更远，需进一步提高上限或采用更稀疏的远距离采样。" if sample_limit >= 600 and max_reach > 600 else ""
+                cap_note = "已触及 1000 km 采样上限；上游验证可能仍不完整。" if sample_limit >= 1000 and source_scan_target > 1000 else ""
                 # Debug30: Desktop rainbow diagnostics in console and per-case file.
                 # No additional weather API calls; records existing intermediate results.
                 try:
@@ -1708,7 +1779,8 @@ class FireCloudApp(tk.Tk):
                     if rainbow_result.get("distance_km") is not None:
                         rainbow_summary += f"；反太阳方向约 {rainbow_result['distance_km']:.0f} km 处降水条件最突出"
                 # 主结果区只保留拍摄决策所需的摘要；完整解释和逐点数据仍在“详细采样报告”中。
-                aod_short = ('手动 ' + format(effective_aod, '.2f') if manual_aod is not None else
+                aod_short = ('垂直分布 ' + format(effective_aod, '.2f') if aod_source == "CAMS（垂直分布）" and effective_aod is not None else
+                             '手动 ' + format(effective_aod, '.2f') if manual_aod is not None else
                              ('—' if effective_aod is None else format(effective_aod, '.2f')))
                 base_short = ('—' if local_geometry is None or local_geometry.get('cloud_base_km') is None else
                               format(local_geometry.get('cloud_base_km'), '.2f') + ' km')
@@ -1908,14 +1980,36 @@ class FireCloudApp(tk.Tk):
                         else 'none'),
                     'observed_gap_count': len(boundaries.get('observed_clear_gaps') or []),
                     'raytrace_stage': search_stage}
+                # V2.0.9: Once the required 1.3x upstream coverage is present,
+                # absence of any VERIFIED local illumination is a conservative
+                # operational zero (not a claim of physical impossibility).
+                # Do not classify missing profiles or raytrace exceptions as zero.
+                _complete_no_local_path = bool(
+                    not _primary_path_verified
+                    and search_stage in ('spherical_raytrace_unresolved',
+                                         'spherical_raytrace_no_clear_path')
+                    and _source_check_km > 0
+                    and _profile_end + 1e-6 >= _source_check_km
+                    and profiles
+                    and _local_light.get('available')
+                    and _scenario_times
+                    and not _observed_gap_verified)
+                if _complete_no_local_path:
+                    inferred['operational_no_local_path'] = True
+                    inferred['regular_score'] = inferred['score'] = 0
+                    inferred['verdict'] = '1.3倍极限云距内未证实本地有效光路（保守判定0%）'
+                    inferred.setdefault('score_notes', []).append(
+                        '验证覆盖充分但未找到本地有效光路：常规概率、染色占比和规模统一按0%输出。')
+                else:
+                    inferred['operational_no_local_path'] = False
                 # A high probability must not coexist with a geometrically
                 # blocked sky and a missing tint/curve. UNKNOWN remains distinct.
-                if not _primary_path_verified and search_stage == 'spherical_raytrace_no_clear_path':
+                if _complete_no_local_path or (not _primary_path_verified and search_stage == 'spherical_raytrace_no_clear_path'):
                     inferred['regular_score'] = inferred['score'] = 0
                     inferred['verdict'] = '严格主光路未证实透光'
                 elif _observed_gap_verified:
                     inferred['verdict'] = '明确晴空间隔及连续云面严格光路均存在有效受光时刻' 
-                if _local_light.get('available') and (_primary_path_verified or _estimated_path_eligible):
+                if _local_light.get('available') and (_primary_path_verified or _estimated_path_eligible) and not _complete_no_local_path:
                     _best_local = max(_local_light['times'],key=lambda x:x['fraction'])
                     inferred['tintable_ratio_kind'] = ('verified' if _primary_path_verified else 'estimated_scenario')
                     if _estimated_path_eligible:
@@ -1946,7 +2040,7 @@ class FireCloudApp(tk.Tk):
                         'possible_peak_fraction':round(_scenario_possible_peak,5),
                         'caveat':_local_light['caveat']}
                 else:
-                    tintable_ratio = 0 if search_stage == 'spherical_raytrace_no_clear_path' else None
+                    tintable_ratio = 0 if (_complete_no_local_path or search_stage == 'spherical_raytrace_no_clear_path') else None
                     inferred['tintable_ratio_diagnostic'] = ('严格主光路确认无无遮挡光路'
                         if search_stage == 'spherical_raytrace_no_clear_path' else
                         '云高补齐后仍无可用连续云面目标或剖面覆盖不足；需检查具体缺失原因')
@@ -1957,7 +2051,9 @@ class FireCloudApp(tk.Tk):
                 # A proven lack of illuminated clouds is a physical zero, not missing data.
                 # Do not turn unresolved/error ray tracing into a fabricated zero.
                 _scale_zero_reason = None
-                if tintable_ratio is None and local_cover < 5.0:
+                if _complete_no_local_path:
+                    _scale_zero_reason = '1.3倍极限云距内未证实本地有效光路（保守零值）'
+                elif tintable_ratio is None and local_cover < 5.0:
                     _scale_zero_reason = '本地潜在霞云距内中高云不足5%'
                 elif tintable_ratio is None and search_stage == 'spherical_raytrace_no_clear_path':
                     _scale_zero_reason = '严格球面光路确认无无遮挡光路'
@@ -1999,6 +2095,10 @@ class FireCloudApp(tk.Tk):
                     # Preserve baseline atmospheric color quality; timing changes hue,
                     # while illumination fraction determines tintable area separately.
                     inferred['color_score'] = round(max(0,min(100,_base_color_score*(0.90+0.10*_redness)))) if _peak_fraction>0 else 0
+                    if aod_source == "CAMS（垂直分布）" and _vertical_aod.get("status") == "已估算":
+                        inferred['color_score'] = round(max(0, min(100, inferred['color_score'] * _vertical_aod['factor'])))
+                        inferred['aod_vertical_diagnostic'] = _vertical_aod
+
                     inferred['color_score_note'] = '有效受光峰值时刻的太阳高度角与原有大气色彩条件（经验估算）'
                     inferred['peak_illumination_time'] = _peak_dt.isoformat()
                     inferred['peak_illumination_solar_altitude'] = round(_peak_solar_alt,3)
@@ -2102,6 +2202,8 @@ class FireCloudApp(tk.Tk):
                     _vis_factor = (1.0 if _vis is None else
                         max(.35,min(1.,.35+.65*min(float(_vis),30.)/30.)))
                     _aod_factor = math.exp(-.35*max(0.,float(effective_aod))) if effective_aod is not None else 1.
+                    if aod_source == "CAMS（垂直分布）" and _vertical_aod.get("status") == "已估算":
+                        _aod_factor *= _vertical_aod['factor']
                     _color_quality = aod_color_quality_factor(effective_aod)
                     if _vis is not None:
                         _color_quality *= max(0.,min(1.,(float(_vis)-2.)/28.))
@@ -2137,7 +2239,7 @@ class FireCloudApp(tk.Tk):
                                           '色彩评分 '+str(inferred.get('color_score'))+'/100')
                 results[direction_key] = {"summary": summary, "details": "\n".join(detail_lines), "inferred": inferred,
                                           "samples": samples, "raw_details": raw_details, "raw_profiles": raw_profiles_before_reconstruction, "profiles": profiles, "geometry": geometry,
-                                          "distances": distances, "max_reach": max_reach, "aod": effective_aod,
+                                          "distances": distances, "max_reach": max_reach, "aod": effective_aod, "aod_source": aod_source, "aod_vertical_diagnostic": _vertical_aod,
                                           "rainbow": rainbow_result, "dynamic_light_curve": dynamic_curve,
                                           "origin": (data["lat"], data["lon"]), "azimuth": azimuth, "event_dt": event_dt,
                                           "boundaries": boundaries,
@@ -2195,8 +2297,11 @@ class FireCloudApp(tk.Tk):
                     continue
                 direction_result = results.get(direction_key, {})
                 direction_aod = direction_result.get("aod")
-                manual_text = self.vars[f"{direction_key}_aod"].get().strip()
-                if manual_text:
+                manual_text = self.vars[f"{direction_key}_aod"].get().strip() if direction_result.get("aod_source", "CAMS") == "手动输入" else ""
+                if direction_result.get("aod_source") == "CAMS（垂直分布）":
+                    _opt = direction_result.get("aod_vertical_diagnostic") or {}
+                    status_var.set(f"CAMS AOD={direction_aod:.3f}；垂直分布：{_opt.get('status', '未估算')}" if direction_aod is not None else "CAMS AOD 不可用")
+                elif manual_text:
                     status_var.set(f"采用手动 AOD={float(manual_text):.3f}")
                 elif direction_aod is not None:
                     status_var.set(f"采用该方向 CAMS AOD={direction_aod:.3f}")
@@ -2264,8 +2369,16 @@ class FireCloudApp(tk.Tk):
         """Scan rain sectors and solar paths with rainbow-specific strict geometry."""
         key=FireCloudApp._rainbow_cache_key(lat,lon,event_utc,model_id,minute_range)
         cached=FireCloudApp._RAINBOW_RESULT_CACHE.get(key)
-        if cached is not None:
+        case_mode = (_CASE_REQUEST_CONTEXT or {}).get("mode")
+        # Capture must not skip requests through a pre-existing in-memory result.
+        if cached is not None and case_mode not in ("capture", "replay"):
             return cached
+        if case_mode == "replay":
+            saved_rainbow = (_CASE_REQUEST_CONTEXT or {}).get("saved_rainbow")
+            if isinstance(saved_rainbow, dict) and saved_rainbow:
+                # Preserve the saved optional rainbow result. The main fire-cloud
+                # calculations are still replayed from original weather requests.
+                return __import__("copy").deepcopy(saved_rainbow)
         from burning_sky.rainbow_geometry import RAIN_DISTANCES, RAIN_BEARING_OFFSETS, SUN_DISTANCES, evaluate
         from burning_sky.algorithm import solar_position
         # Use real solar azimuth for every candidate time, not sunset azimuth.
@@ -3691,6 +3804,9 @@ class FireCloudApp(tk.Tk):
                 gray=int(250-205*max(0,min(100,cc))/100)
                 color=f"#{gray:02x}{gray:02x}{gray:02x}"
                 canvas.create_rectangle(x0,ymap(min(max_h,h1)),x1,ymap(max(0,h0)),fill=color,outline='#ffffff',width=.5)
+                if cell.get('reconstructed_cloud') and view_var.get() != 'raw':
+                    canvas.create_rectangle(x0,ymap(min(max_h,h1)),x1,ymap(max(0,h0)),
+                                            outline='#e11d48',width=2,dash=(7,5))
             for prof in profs:
                 base=prof.get('estimated_base_km')
                 if isinstance(base,(int,float)) and 0<=base<=max_h:
@@ -3956,14 +4072,24 @@ class FireCloudApp(tk.Tk):
                     value = series[idx] if idx < len(series) else None
                     return value if isinstance(value, (int, float)) and math.isfinite(value) else None
                 height = get_value("geopotential_height")
-                if height is None:
-                    height = approx_height_asl_m.get(level)
+                height_source = "model_geopotential" if height is not None else "missing"
                 profile_levels.append({
                     "pressure_hpa": level,
                     "height_m_asl": height,
+                    "height_source": height_source,
                     "cloud_cover": get_value("cloud_cover"),
                     "relative_humidity": get_value("relative_humidity"),
                 })
+            from burning_sky.cloud_vertical import analyze_vertical_layers
+            vertical = analyze_vertical_layers(profile_levels)
+            # Preserve original height fallback for the legacy cloud-base estimator;
+            # never pass it off as a raw geopotential height.
+            profile_levels = vertical["levels"]
+            for _level in profile_levels:
+                if _level.get("height_m_asl") is None:
+                    _level["height_m_asl"] = approx_height_asl_m.get(_level["pressure_hpa"])
+                    if _level["height_m_asl"] is not None:
+                        _level["height_source"] = "standard_atmosphere_fallback"
             estimate = estimate_cloud_base_from_profile(profile_levels, ground_elevation)
             results.append({
                 "distance_km": dist,
@@ -3971,9 +4097,19 @@ class FireCloudApp(tk.Tk):
                 "time": valid_dt.strftime("%Y-%m-%d %H:%M UTC"),
                 "ground_elevation_m": ground_elevation,
                 "elevation_note": elevation_note,
+                "vertical_structure": vertical,
                 **estimate,
             })
         return {"samples": results, "levels": levels}
+
+    def _fetch_selected_aod_path(self, coords, distances, sunset_utc, source="CAMS"):
+        if source == "CAMS（垂直分布）":
+            # Same original CAMS 550 nm column AOD, no NASA request.
+            return self._fetch_aod_path(coords, distances, sunset_utc)
+        if source == "手动输入":
+            return {"samples":[{"distance_km":d,"aod":None,"time":None} for d in distances],
+                    "weighted_aod":None,"valid_time":None,"source":"manual"}
+        return self._fetch_aod_path(coords,distances,sunset_utc)
 
     @staticmethod
     def _fetch_aod_path(coords, distances, sunset_utc):
