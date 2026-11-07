@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "state": "running",
+  "state": "failed",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
   "started_at": "2026-11-08 04:27:18 CST",
@@ -26,5 +26,15 @@
     "date": "2026-11-09",
     "model": "GFS Global",
     "error": "预测流程未返回有效概率结果"
-  }
+  },
+  "failed_at": "2026-11-08 04:31:49 CST",
+  "failures": [
+    {
+      "city": "合肥",
+      "date": "2026-11-09",
+      "model": "GFS Global",
+      "error": "预测流程未返回有效概率结果"
+    }
+  ],
+  "message": "本轮晚霞有 1 项失败；保留上一次完整发布的数据。"
 }
