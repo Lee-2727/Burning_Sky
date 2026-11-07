@@ -511,7 +511,7 @@ if not run and st.session_state.get('rainbow_only_web_result') is not None:
     with st.expander('详细分析（各时段、采样点及系数）'):
         st.json([{k:v for k,v in r.items() if k!='details'} for r in _rb.get('timeline',[])])
         st.json(_rb.get('environment_sources',{}))
-        st.json(_sm['row'].get('details',[]))
+        st.json([{'time': r.get('time'), 'details': r.get('details', [])} for r in _rb.get('timeline', []) if isinstance(r, dict) and r.get('details')])
     st.caption('数字为未经历史校准的概率式评分，不是统计发生概率。')
     st.caption('火烧云规模：0% 不烧；大于0%且不足10% 微烧；10%–不足30% 小烧；30%–不足60% 中烧；60%–100% 大烧。')
     if rainbow_only_web: st.stop()
