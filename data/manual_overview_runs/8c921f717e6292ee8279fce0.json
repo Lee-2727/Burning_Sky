@@ -11,7 +11,7 @@
       "ICON Global"
     ]
   },
-  "obtained_at": "2026-11-07T12:12:18+08:00",
+  "obtained_at": "2026-11-08T03:00:15+08:00",
   "records": [
     {
       "date": "2026-11-08",
@@ -65,9 +65,17 @@
       "date": "2026-11-09",
       "model": "ECMWF IFS 0.25°",
       "direction": "morning",
-      "probability": 18,
-      "color_score": 19,
-      "burn_scale": 0.58
+      "probability": 0,
+      "color_score": 22,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-09",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 46,
+      "color_score": 40,
+      "burn_scale": 1.04
     },
     {
       "date": "2026-11-09",
@@ -79,37 +87,64 @@
     },
     {
       "date": "2026-11-09",
+      "model": "GFS Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 47,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-09",
       "model": "ICON Global",
       "direction": "morning",
       "probability": 0,
-      "color_score": 19,
+      "color_score": 21,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-10",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 42,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-10",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 43,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-10",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 43,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-10",
+      "model": "GFS Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 47,
       "burn_scale": 0.0
     },
     {
       "date": "2026-11-10",
       "model": "ICON Global",
       "direction": "morning",
-      "probability": 76,
-      "color_score": 40,
-      "burn_scale": 0.05
-    },
-    {
-      "date": "2026-11-10",
-      "model": "ICON Global",
-      "direction": "evening",
-      "probability": 0,
-      "color_score": 12,
+      "probability": 20,
+      "color_score": 32,
       "burn_scale": 0.0
     }
   ],
   "errors": [
-    "2026-11-09 ECMWF IFS 0.25° evening: 预测结果不完整：概率、色彩分或火烧云规模缺失",
-    "2026-11-09 GFS Global evening: 预测结果不完整：概率、色彩分或火烧云规模缺失",
     "2026-11-09 ICON Global evening: 预测结果不完整：概率、色彩分或火烧云规模缺失",
-    "2026-11-10 ECMWF IFS 0.25° morning: 预测结果不完整：概率、色彩分或火烧云规模缺失",
-    "2026-11-10 ECMWF IFS 0.25° evening: 预测结果不完整：概率、色彩分或火烧云规模缺失",
-    "2026-11-10 GFS Global morning: 预测结果不完整：概率、色彩分或火烧云规模缺失",
-    "2026-11-10 GFS Global evening: 预测结果不完整：概率、色彩分或火烧云规模缺失"
+    "2026-11-10 ICON Global evening: 预测结果不完整：概率、色彩分或火烧云规模缺失"
   ],
   "completed": 18,
   "total": 18,
