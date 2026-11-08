@@ -1,40 +1,20 @@
 {
   "schema_version": 2,
-  "state": "failed",
+  "state": "running",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
-  "started_at": "2026-11-08 04:27:18 CST",
-  "updated_at": "2026-11-08 04:31:48 CST",
-  "current_model": "GFS Global",
-  "model_index": 2,
+  "started_at": "2026-11-08 08:39:42 CST",
+  "updated_at": "2026-11-08 08:39:42 CST",
+  "current_model": "ECMWF IFS 0.25°",
+  "model_index": 1,
   "model_total": 2,
-  "completed_models": [
-    "ECMWF IFS 0.25°",
-    "GFS Global"
-  ],
+  "completed_models": [],
   "cities": [
     "合肥"
   ],
-  "city_progress": 1,
+  "city_progress": 0,
   "city_total": 1,
-  "task_progress": 12,
+  "task_progress": 0,
   "task_total": 12,
-  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
-  "failure_count": 1,
-  "last_error": {
-    "city": "合肥",
-    "date": "2026-11-09",
-    "model": "GFS Global",
-    "error": "预测流程未返回有效概率结果"
-  },
-  "failed_at": "2026-11-08 04:31:49 CST",
-  "failures": [
-    {
-      "city": "合肥",
-      "date": "2026-11-09",
-      "model": "GFS Global",
-      "error": "预测流程未返回有效概率结果"
-    }
-  ],
-  "message": "本轮晚霞有 1 项失败；保留上一次完整发布的数据。"
+  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞"
 }
