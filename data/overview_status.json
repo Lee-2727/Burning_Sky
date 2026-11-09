@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "state": "running",
+  "state": "failed",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
   "started_at": "2026-11-09 08:42:22 CST",
-  "updated_at": "2026-11-09 08:42:23 CST",
+  "updated_at": "2026-11-09 08:44:59 CST",
   "current_model": "ECMWF IFS 0.25°",
   "model_index": 1,
   "model_total": 2,
@@ -12,9 +12,38 @@
   "cities": [
     "合肥"
   ],
-  "city_progress": 0,
+  "city_progress": 1,
   "city_total": 1,
-  "task_progress": 0,
+  "task_progress": 4,
   "task_total": 12,
-  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞"
+  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
+  "failure_count": 3,
+  "last_error": {
+    "city": "合肥",
+    "date": "2026-11-10",
+    "model": "ECMWF IFS 0.25°",
+    "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Too many concurrent requests"
+  },
+  "failed_at": "2026-11-09 08:44:59 CST",
+  "failures": [
+    {
+      "city": "合肥",
+      "date": "2026-11-09",
+      "model": "ECMWF IFS 0.25°",
+      "error": "预测流程未返回有效概率结果"
+    },
+    {
+      "city": "合肥",
+      "date": "2026-11-10",
+      "model": "ECMWF IFS 0.25°",
+      "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Too many concurrent requests"
+    },
+    {
+      "city": "合肥",
+      "date": "2026-11-10",
+      "model": "ECMWF IFS 0.25°",
+      "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。\n接口说明：Too many concurrent requests"
+    }
+  ],
+  "message": "本轮晚霞有 3 项失败；保留上一次完整发布的数据。"
 }
