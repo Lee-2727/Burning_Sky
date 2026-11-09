@@ -11,23 +11,23 @@
       "ICON Global"
     ]
   },
-  "obtained_at": "2026-11-09T21:13:12+08:00",
+  "obtained_at": "2026-11-10T00:41:19+08:00",
   "records": [
     {
       "date": "2026-11-10",
       "model": "ECMWF IFS 0.25°",
       "direction": "morning",
-      "probability": 83,
-      "color_score": 71,
-      "burn_scale": 22.94
+      "probability": 70,
+      "color_score": 66,
+      "burn_scale": 10.41
     },
     {
       "date": "2026-11-10",
       "model": "ECMWF IFS 0.25°",
       "direction": "evening",
-      "probability": 70,
-      "color_score": 54,
-      "burn_scale": 7.97
+      "probability": 73,
+      "color_score": 65,
+      "burn_scale": 14.52
     },
     {
       "date": "2026-11-10",
@@ -35,7 +35,7 @@
       "direction": "morning",
       "probability": 73,
       "color_score": 40,
-      "burn_scale": 25.17
+      "burn_scale": 31.33
     },
     {
       "date": "2026-11-10",
@@ -43,7 +43,7 @@
       "direction": "evening",
       "probability": 66,
       "color_score": 47,
-      "burn_scale": 7.27
+      "burn_scale": 5.97
     },
     {
       "date": "2026-11-10",
@@ -57,17 +57,17 @@
       "date": "2026-11-11",
       "model": "ECMWF IFS 0.25°",
       "direction": "morning",
-      "probability": 86,
-      "color_score": 69,
-      "burn_scale": 37.88
+      "probability": 72,
+      "color_score": 67,
+      "burn_scale": 28.79
     },
     {
       "date": "2026-11-11",
       "model": "ECMWF IFS 0.25°",
       "direction": "evening",
-      "probability": 20,
-      "color_score": 36,
-      "burn_scale": 0.0
+      "probability": 59,
+      "color_score": 37,
+      "burn_scale": 8.35
     },
     {
       "date": "2026-11-11",
@@ -75,7 +75,7 @@
       "direction": "morning",
       "probability": 50,
       "color_score": 22,
-      "burn_scale": 14.3
+      "burn_scale": 8.8
     },
     {
       "date": "2026-11-11",
@@ -83,7 +83,7 @@
       "direction": "evening",
       "probability": 50,
       "color_score": 19,
-      "burn_scale": 7.1
+      "burn_scale": 7.7
     },
     {
       "date": "2026-11-11",
@@ -91,7 +91,7 @@
       "direction": "evening",
       "probability": 57,
       "color_score": 45,
-      "burn_scale": 28.4
+      "burn_scale": 44.3
     },
     {
       "date": "2026-11-12",
@@ -99,7 +99,7 @@
       "direction": "morning",
       "probability": 69,
       "color_score": 57,
-      "burn_scale": 4.2
+      "burn_scale": 1.55
     },
     {
       "date": "2026-11-12",
@@ -107,7 +107,7 @@
       "direction": "evening",
       "probability": 47,
       "color_score": 18,
-      "burn_scale": 0.7
+      "burn_scale": 2.6
     },
     {
       "date": "2026-11-12",
@@ -115,7 +115,7 @@
       "direction": "morning",
       "probability": 0,
       "color_score": 1,
-      "burn_scale": 3.7
+      "burn_scale": 3.1
     },
     {
       "date": "2026-11-12",
@@ -131,7 +131,7 @@
       "direction": "morning",
       "probability": 46,
       "color_score": 18,
-      "burn_scale": 4.7
+      "burn_scale": 2.7
     },
     {
       "date": "2026-11-12",
@@ -139,7 +139,7 @@
       "direction": "evening",
       "probability": 42,
       "color_score": 18,
-      "burn_scale": 7.1
+      "burn_scale": 8.6
     }
   ],
   "errors": [
