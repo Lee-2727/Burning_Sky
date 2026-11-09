@@ -18,11 +18,22 @@ def _clip(v, lo=0., hi=1.):
 
 
 def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
-                       potential_km, minutes=30, samples_per_face=32):
+                       potential_km, minutes=30, samples_per_face=32,
+                       verified_target_bands=None):
     if not profiles or not event_dt or potential_km is None or potential_km <= 0:
         return {'available': False, 'reason': '缺少剖面、时间或有效霞云距', 'times': []}
     # No smoothing across exact user-edited clear corridors.
-    cells=profile_cloud_cells(profiles,threshold=25.0,blur_horizontal_km=0.,blur_vertical_km=0.)
+    cells=profile_cloud_cells(profiles,threshold=0.000001,blur_horizontal_km=0.,blur_vertical_km=0.)
+    blocker_cells=profile_cloud_cells(profiles,threshold=25.0,blur_horizontal_km=0.,blur_vertical_km=0.)
+    # Explicit verified face bands: missing entries mean NO validated light.
+    # The legacy 25% cloud threshold is retained only for obstruction testing,
+    # not for deciding whether thin target clouds exist or count as area.
+    verified_index={}
+    if verified_target_bands is not None:
+        for record in verified_target_bands:
+            key=(int(record['minute_offset']), tuple(round(float(x),6) for x in record['target_key']))
+            verified_index.setdefault(key,[]).append(tuple(record['height_band_km']))
+    event_az=solar_position(event_dt,utc_offset,lat,lon)[1]
     limit=float(potential_km)
     # Keep the original cell identity.  In the previous integrated build the
     # target was copied to a new dict, so `c is target` was always false and
@@ -31,7 +42,7 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
     targets=[]
     for cell in cells:
         a=max(0.,float(cell['start_km'])); b=float(cell['end_km'])
-        if a>=limit-1e-7 or b<=a or float(cell['top_km'])<=1.5 or float(cell['cloud_cover'])<25.:
+        if a>=limit-1e-7 or b<=a or float(cell['top_km'])<=1.5 or float(cell['cloud_cover'])<=0.:
             continue
         low=float(cell['bottom_km']); high=float(cell['top_km'])
         if high<=low: continue
@@ -40,14 +51,15 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
         target=dict(cell)
         target['_original_cell']=cell
         target['end_km']=min(b,limit)
-        target['target_weight']=(target['end_km']-a)*(high-low)*_clip(float(cell['cloud_cover'])/100.)
+        target['target_weight']=(target['end_km']-a)*_clip(float(cell['cloud_cover'])/100.)
         targets.append(target)
     den=sum(t['target_weight'] for t in targets)
     if den<=0: return {'available':False,'reason':'霞云距内没有满足连续云面实验条件的中高云剖面','times':[]}
     result=[]
     for m in range(-minutes,1) if direction=='morning' else range(0,minutes+1):
         dt=event_dt+timedelta(minutes=m)
-        _,az=solar_position(dt,utc_offset,lat,lon)
+        # Cloud targets stay at the original geographic sampled axis.
+        az=event_az
         numerator=0.; strict_numerator=0.; possible_numerator=0.
         biggest=None; biggest_possible=None
         for target in targets:
@@ -61,13 +73,32 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
             # target itself is excluded by identity, and only upstream cells
             # can shade the sun-facing target face.  Cloud-cover is NEVER a
             # light-transmission coefficient.
-            analysis=analyze_target_face(target,[c for c in cells if c is not target.get('_original_cell')],solar_alt)
+            analysis=analyze_target_face(target,[c for c in blocker_cells if float(c['end_km'])>face+1e-7],solar_alt)
             fraction=_clip(analysis.get('possible_face_height_fraction_proxy',0.))
+            if verified_target_bands is not None:
+                target_key=tuple(round(float(target[k]),6) for k in
+                                 ('start_km','end_km','bottom_km','top_km'))
+                bands=verified_index.get((m,target_key),[])
+                # Union the actual height intervals (a target may have several).
+                bounded=sorted((max(a,float(lo)),min(b,float(hi))) for lo,hi in bands
+                               if min(b,float(hi))>max(a,float(lo)))
+                total=0.; last=None
+                for lo,hi in bounded:
+                    if last is None: last=[lo,hi]
+                    elif lo<=last[1]: last[1]=max(last[1],hi)
+                    else:
+                        total+=last[1]-last[0];last=[lo,hi]
+                if last is not None: total+=last[1]-last[0]
+                # Verified full-corridor target band is the hard gate; local
+                # analytic interval can only reduce it, never create light.
+                fraction=min(fraction,_clip(total/max(1e-12,b-a)))
             strict_fraction=fraction
             # Diagnostic upper bound: only fully overcast upstream cells are
             # assumed to be definite opaque obstacles; not a probability.
-            hard=[c for c in cells if c is not target.get('_original_cell') and float(c['cloud_cover'])>=99.999]
+            hard=[c for c in blocker_cells if float(c['end_km'])>face+1e-7 and float(c['cloud_cover'])>=99.999]
             possible_fraction=_clip(analyze_target_face(target,hard,solar_alt).get('possible_face_height_fraction_proxy',0.))
+            if verified_target_bands is not None:
+                possible_fraction=min(possible_fraction,fraction)
             possible_dominance=target['target_weight']*possible_fraction
             if biggest_possible is None or possible_dominance>biggest_possible['dominance']:
                 biggest_possible={'dominance':possible_dominance,'face_km':face,
@@ -86,8 +117,8 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
                        'dominant':biggest if biggest and biggest['dominance']>1e-9 else None,
                        'possible_dominant':biggest_possible if biggest_possible and biggest_possible['dominance']>1e-9 else None})
     return {'available':True,'potential_km':limit,'target_count':len(targets),
-            'target_weight':den,'times':result,'method':'continuous_target_faces_analytic_restored',
-            'caveat':'原连续云面解析求交的严格无遮挡代理量；目标云自身不作为上游遮挡；云量仅用于目标权重，不作为透射率；非实测染色比例'}
+            'target_weight':den,'times':result,'method':'continuous_cloud_cover_strict_target_minute_gate',
+            'caveat':'目标云量连续加权、逐分钟逐目标受光高度门控；遮挡云仍采用25%保守阈值；非二维可见面积实测值'}
 
 
 def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,

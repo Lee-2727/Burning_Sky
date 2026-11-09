@@ -1766,12 +1766,18 @@ class FireCloudApp(tk.Tk):
                 all_gaps = boundaries.get('observed_clear_gaps') or []
                 search_stage = cloud_hole_search.get('stage')
                 gap_ranges = '；'.join(f"{g['start_km']:.0f}–{g['end_km']:.0f} km（{g['size_km']:.0f} km）" for g in all_gaps)
-                if all_gaps:
+                if search_stage == 'spherical_raytrace_targets_verified':
+                    from burning_sky.equivalent_corridor import (summarize_verified_corridors,
+                                                                  format_verified_corridors)
+                    _corridor_summary = summarize_verified_corridors(_adaptive)
+                    inferred['verified_equivalent_corridor'] = _corridor_summary
+                    gap_display_label = '严格光路等效无遮挡通道'
+                    gap_text = format_verified_corridors(_corridor_summary)
+                    if all_gaps:
+                        gap_text += '；另有云量快筛晴空间隔：' + gap_ranges
+                elif all_gaps:
                     gap_display_label = '晴空间隔（仅云量识别）'
                     gap_text = gap_ranges
-                elif search_stage == 'spherical_raytrace_targets_verified':
-                    gap_display_label = '球面主光路已验证'
-                    gap_text = '1.3倍极限云距内至少存在一条目标云向阳面无遮挡通道（仅限采样范围）'
                 elif search_stage == 'spherical_raytrace_clear':
                     gap_display_label = '云洞（等效）'
                     _best_gap = max(all_gaps, key=lambda g: float(g.get('size_km', 0))) if all_gaps else None
@@ -1881,7 +1887,8 @@ class FireCloudApp(tk.Tk):
                 from burning_sky.local_cloud_illumination import local_illumination as _local_illumination
                 _local_light = _local_illumination(
                     profiles, event_dt, direction_key, data['utc_offset'],
-                    data['lat'], data['lon'], potential_limit)
+                    data['lat'], data['lon'], potential_limit,
+                    verified_target_bands=(_adaptive.get('verified_target_bands') or []))
                 # Unified profile-target light coverage (1-minute diagnostic; no extra API requests).
                 # A negative sample cannot prove that a sub-minute window does not exist.
                 _light_times = []
@@ -1925,13 +1932,14 @@ class FireCloudApp(tk.Tk):
                 # Explicit sampled clear corridors are retained for the legacy path score.
                 # They are NOT sufficient on their own: require positive strict
                 # local-face ray geometry at a matching time as well.
-                _observed_gap_verified = bool(boundaries.get('observed_clear_gaps')) and bool(
-                    _local_light.get('available') and any(
-                        float(t.get('strict_fraction') or 0) > 1e-5
-                        for t in _local_light.get('times', [])))
-                _primary_path_verified = (search_stage in (
-                    'spherical_raytrace_targets_verified', 'spherical_raytrace_clear')
-                    or _observed_gap_verified)
+                # A sampled clear gap alone does not certify a sun-to-target ray.
+                # Only the adaptive 1.3x full-corridor target verifier may open
+                # the area/timeline gate; this avoids promoting a convenient
+                # local face proxy into an independently verified light path.
+                _observed_gap_verified = False
+                _primary_path_verified = bool(
+                    _adaptive.get('status') == 'local_targets_verified'
+                    and _adaptive.get('verified_target_bands'))
                 # Scenario estimate is NOT strict verification.  Only allow a
                 # separately labelled estimate when the continuous local-face
                 # geometry is positive, a sampled upstream clear gap exists,
@@ -1948,15 +1956,10 @@ class FireCloudApp(tk.Tk):
                 # Strict full-corridor validation is the minute-level gate. The
                 # continuous-cloud area estimator may refine verified minutes,
                 # but must NEVER manufacture illumination in a rejected minute.
-                if (_adaptive.get('status')=='local_targets_verified'
-                        and not _observed_gap_verified):
-                    _strict_minutes=set(_adaptive.get('verified_minutes') or [])
-                    for _minute_row in _scenario_times:
-                        if int(_minute_row.get('minutes_from_event',999)) not in _strict_minutes:
-                            for _field in ('fraction','strict_fraction','possible_fraction'):
-                                _minute_row[_field]=0.0
-                            _minute_row['dominant']=None
-                            _minute_row['possible_dominant']=None
+                # The illumination engine now accepts explicit, per-minute AND
+                # per-target validated height bands. Do not substitute the old
+                # minute-only gate, which promoted a single valid target into
+                # illumination of unrelated clouds.
                 _scenario_possible_peak = max((float(t.get('possible_fraction') or 0)
                                                for t in _scenario_times), default=0.0)
                 _scenario_strict_peak = max((float(t.get('strict_fraction') or 0)
@@ -2055,28 +2058,13 @@ class FireCloudApp(tk.Tk):
                     inferred['verdict'] = '严格主光路未证实透光'
                 elif _observed_gap_verified:
                     inferred['verdict'] = '明确晴空间隔及连续云面严格光路均存在有效受光时刻' 
-                if _local_light.get('available') and (_primary_path_verified or _estimated_path_eligible) and not _complete_no_local_path:
+                if _local_light.get('available') and _primary_path_verified and not _complete_no_local_path:
                     _best_local = max(_local_light['times'],key=lambda x:x['fraction'])
-                    inferred['tintable_ratio_kind'] = ('verified' if _primary_path_verified else 'estimated_scenario')
-                    if _estimated_path_eligible:
-                        # FIX3: Do not depend on a positive strict_fraction.  The
-                        # center is a transparent *scenario proxy* midway between
-                        # the pessimistic and optimistic geometric envelopes.
-                        # In particular, zero is a computed scenario zero, not a
-                        # verified absence of light.
-                        _estimate_fraction = .5*(_scenario_strict_peak+_scenario_possible_peak)
-                        tintable_ratio = round(100*_estimate_fraction,1)
-                        inferred['verdict'] = '云高回退几何情景估算（主光路未证实）'
-                        inferred.setdefault('score_notes', []).append(
-                            '估算染色采用严格/可能遮挡两种几何包络的中点；不是已证实受光，也不是统计概率。')
-                        inferred['tintable_ratio_diagnostic'] = (
-                            f'云高情景：下界{100*_scenario_strict_peak:.1f}%～'
-                            f'上界{100*_scenario_possible_peak:.1f}%；'
-                            f'中心估算{tintable_ratio:.1f}%；严格主光路未证实。')
-                    else:
-                        tintable_ratio = round(100*_best_local['fraction'],1)
-                        inferred['tintable_ratio_diagnostic'] = (
-                            '霞云距内中高云连续目标严格无遮挡受光加权；不采用部分云量透射；同一分钟的峰值')
+                    inferred['tintable_ratio_kind'] = 'verified_profile_proxy'
+                    tintable_ratio = round(100*_best_local['fraction'],1)
+                    inferred['tintable_ratio_diagnostic'] = (
+                        '霞云距内中高云按云量连续加权；逐分钟逐目标严格光路'
+                        '高度区间门控；目前为剖面受光代理，不是二维可见面积')
                     inferred['local_cloud_illumination'] = {
                         'potential_km':_local_light['potential_km'],
                         'target_count':_local_light['target_count'],
@@ -2090,9 +2078,7 @@ class FireCloudApp(tk.Tk):
                     inferred['tintable_ratio_diagnostic'] = ('严格主光路确认无无遮挡光路'
                         if search_stage == 'spherical_raytrace_no_clear_path' else
                         '云高补齐后仍无可用连续云面目标或剖面覆盖不足；需检查具体缺失原因')
-                tintable_text = ("暂不可估" if tintable_ratio is None else
-                                 f"估算约 {tintable_ratio}%（严格光路未证实）" if _estimated_path_eligible
-                                 else f"约 {tintable_ratio}%")
+                tintable_text = ("暂不可估" if tintable_ratio is None else f"约 {tintable_ratio}%")
                 local_cover = min(100.0, cloud_sum/range_width) if range_width > 0 else 0.0
                 # A proven lack of illuminated clouds is a physical zero, not missing data.
                 # Do not turn unresolved/error ray tracing into a fabricated zero.
@@ -2242,7 +2228,7 @@ class FireCloudApp(tk.Tk):
                                             accepted_gaps=boundaries.get("clear_gaps") or []) if curve_zones else {"samples": [], "peak": None, "note": "缺少可用云量采样，未生成动态曲线。"}
                 # Debug17: share exactly the same local target light field as
                 # tintable ratio. Do not use sparse target witnesses as hard gate.
-                if _local_light.get('available') and (_primary_path_verified or _estimated_path_eligible) and (_scenario_strict_peak > 0 or _scenario_possible_peak > 0):
+                if _local_light.get('available') and _primary_path_verified and (_scenario_strict_peak > 0 or _scenario_possible_peak > 0):
                     from burning_sky.local_cloud_illumination import apply_to_curve
                     _vis = curve_data.get('visibility_km')
                     _vis_factor = (1.0 if _vis is None else

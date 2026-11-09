@@ -252,8 +252,9 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
     A 1.3x reach is the agreed observational horizon. It is NOT the source of
     sunlight, and a whole atmospheric column need not be cloud-free: the ray
     needs only clear air AT ITS ACTUAL HEIGHT at every upstream column.
-    All >=25% cloud cells are treated as opaque in this strict screen. The
-    1-minute verified windows gate the separate continuous-area estimator.
+    The legacy >=25% cloud threshold remains an explicit *blocking* assumption,
+    while all nonzero mid/high cloud targets receive continuous area weights.
+    Verified target height bands at each minute gate the area estimator.
     """
     from .critical_light_envelope import analyze_target_face
     from .spherical_raytrace import (_ray_height_km, _earth_occluded,
@@ -278,17 +279,29 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                 'required_profile_km':round(required,2),'available_profile_km':round(available,2),
                 'missing_profile_distances_km':missing,
                 'note':'上游剖面未完整覆盖1.3倍极限距离（含缺失气压层）；不得把未采样区域视作晴空或无光路'}
+    # Separate low-cover targets from the conservative obstacle screen.
+    # Never treat the nonzero target cloud as a completely opaque blocker
+    # merely because it contributes some fractional cloud coverage.
     cells=profile_cloud_cells(valid,threshold=25.,blur_horizontal_km=0.,blur_vertical_km=0.)
+    target_cells=profile_cloud_cells(valid,threshold=0.000001,blur_horizontal_km=0.,blur_vertical_km=0.)
     limit = min(reach, max(0.0, float(target_limit_km))) if target_limit_km is not None else reach
     # Target is its real SUNWARD face, not the profile-centre point. A ray
     # starting at centre would either ignore part of its cloud or self-block.
-    targets=[c for c in cells if float(c['start_km'])<limit-1e-8
-             and float(c['top_km'])>1.5 and float(c['end_km'])<required-15.0]
+    targets=[]
+    for c in target_cells:
+        if (float(c['start_km'])>=limit-1e-8 or float(c['top_km'])<=1.5
+                or float(c['end_km'])>=required-15.0):
+            continue
+        t=dict(c)
+        t['end_km']=min(float(c['end_km']),limit)
+        if t['end_km'] > float(t['start_km']):
+            targets.append(t)
     if not targets:
         return {'gaps':[], 'status':'no_target_cloud','evaluations':0,
                 'required_profile_km':round(required,2), 'available_profile_km':round(available,2),
                 'note':'霞云距内没有满足剖面条件的中高云目标'}
     verified=[]; evaluations=0; confirmed_faces=set(); by_minute={}
+    verified_target_bands=[]
     event_az = solar_position(event_dt,utc_offset,lat,lon)[1]
     uncovered_minutes=set(); coverage_debug=[]
     minutes=range(-30,1) if direction=='morning' else range(0,31)
@@ -311,7 +324,7 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                 continue
             # Full cloud-cell intersection and Earth occlusion are computed on
             # the same true spherical ray, through the entire required corridor.
-            upstream=[c for c in cells if c is not target and
+            upstream=[c for c in cells if
                       float(c['end_km'])>face+1e-7 and float(c['start_km'])<required]
             bands=analyze_target_face(target,upstream,alt,
                                       max_distance_km=required).get('possible_face_height_bands_km',[])
@@ -342,6 +355,16 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                            'clear_face_band_km':[round(low,6),round(high,6)],
                            'status':'verified_to_1p3_reach_sampled_corridor',
                            'weight':weight}
+                # Record EVERY verified target, not only the winner of this minute.
+                # Downstream area weighting must never illuminate other targets
+                # merely because one face somewhere had a valid light path.
+                verified_target_bands.append({
+                    'minute_offset': minute,
+                    'target_key': [round(float(target[k]),6) for k in
+                                   ('start_km','end_km','bottom_km','top_km')],
+                    'height_band_km': [round(low,6),round(high,6)],
+                    'solar_altitude_deg': round(alt,7),
+                })
                 if winner is None or candidate['weight']>winner['weight']:
                     winner=candidate
         if minute_uncovered:
@@ -353,7 +376,8 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
     return {'gaps':[], 'status':('local_targets_verified' if verified else
                                   'unresolved_data' if uncovered_minutes else 'no_verified_source'),
             'evaluations':evaluations,'illuminated_target_count':len(confirmed_faces),
-            'verified_minutes':list(by_minute),
+            'verified_minutes':sorted(by_minute),
+            'verified_target_bands':verified_target_bands,
             'spatially_unverified_minutes':sorted(uncovered_minutes),
             'spatial_coverage_diagnostics':coverage_debug,
             'corridor_radius_km':15.0,
