@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Streamlit web client for the shared Burning Sky v1.4.67 / Web V1.6.11 engine."""
 from __future__ import annotations
+from burning_sky.place_excel_paths import find_place_workbook
 
 import os
 # The Streamlit foreground query is interactive; GitHub Actions remains batch-limited.
@@ -166,10 +167,10 @@ with st.sidebar:
         st.rerun()
     st.header("预报设置")
     place_query = st.text_input("地点名称（输入前几个字联想）", "合肥", key="place_query")
-    # 地名联想只读取仓库同目录 Excel，不访问地理编码网络服务。
+    # 地名联想优先读取 Burning Sky 根目录 Excel，兼容共享目录 Excel，不访问地理编码网络服务。
     import pandas as pd
     _place_df = pd.DataFrame()
-    _xlsx_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "shared_locations", "china_city_coordinates.xlsx")
+    _xlsx_path = find_place_workbook()
     try:
         _place_df = pd.read_excel(_xlsx_path, sheet_name="地名坐标表")
     except Exception:

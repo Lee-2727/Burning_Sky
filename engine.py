@@ -1,3 +1,4 @@
+from burning_sky.place_excel_paths import find_place_workbook
 # -*- coding: utf-8 -*-
 """
 火烧云预报工具 v1.4.67（本地200公里烧云规模评估）
@@ -705,7 +706,7 @@ class FireCloudApp(tk.Tk):
             elif key == "elevation":
                 ttk.Label(row, text="读取地名表中的海拔；也可直接修改，单位为米。", style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(2, 0))
 
-        self.place_lookup_status_var = tk.StringVar(value="优先读取仓库 shared_locations/china_city_coordinates.xlsx；地名表中的海拔可手动维护。")
+        self.place_lookup_status_var = tk.StringVar(value="优先读取 Burning Sky 根目录 china_city_coordinates.xlsx，兼容共享目录；海拔可手动维护。")
         ttk.Label(form, textvariable=self.place_lookup_status_var, style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(0, 4))
 
         # 云底来源模式仍为全局设置；AOD 与手动云底数值分别放在朝霞/晚霞结果区。
@@ -4508,7 +4509,7 @@ class FireCloudApp(tk.Tk):
         for name, lat, lon in list(self.CHINA_CAPITALS) + list(self.MAP_CITIES):
             records.setdefault(str(name), (str(name), float(lat), float(lon), None))
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        xlsx_path = os.path.join(os.path.dirname(base_dir), "shared_locations", "china_city_coordinates.xlsx")
+        xlsx_path = find_place_workbook()
         csv_path = os.path.join(base_dir, "china_city_coordinates_common.csv")
         try:
             from openpyxl import load_workbook
@@ -4665,7 +4666,7 @@ class FireCloudApp(tk.Tk):
             records_by_name.setdefault(name, (name, lat, lon, None))
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        xlsx_path = os.path.join(os.path.dirname(base_dir), "shared_locations", "china_city_coordinates.xlsx")
+        xlsx_path = find_place_workbook()
         csv_path = os.path.join(base_dir, "china_city_coordinates_common.csv")
         try:
             from openpyxl import load_workbook

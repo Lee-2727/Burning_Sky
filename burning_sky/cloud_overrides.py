@@ -10,10 +10,10 @@ def parse_overrides(text):
         if len(fields)!=5: raise ValueError(f'第 {lineno} 行应为：起点,终点,低云,中云,高云（云量可留空）')
         try:
             a,b=map(float,fields[:2])
-            if not (0<=a<b<=600): raise ValueError()
+            if not (math.isfinite(a) and math.isfinite(b) and 0 <= a < b <= 20000): raise ValueError()
             vals=[None if x=='' else float(x) for x in fields[2:]]
             if all(x is None for x in vals) or any(x is not None and (not math.isfinite(x) or not 0<=x<=100) for x in vals): raise ValueError()
-        except ValueError: raise ValueError(f'第 {lineno} 行的距离或云量无效（0–600 km，0–100%）')
+        except ValueError: raise ValueError(f'第 {lineno} 行的距离或云量无效（0–20000 km，0–100%）')
         if rows and a<rows[-1][1]: raise ValueError('修正区间必须按距离升序排列，且不能重叠')
         rows.append((a,b,*vals))
     return rows

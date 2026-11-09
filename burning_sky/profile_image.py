@@ -90,6 +90,20 @@ def render_profile(result, width=1400, height=760):
                 if len(coords)>1:d.line(coords,fill="#7434ac",width=3)
                 coords=[]
         if len(coords)>1:d.line(coords,fill="#7434ac",width=3)
+    # Candidate rays are diagnostics only. Use the same recorded solar altitude
+    # per minute as the desktop view; never label these as verified clear paths.
+    candidates = [r for r in ordered if isinstance(r.get("solar_altitude_deg"), (int,float))]
+    if len(candidates) > 36:
+        picks = {round(i*(len(candidates)-1)/35) for i in range(36)}
+        picks.update(i for i in range(1,len(candidates))
+                     if candidates[i].get("status") != candidates[i-1].get("status"))
+        candidates = [candidates[i] for i in sorted(picks)]
+    for ray in candidates:
+        points = sample_ray_curve(target, float(ray["solar_altitude_deg"]), plotdist, 650)
+        for dist, h, blocked in points[::2]:
+            if not blocked and math.isfinite(h) and 0 <= h <= maxh:
+                xx, yy = x(dist), y(h)
+                d.ellipse((xx-1, yy-1, xx+1, yy+1), fill="#bb66e8")
     for run in runs:
         alts=[float(r["solar_altitude_deg"]) for r in run]
         low,high=min(alts),max(alts)
@@ -107,7 +121,7 @@ def render_profile(result, width=1400, height=760):
                 d.ellipse((xx-1,yy-1,xx+1,yy+1),fill="#bb398d")
         draw_curve(low);draw_curve(high)
     if not runs:
-        d.text((left+pw*.28,top+25),"No continuous verified clear-ray interval",fill="#8b3274")
+        d.text((left+pw*.28,top+25),"No continuous verified clear-ray interval (dotted = candidates)",fill="#8b3274")
     if 0<=target<=maxh:
         xx=x(0);yy=y(target)
         d.ellipse((xx-5,yy-5,xx+5,yy+5),fill="#101820",outline="white")
