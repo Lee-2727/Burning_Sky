@@ -4,19 +4,20 @@
   "direction": "both",
   "direction_title": "朝霞及晚霞",
   "started_at": "2026-11-10 04:42:15 CST",
-  "updated_at": "2026-11-10 04:45:11 CST",
+  "updated_at": "2026-11-10 04:48:21 CST",
   "current_model": "GFS Global",
   "model_index": 2,
   "model_total": 2,
   "completed_models": [
-    "ECMWF IFS 0.25°"
+    "ECMWF IFS 0.25°",
+    "GFS Global"
   ],
   "cities": [
     "合肥"
   ],
   "city_progress": 1,
   "city_total": 1,
-  "task_progress": 6,
+  "task_progress": 12,
   "task_total": 12,
   "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
   "failure_count": 0,
