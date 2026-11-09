@@ -1586,12 +1586,19 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
                           (isinstance(potential_range, (int, float)) and potential_range <= 0))
     strict_zero_rule = rule in ("profile_cloud_base_below_500m", "local_low_cloud_at_least_90pct",
                                 "local_100km_mean_total_cloud_below_5pct")
-    preserve_verdict = verdict in ("光线难以穿透", "光板天", "机会太小，几乎不烧", "云量不足")
-    if no_potential_range and not strict_zero_rule and not preserve_verdict:
+    # A pre-existing advisory verdict must NOT bypass the hard 20% probability cap.
+    # In particular, a preceding "光线难以穿透" / "光板天" label may still be
+    # correct as a *description*, but it cannot make a zero-range sky score 61%.
+    uncapped_zero_range_score = score
+    zero_range_cap_applied = bool(no_potential_range and not strict_zero_rule)
+    if zero_range_cap_applied:
         score = min(score, 20)
         inferred["regular_score"] = score
         inferred["score"] = score
-        verdict, rule = "云量不足", "zero_potential_fire_cloud_range_cap_20pct"
+        if verdict not in ("光线难以穿透", "光板天", "机会太小，几乎不烧", "云量不足"):
+            verdict, rule = "云量不足", "zero_potential_fire_cloud_range_cap_20pct"
+        inferred.setdefault("score_notes", []).append(
+            f"潜在霞云距为0或未识别：常规概率按硬规则封顶20%（封顶前 {uncapped_zero_range_score}%）。")
 
     if verdict is not None:
         inferred["verdict_override"] = verdict
@@ -1611,7 +1618,8 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
         "gap_status": gap_status,
         "clear_gap_count": len(gaps),
         "potential_fire_cloud_range_km": potential_range,
-        "zero_range_cap_applied": bool(no_potential_range and not strict_zero_rule and not preserve_verdict),
+        "zero_range_cap_applied": zero_range_cap_applied,
+        "zero_range_cap_previous_score": uncapped_zero_range_score if zero_range_cap_applied else None,
     }
     upper = inferred.get("upper_score")
     if isinstance(upper, (int, float)):
@@ -1758,10 +1766,11 @@ def has_local_low_cloud_above_ground(profile_levels, max_height_agl_km=3.0):
 
 def apply_low_cloud_screen_constraint(inferred, samples=None, zones=None, source="online", max_relevant_distance_km=None,
                                       local_low_cloud_above_ground=None):
-    """Apply a conservative score ceiling for broad, continuous high-coverage low-cloud screens.
+    """Apply local observer low-cloud visibility ceiling only.
 
-    This is a heuristic constraint, not a claim that cloud-cover percentage equals opacity.
-    Online samples use cloud_cover_low; Excel zones require an explicitly listed layer intersecting 0-2 km.
+    Remote continuous-low-cloud runs are retained solely as diagnostics: they cannot
+    override the strict time-varying spherical raytrace. Only the local-only low-cloud
+    rule may cap the score here; local visibility and geometry are separate concerns.
     """
     runs = []
     valid_sample_count = 0
@@ -1854,9 +1863,17 @@ def apply_low_cloud_screen_constraint(inferred, samples=None, zones=None, source
     # For a single-point forecast there is no path width information, but very high local low cloud
     # still merits a cautious ceiling rather than being averaged away by other scoring components.
     local_low = inferred.get("low")
-    if (not zones and local_low_cloud_above_ground is not False and local_low is not None and local_low >= 85 and
-            (valid_sample_count <= 1 or not any(r.get("end", 0)-r.get("start", 0) >= 30 for r in runs))):
+    if (not zones and local_low_cloud_above_ground is not False and local_low is not None and local_low >= 85):
         runs.append({"start":0.0, "end":0.0, "covers":[float(local_low)], "local_only":True})
+
+    # The old remote low-cloud *screen* was a horizontal cover heuristic, not
+    # an intersection of the sun ray with cloud-top altitude. A valid spherical
+    # path above such clouds must NOT be capped (e.g. 72 -> 12) or greyed out.
+    # Keep local observer visibility restrictions independent of solar illumination.
+    ignored_remote_runs = [r for r in runs if not r.get("local_only")]
+    runs = [r for r in runs if r.get("local_only")]
+    inferred["remote_low_cloud_screen_disabled"] = True
+    inferred["ignored_remote_low_cloud_runs"] = len(ignored_remote_runs)
 
     strongest = None
     for run in runs:
@@ -1961,7 +1978,7 @@ def apply_low_cloud_screen_constraint(inferred, samples=None, zones=None, source
     else:
         inferred["low_cloud_screen"] = None
         inferred["low_cloud_color_factor"] = 1.0
-        inferred["low_cloud_color_note"] = "未命中连续低云屏障规则；不额外压低暖色显示。"
+        inferred["low_cloud_color_note"] = "远端连续低云硬封顶已停用；仅保留本地低云可见性约束。"
     # 两种在线预测路径均在相同低云约束之后，使用同一色彩评分核心。
     return calculate_color_performance_score(inferred)
 

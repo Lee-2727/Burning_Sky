@@ -126,115 +126,7 @@ class WebForecastEngine(engine.FireCloudApp):
         pass
 
 
-def _draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
-    """Draw the model's per-sample RGB curve and color strip for the web UI.
-
-    This is display-only: it uses the existing samples without changing forecast
-    calculations, scores, brightness, or RGB values.
-    """
-    from PIL import Image, ImageDraw, ImageFont
-
-    W, H = 1400, 560
-    img = Image.new("RGB", (W, H), (255, 255, 255))
-    d = ImageDraw.Draw(img)
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 17)
-        small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
-        tiny = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
-    except Exception:
-        font = small = tiny = ImageFont.load_default()
-
-    left, right, top, bottom = 78, W - 28, 34, 385
-    def x_at(i):
-        return left + (right - left) * i / max(1, len(samples) - 1)
-    def y_at(v):
-        try:
-            v = float(v)
-        except (TypeError, ValueError):
-            v = 0.0
-        return bottom - (bottom - top) * max(0.0, min(100.0, v)) / 100.0
-    def rgb_of(point):
-        c = point.get("color", (190, 125, 105))
-        if not isinstance(c, (list, tuple)) or len(c) < 3:
-            c = (190, 125, 105)
-        return tuple(max(0, min(255, int(v))) for v in c[:3])
-
-    # The vertical axis is relative brightness only. Hue is taken independently
-    # from each model sample's predicted RGB (solar-angle-based), never mapped
-    # from the Y value.
-    d.text((left, 12), "相对亮度", font=tiny, fill=(71, 85, 105), anchor="la")
-    # Grid and Y axis labels.
-    for val in (0, 20, 40, 60, 80, 100):
-        y = y_at(val)
-        d.line((left, y, right, y), fill=(220, 226, 234), width=1)
-        d.text((left - 12, y - 8), str(val), font=small, fill=(71, 85, 105), anchor="ra")
-    d.line((left, top, left, bottom), fill=(100, 116, 139), width=2)
-    d.line((left, bottom, right, bottom), fill=(100, 116, 139), width=2)
-
-    if samples:
-        # Use each sample's own estimated RGB for its segment, matching the desktop UI.
-        for i in range(len(samples) - 1):
-            # 严格几何光路无效的样本作为断点，不跨断点连线或填充面积。
-            if not samples[i].get("geometry_valid", False) or not samples[i + 1].get("geometry_valid", False):
-                continue
-            x0, x1 = x_at(i), x_at(i + 1)
-            y0 = y_at(samples[i].get("relative_brightness", 0))
-            y1 = y_at(samples[i + 1].get("relative_brightness", 0))
-            c = rgb_of(samples[i])
-            fill = tuple(int(255 * 0.08 + c[k] * 0.92) for k in range(3))
-            d.polygon([(x0, bottom), (x0, y0), (x1, y1), (x1, bottom)], fill=fill)
-            d.line((x0, y0, x1, y1), fill=c, width=5)
-        # 仅绘制有效几何点；无效时段保持真实空白。
-        for i, point in enumerate(samples):
-            if not point.get("geometry_valid", False):
-                continue
-            x, y = x_at(i), y_at(point.get("relative_brightness", 0))
-            c = rgb_of(point)
-            d.ellipse((x - 2, y - 2, x + 2, y + 2), fill=c, outline=c)
-
-        # Sunrise/sunset event marker and evenly spaced local-time labels.
-        event_i = min(range(len(samples)), key=lambda i: abs(float(samples[i].get("minutes_from_event", 999999))))
-        event_x = x_at(event_i)
-        d.line((event_x, top, event_x, bottom), fill=(100, 116, 139), width=1)
-        for tick in range(7):
-            i = round((len(samples) - 1) * tick / 6)
-            x = x_at(i)
-            d.line((x, bottom, x, bottom + 7), fill=(150, 160, 175), width=1)
-            dt = samples[i].get("datetime")
-            label = dt.strftime("%H:%M") if hasattr(dt, "strftime") else str(samples[i].get("minutes_from_event", ""))
-            if i == event_i:
-                label += " SUNRISE" if direction_key == "morning" else " SUNSET"
-            d.text((x, bottom + 12), label, font=tiny, fill=(51, 65, 85), anchor="ma")
-
-        if peak and isinstance(peak, dict):
-            try:
-                peak_dt = peak.get("datetime")
-                if peak_dt is not None and hasattr(peak_dt, "timestamp"):
-                    pi = min(range(len(samples)), key=lambda i: abs((samples[i]["datetime"] - peak_dt).total_seconds()))
-                else:
-                    pi = min(range(len(samples)), key=lambda i: abs(float(samples[i].get("minutes_from_event", 0)) - float(peak.get("minutes_from_event", 0))))
-                px, py = x_at(pi), y_at(samples[pi].get("relative_brightness", 0))
-                if samples[pi].get("geometry_valid", False):
-                    d.ellipse((px - 7, py - 7, px + 7, py + 7), fill=(255, 255, 255), outline=rgb_of(samples[pi]), width=3)
-            except Exception:
-                pass
-    else:
-        # Empty-but-valid forecast: keep the axes and zero baseline visible.
-        d.line((left, bottom, right, bottom), fill=(148, 163, 184), width=2)
-
-    # The strip follows the exact sample RGB sequence. With no samples, show a neutral placeholder.
-    strip_y0, strip_y1 = 450, 478
-    if samples:
-        for i, point in enumerate(samples):
-            xa = int(x_at(i))
-            xb = int(x_at(i + 1)) if i + 1 < len(samples) else right
-            if point.get("geometry_valid", False):
-                d.rectangle((xa, strip_y0, max(xa + 1, xb), strip_y1), fill=rgb_of(point))
-    else:
-        d.rectangle((left, strip_y0, right, strip_y1), fill=(235, 235, 235))
-    d.text((left, 492), "Estimated color by time (model RGB; no extra saturation enhancement)", font=small, fill=(71, 85, 105))
-    d.text((left, 525), "Relative brightness (window peak = 100)", font=small, fill=(71, 85, 105))
-    return img
+from burning_sky.web_color_curve import draw_dynamic_color_curve as _draw_dynamic_color_curve
 
 st.title("🌇 Burning Sky")
 # 仅为“未来多日概览 / 手动查询多日概览”两个入口设置低饱和蓝色，不影响其他按钮。
@@ -277,7 +169,7 @@ with st.sidebar:
     # 地名联想只读取仓库同目录 Excel，不访问地理编码网络服务。
     import pandas as pd
     _place_df = pd.DataFrame()
-    _xlsx_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "china_city_coordinates.xlsx")
+    _xlsx_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "shared_locations", "china_city_coordinates.xlsx")
     try:
         _place_df = pd.read_excel(_xlsx_path, sheet_name="地名坐标表")
     except Exception:
@@ -1048,25 +940,15 @@ if run:
             st.stop()
         engine._CASE_REQUEST_CONTEXT = {"mode": "replay", "cache": st.session_state.get("case_bundle_cache") or {}}
     else:
+        # A new online query captures newly requested data. Previously uploaded
+        # case payloads are only for explicit offline replay, never online mode.
         _web_case_cache = {}
-        if _case_state and _case_state.get("date") == forecast_date.isoformat() and _case_state.get("model_code") == {"ecmwf_ifs025": "EC", "ncep_gfs_global": "GFS", "icon_global": "ICON", "ecmwf_aifs025_single": "AIFS", "cma_grapes_global": "CMA_GRAPES"}.get(engine._weather_model_id_from_label(model_label), "EC"):
-            _web_case_cache.update(st.session_state.get("case_bundle_cache") or {})
         engine._CASE_REQUEST_CONTEXT = {"mode": "capture", "cache": _web_case_cache}
     try:
         with st.spinner(f"{'正在读取案例缓存' if use_case_cache else '正在获取天气、云层剖面与 CAMS AOD'}，并计算{_direction_text}……"):
-            if _query_dir == "both":
-                # Run each direction as a separate calculation invocation. The
-                # engine's 'both' loop shares function-local intermediate values
-                # between sunrise and sunset; in particular optional raytrace
-                # diagnostics can survive via locals() checks. A separate call
-                # makes the evening path identical to evening-only queries.
-                # The same runner and request-cache context are retained, so
-                # no extra cache reset or API throttle is introduced.
-                runner._fetch_weather_task("morning")
-                if not engine.messagebox.last_error:
-                    runner._fetch_weather_task("evening")
-            else:
-                runner._fetch_weather_task(_query_dir)
+            # The shared engine now splits combined queries identically for
+            # desktop and web, including merged rainbow results.
+            runner._fetch_weather_task(_query_dir)
     finally:
         engine._CASE_REQUEST_CONTEXT = None
     if engine.messagebox.last_error:
@@ -1128,72 +1010,6 @@ def _styled_cloud_summary(summary):
                   r'<span style="color:#c62828;font-weight:800;">\1 \2</span>', text)
     return text.replace("\\n", "<br>")
 
-
-def _web_finalize_special_verdict(inferred, summary):
-    """Final UI safety net: derive special verdicts from the same summary shown to users.
-
-    This prevents the web client from displaying a generic burn label when the
-    engine result omitted an optional diagnostic field or special verdict.
-    """
-    import copy
-    inferred = copy.deepcopy(inferred) if isinstance(inferred, dict) else {}
-    summary = str(summary or "")
-    diag = inferred.get("special_rule_diagnostics") or {}
-
-    def _pct(pattern, fallback=None):
-        m = re.search(pattern, summary)
-        if m:
-            try: return float(m.group(1))
-            except (TypeError, ValueError): pass
-        return fallback
-
-    # The summary's displayed base is the same profile-derived absolute-height
-    # value presented in the result line. When marked as profile-derived, it is
-    # sufficient for the user's explicit <500 m hard cutoff in this web view.
-    base_match = re.search(r"云底\s*([0-9]+(?:\.[0-9]+)?)\s*km", summary)
-    base_km = float(base_match.group(1)) if base_match else None
-    is_profile = ("剖面" in summary) or ("剖面" in str(diag.get("local_base_source", "")))
-    total = _pct(r"云量\s*总\s*([0-9]+(?:\.[0-9]+)?)\s*%", inferred.get("total"))
-    low = _pct(r"低\s*([0-9]+(?:\.[0-9]+)?)\s*%", inferred.get("low"))
-    local_100km_total = diag.get("local_100km_mean_total_cloud_pct")
-    try:
-        local_100km_total = float(local_100km_total) if local_100km_total is not None else None
-    except (TypeError, ValueError):
-        local_100km_total = None
-
-    verdict = None
-    rule = None
-    score = inferred.get("regular_score", inferred.get("score", 0))
-    try: score = float(score)
-    except (TypeError, ValueError): score = 0.0
-
-    if is_profile and base_km is not None and base_km < 0.5:
-        score, verdict, rule = 0, "云底过低", "profile_cloud_base_below_500m_web_summary"
-    elif low is not None and low >= 90:
-        score, verdict, rule = 0, "低云遮挡过多", "local_low_cloud_at_least_90pct_web_summary"
-    elif local_100km_total is not None and local_100km_total < 5:
-        score, verdict, rule = 0, "云量不足", "local_100km_mean_total_cloud_below_5pct_web_final"
-    elif total is not None and total < 10:
-        verdict, rule = "光板天", "local_total_cloud_below_10pct_web_summary"
-    elif score < 20:
-        verdict, rule = "机会太小，几乎不烧", "regular_probability_below_20pct_web_final"
-
-    if verdict:
-        inferred["regular_score"] = int(round(score))
-        inferred["score"] = int(round(score))
-        inferred["verdict_override"] = verdict
-        inferred["verdict_rule"] = rule
-    inferred["special_rule_diagnostics"] = {
-        **diag,
-        "web_summary_profile_base_km": base_km,
-        "web_summary_profile_based": is_profile,
-        "web_summary_local_low_cloud_pct": low,
-        "web_summary_local_total_cloud_pct": total,
-        "web_summary_local_100km_mean_total_cloud_pct": local_100km_total,
-        "web_final_verdict": verdict or "未触发网页兜底规则",
-        "web_final_rule": rule or "engine_result",
-    }
-    return inferred
 
 def _probability_label(value):
     try:
@@ -1362,9 +1178,11 @@ if results:
     columns = st.columns(len(directions))
     for col, (key, title) in zip(columns, directions):
         result = results.get(key, {})
-        inferred = _web_finalize_special_verdict(
-            result.get("inferred", {}), result.get("summary", ""))
-        result["inferred"] = inferred
+        # The shared engine already applies all probability and special-verdict
+        # rules (including strict geometry gates). Keep its result authoritative.
+        # Do NOT infer cloud-base/low-cloud thresholds from rounded summary text,
+        # and never mutate cached calculation results while rendering the page.
+        inferred = result.get("inferred") or {}
         with col:
             st.subheader(title)
             c1, c2, c3 = st.columns(3)

@@ -705,7 +705,7 @@ class FireCloudApp(tk.Tk):
             elif key == "elevation":
                 ttk.Label(row, text="读取地名表中的海拔；也可直接修改，单位为米。", style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(2, 0))
 
-        self.place_lookup_status_var = tk.StringVar(value="优先读取同目录 china_city_coordinates.xlsx；地名表中的海拔可手动维护。")
+        self.place_lookup_status_var = tk.StringVar(value="优先读取仓库 shared_locations/china_city_coordinates.xlsx；地名表中的海拔可手动维护。")
         ttk.Label(form, textvariable=self.place_lookup_status_var, style="Sub.TLabel", wraplength=300).pack(anchor="w", pady=(0, 4))
 
         # 云底来源模式仍为全局设置；AOD 与手动云底数值分别放在朝霞/晚霞结果区。
@@ -1173,16 +1173,10 @@ class FireCloudApp(tk.Tk):
                                           (st.get("direction_results") or {}).items()
                                           if isinstance(v, dict)}}
                 else:
+                    # A normal online query must not silently replay requests from
+                    # an older exported case. Fresh capture starts empty; only an
+                    # explicit offline case replay may reuse archived HTTP payloads.
                     self.case_request_cache = {}
-                    _target_case_folder = self._case_folder_for_current()
-                    _existing_cache_path = os.path.join(_target_case_folder, "request_cache.json")
-                    if os.path.isfile(_existing_cache_path):
-                        try:
-                            with open(_existing_cache_path, "r", encoding="utf-8") as _ecf:
-                                _old_cache = json.load(_ecf)
-                            if isinstance(_old_cache, dict): self.case_request_cache.update(_old_cache)
-                        except Exception:
-                            pass
                     _CASE_REQUEST_CONTEXT = {"mode": "capture", "cache": self.case_request_cache}
                 self._cloud_original_results=None
                 try:
@@ -1261,7 +1255,24 @@ class FireCloudApp(tk.Tk):
             pass
 
     def _fetch_weather_task(self, requested_direction="both"):
-        """后台查询：按所选模式计算朝霞、晚霞或指定的单一方向。"""
+        """后台查询：每个方向使用独立的计算调用，避免循环局部变量污染。"""
+        if requested_direction == "both":
+            # Desktop and web must use the exact same two independent engine
+            # invocations. The old in-function morning/evening loop can leak
+            # optional locals() diagnostics from morning into evening.
+            messagebox.last_error = None
+            self._fetch_weather_task("morning")
+            if messagebox.last_error:
+                return
+            self._fetch_weather_task("evening")
+            if messagebox.last_error:
+                return
+            morning_rb = (self.direction_results.get("morning") or {}).get("rainbow") or {}
+            evening_rb = (self.direction_results.get("evening") or {}).get("rainbow") or {}
+            self.rainbow_day_result = self._merge_rainbow_periods((morning_rb, evening_rb))
+            self.rainbow_only_result = self.rainbow_day_result
+            self.after(0, lambda r=self.rainbow_day_result: self._update_rainbow_summary(r))
+            return
         try:
             data = self._read_inputs()
             model_label = self.vars["weather_model"].get()
@@ -1600,6 +1611,9 @@ class FireCloudApp(tk.Tk):
                 search_stage = cloud_hole_search.get("stage")
                 inferred["quick_screen_diagnostic"] = {"stage":search_stage,"candidate_gaps":list(cloud_hole_search.get("gaps") or []),"note":"仅供诊断；不作为受光证据"}
                 _ray_debug = None
+                _adaptive = {'status':'unresolved_data','verified_minutes':[], 'verified_ray_traces':[]}
+                _profile_end = max((float(p.get('distance_km',0)) for p in profiles if p.get('levels')),default=0.)
+                _source_check_km = 1.3 * float(local_reach or 0)
                 if True:  # TRACE_PRIMARY: quick screen is diagnostic only; never bypass ray tracing
                     try:
                         from burning_sky.spherical_raytrace import scan_window as _spherical_scan, render_schematic_map as _render_spherical_map, equivalent_gaps as _equivalent_gaps
@@ -1633,13 +1647,24 @@ class FireCloudApp(tk.Tk):
                         _statuses = [r.get("status") for r in _ray_debug.get("results", [])]
                         from burning_sky.sky_six import adaptive_equivalent_gaps
                         _adaptive = adaptive_equivalent_gaps(profiles, event_dt, data['utc_offset'],
-                            data['lat'], data['lon'], direction_key, float(local_reach or 0))
+                            data['lat'], data['lon'], direction_key, float(local_reach or 0),
+                            extension_factor=1.3,
+                            target_limit_km=boundaries.get('fire_cloud_range_km'))
                         _ray_debug['adaptive_equivalent'] = _adaptive
                         # Adaptive candidate targets are not cloud holes. Never promote them to clear_gaps.
                         # A ray must be traced from a LOCAL target, with upstream evidence beyond
                         # the geometric reach; otherwise the result is unresolved, not clear.
                         _equiv = []
                         inferred['adaptive_target_candidates'] = _adaptive.get('gaps', [])
+                        inferred['verified_primary_ray_traces'] = _adaptive.get('verified_ray_traces', [])
+                        inferred['strict_primary_path_diagnostic'] = {
+                            'status':_adaptive.get('status'),
+                            'verified_minutes':_adaptive.get('verified_minutes',[]),
+                            'required_profile_km':_adaptive.get('required_profile_km'),
+                            'available_profile_km':_adaptive.get('available_profile_km'),
+                            'target_limit_km':_adaptive.get('target_limit_km'),
+                            'note':_adaptive.get('note')}
+
                         _profile_end = max((float(p.get('distance_km', 0)) for p in profiles), default=0.0)
                         _source_check_km = 1.3 * float(local_reach or 0)
                         inferred['upstream_source_check'] = {
@@ -1654,6 +1679,10 @@ class FireCloudApp(tk.Tk):
                             boundaries['clear_gaps'] = []
                             boundaries['clear_gap_count'] = 0
                             boundaries['gap_status'] = 'target_ray_verified'
+                            inferred['upstream_source_check']['status']='verified_local_target_corridor'
+                            inferred['upstream_source_check']['note'] = (
+                                '已在1.3倍极限距离内按真实球面高度逐云块验证目标云向阳面连续光路；'
+                                '采样边界以远的大气仍未验证。')
                         elif _equiv:
                             search_stage = "spherical_raytrace_clear"
                             _gap = max(_equiv, key=lambda g: g["size_km"])
@@ -1739,6 +1768,9 @@ class FireCloudApp(tk.Tk):
                 if all_gaps:
                     gap_display_label = '晴空间隔（仅云量识别）'
                     gap_text = gap_ranges
+                elif search_stage == 'spherical_raytrace_targets_verified':
+                    gap_display_label = '球面主光路已验证'
+                    gap_text = '1.3倍极限云距内至少存在一条目标云向阳面无遮挡通道（仅限采样范围）'
                 elif search_stage == 'spherical_raytrace_clear':
                     gap_display_label = '云洞（等效）'
                     _best_gap = max(all_gaps, key=lambda g: float(g.get('size_km', 0))) if all_gaps else None
@@ -1912,6 +1944,18 @@ class FireCloudApp(tk.Tk):
                 _height_estimated = sum(_cloud_height_sources.get('counts', {}).get(k, 0)
                                         for k in ('humidity', 'prior')) > 0
                 _scenario_times = _local_light.get('times') or []
+                # Strict full-corridor validation is the minute-level gate. The
+                # continuous-cloud area estimator may refine verified minutes,
+                # but must NEVER manufacture illumination in a rejected minute.
+                if (_adaptive.get('status')=='local_targets_verified'
+                        and not _observed_gap_verified):
+                    _strict_minutes=set(_adaptive.get('verified_minutes') or [])
+                    for _minute_row in _scenario_times:
+                        if int(_minute_row.get('minutes_from_event',999)) not in _strict_minutes:
+                            for _field in ('fraction','strict_fraction','possible_fraction'):
+                                _minute_row[_field]=0.0
+                            _minute_row['dominant']=None
+                            _minute_row['possible_dominant']=None
                 _scenario_possible_peak = max((float(t.get('possible_fraction') or 0)
                                                for t in _scenario_times), default=0.0)
                 _scenario_strict_peak = max((float(t.get('strict_fraction') or 0)
@@ -1993,7 +2037,8 @@ class FireCloudApp(tk.Tk):
                     and profiles
                     and _local_light.get('available')
                     and _scenario_times
-                    and not _observed_gap_verified)
+                    and not _observed_gap_verified
+                    and _adaptive.get('status') not in ('unresolved_data','error'))
                 if _complete_no_local_path:
                     inferred['operational_no_local_path'] = True
                     inferred['regular_score'] = inferred['score'] = 0
@@ -3923,7 +3968,41 @@ class FireCloudApp(tk.Tk):
                 canvas.create_text(left+plot_w/2, top+12,
                     text='紫色虚线：逐分钟球面几何候选光路（非严格全程验证）',
                     fill='#7531ae',font=('Microsoft YaHei UI',10))
-            if not runs and not visible_candidates:
+            # Verified paths are primary tracer witnesses, not stylistic rays.
+            # Draw only to their individually validated upstream limit; these
+            # are NOT claims about the unmeasured atmosphere past that limit.
+            verified_traces=(result.get('inferred') or {}).get('verified_primary_ray_traces') or []
+            visible_verified=0
+            stride=max(1, math.ceil(len(verified_traces)/8))
+            for trace in verified_traces[::stride]:
+                face=float(trace['target_face_km'])
+                h0=float(trace['target_height_km'])
+                alt=float(trace['solar_altitude_deg'])
+                source_end=min(plot_dist,float(trace['source_check_km']))
+                if source_end<=face:continue
+                pts=[]
+                for k in range(241):
+                    d=face+(source_end-face)*k/240.
+                    up=d-face
+                    if _earth_occluded(h0,alt,up):break
+                    h=_ray_height_km(h0,alt,up)
+                    if not math.isfinite(h) or h<0 or h>max_h:
+                        if len(pts)>=4:
+                            canvas.create_line(*pts,fill='#6926a6',width=3)
+                        pts=[]
+                        continue
+                    pts.extend((xmap(d),ymap(h)))
+                if len(pts)>=4:
+                    canvas.create_line(*pts,fill='#6926a6',width=3)
+                    visible_verified+=1
+                    canvas.create_oval(xmap(face)-3,ymap(h0)-3,
+                                       xmap(face)+3,ymap(h0)+3,fill='#6926a6',outline='white')
+            if visible_verified:
+                canvas.create_text(left+plot_w/2, top+30,
+                    text='紫色实线：1.3×上游采样范围内严格球面验证光路',
+                    fill='#6926a6',font=('Microsoft YaHei UI',10))
+
+            if not runs and not visible_candidates and not visible_verified:
                 canvas.create_text(left+plot_w/2, top+24,
                     text='本次没有可绘制的球面验证光路或候选几何轨迹',
                     fill='#8b3274',font=('Microsoft YaHei UI',10))
@@ -4429,7 +4508,7 @@ class FireCloudApp(tk.Tk):
         for name, lat, lon in list(self.CHINA_CAPITALS) + list(self.MAP_CITIES):
             records.setdefault(str(name), (str(name), float(lat), float(lon), None))
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        xlsx_path = os.path.join(base_dir, "china_city_coordinates.xlsx")
+        xlsx_path = os.path.join(os.path.dirname(base_dir), "shared_locations", "china_city_coordinates.xlsx")
         csv_path = os.path.join(base_dir, "china_city_coordinates_common.csv")
         try:
             from openpyxl import load_workbook
@@ -4586,7 +4665,7 @@ class FireCloudApp(tk.Tk):
             records_by_name.setdefault(name, (name, lat, lon, None))
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        xlsx_path = os.path.join(base_dir, "china_city_coordinates.xlsx")
+        xlsx_path = os.path.join(os.path.dirname(base_dir), "shared_locations", "china_city_coordinates.xlsx")
         csv_path = os.path.join(base_dir, "china_city_coordinates_common.csv")
         try:
             from openpyxl import load_workbook
@@ -5051,8 +5130,8 @@ class FireCloudApp(tk.Tk):
 
         旧逻辑只扫描 0/1/2°，并把远处同高度带的云区相交直接换算成固定扣分，
         会把连续高云误判为强屏障。v1.4.25 将时间变化的遮挡交给动态光路曲线评估；
-        此处不再仅凭高云高度带相交扣分。低云约束仍由独立的
-        apply_low_cloud_screen_constraint 处理。
+        此处不再仅凭高云高度带相交扣分。本地低云可见性约束由独立的
+        apply_low_cloud_screen_constraint 处理；远端连续低云经验封顶已取消。
         """
         return {
             "penalty": 0.0,
@@ -5060,7 +5139,7 @@ class FireCloudApp(tk.Tk):
             "severity": "改用动态光路评估",
             "barriers": [],
             "note": ("已停用旧版静态高云屏障扣分：它仅扫描 0°/1°/2°，并可能把同一连续高云层的几何相交误判为强屏障。"
-                     "本版使用逐分钟太阳高度角、云层高度与距离估算动态受光；低云硬约束仍单独保留。"
+                     "本版使用逐分钟太阳高度角、云层高度与距离估算动态受光；仅本地低云可见性约束单独保留，远端连续低云经验封顶已停用。"
                      "云量不是云光学厚度，动态曲线属于经验几何估算，不是三维云体或辐射传输模拟。")
         }
 
@@ -5815,7 +5894,7 @@ class FireCloudApp(tk.Tk):
         lines=["火烧云实况模拟分析报告",f"Excel：{source_path}",f"地点：{data['place']}",f"日期：{data['date']}",f"类型：{data['direction_cn']}",f"坐标：{data['lat']:.5f}, {data['lon']:.5f}",f"观测点海拔：{data.get('elevation_m', 0.0):.0f} m（云层高度范围按海拔绝对高度 ASL 解释）",f"当地时区：UTC{data['utc_offset']:+g}",
                f"太阳时刻：{ev[0].strftime('%H:%M:%S') if ev and ev[0] else '无法计算'}",f"太阳方位角：{az_text}",f"AOD：{aod_text}",f"海拔过滤：{result.get('elevation_filter', {}).get('note', '未提供过滤诊断')}",
                f"海拔判定细节：原始本地云底 {result.get('elevation_filter', {}).get('local_base_m', '未估算')} m；新云底 {result.get('elevation_filter', {}).get('candidate_cloud_base_m', '未重估')} m；新极限云距 {result.get('elevation_filter', {}).get('candidate_reach_km', '未重估')} km；明确云洞证据 {result.get('elevation_filter', {}).get('gap_evidence', '无/未触发')}",
-               f"发生概率估计：{inf['regular_score']}%（光路屏障前 {inf.get('pre_barrier_regular_score', inf['regular_score'])}%，屏障扣分 {inf.get('solar_barrier_penalty',0):.1f} 个百分点）",f"有利情景上限：{inf['upper_score']}%（光路屏障前 {inf.get('pre_barrier_upper_score', inf['upper_score'])}%，屏障扣分 {inf.get('solar_barrier_upper_penalty',0):.1f} 个百分点）",f"太阳光路屏障判断：{result.get('solar_barriers',{}).get('severity','未知')}",f"连续低云硬约束：{('未命中' if not inf.get('low_cloud_screen') else inf.get('low_cloud_screen'))}",f"低云颜色约束：{inf.get('low_cloud_color_note', '无')}",f"估算低层云量：{low_text}",f"估算中层云量：{mid_text}",f"估算高层云量：{high_text}",
+               f"发生概率估计：{inf['regular_score']}%（光路屏障前 {inf.get('pre_barrier_regular_score', inf['regular_score'])}%，屏障扣分 {inf.get('solar_barrier_penalty',0):.1f} 个百分点）",f"有利情景上限：{inf['upper_score']}%（光路屏障前 {inf.get('pre_barrier_upper_score', inf['upper_score'])}%，屏障扣分 {inf.get('solar_barrier_upper_penalty',0):.1f} 个百分点）",f"太阳光路屏障判断：{result.get('solar_barriers',{}).get('severity','未知')}",f"本地低云可见性约束：{('未命中' if not inf.get('low_cloud_screen') else inf.get('low_cloud_screen'))}",f"低云颜色约束：{inf.get('low_cloud_color_note', '无')}",f"估算低层云量：{low_text}",f"估算中层云量：{mid_text}",f"估算高层云量：{high_text}",
                f"过滤前高度带云量（低/中/高）：{result.get('original_band_cover', {}).get('low', 0):.1f}% / {result.get('original_band_cover', {}).get('mid', 0):.1f}% / {result.get('original_band_cover', {}).get('high', 0):.1f}%；过滤后：{low_text} / {mid_text} / {high_text}",
                f"距离加权云量：{result['total']:.1f}%",f"参考起点云层下界：{result['local_base_m']:.0f} m",f"几何代表云底：{result['geometry']['rows'][0]['effective_base_km']*1000:.0f} m（若高度层从0m起，则用该层中点近似）",f"理论照明距离（简化几何）：{result['reach_km']:.1f} km",f"能见度：{visibility_text}", "", "太阳光路屏障明细："]
         barrier_info = result.get("solar_barriers", {})
