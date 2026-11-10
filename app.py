@@ -1303,49 +1303,10 @@ if results:
             else:
                 st.caption("当前气压层资料不足，暂无法识别云属。")
             st.markdown("**" + _web_gap_text(result) + "**")
-            # Optional lateral compass: never make extra API requests during normal forecast.
-            # Four side points are a cloud-cover proxy, not independent ray-traced probabilities.
-            from burning_sky.sunset_compass import transverse_sites, cloud_evidence, estimate, render_compact
-            with st.expander("八方位补全图（替代二维霞云图）", expanded=True):
-                _compass_key = f"web_compass_{meta.get('date')}_{meta.get('lat')}_{meta.get('lon')}_{meta.get('model')}_{key}"
-                _compass_diag = st.session_state.get(_compass_key) or result.get('sunset_compass')
-                _origin = result.get('origin')
-                _event_dt = result.get('event_dt')
-                if isinstance(_event_dt, str):
-                    try: _event_dt = __import__('datetime').datetime.fromisoformat(_event_dt)
-                    except ValueError: _event_dt = None
-                if not _compass_diag:
-                    st.caption("基于当前单次单模式结果生成八方位补全图，用于替代原二维霞云图。需要额外获取4个横向采样点；仅点击按钮时联网。")
-                    if st.button("生成/刷新八方位补全图",key=_compass_key+'_run'):
-                        if not _origin or _event_dt is None:
-                            st.warning("缺少观测坐标或事件时刻。")
-                        else:
-                            _compass_boundaries = dict(result.get('boundaries') or {})
-                            _compass_boundaries['clear_gaps'] = _compass_boundaries.get('observed_clear_gaps') or _compass_boundaries.get('clear_gaps') or []
-                            _sites, _gap = transverse_sites(float(_origin[0]),float(_origin[1]),float(result.get('azimuth') or 0),_compass_boundaries)
-                            if not _sites:
-                                _compass_diag=estimate(result,[])
-                                st.info("没有可用的典型云洞横向采样中心，方位覆盖未知。")
-                            else:
-                                try:
-                                    with st.spinner("正在读取 4 个横向云量采样点……"):
-                                        _model_id=engine._weather_model_id_from_label(meta['model'])
-                                        if use_case_cache:
-                                            engine._CASE_REQUEST_CONTEXT={'mode':'replay','cache':st.session_state.get('case_bundle_cache') or {}}
-                                        else:
-                                            engine._CASE_REQUEST_CONTEXT={'mode':'capture','cache':st.session_state.get('fire_cloud_replay_cache') or {}}
-                                        try:
-                                            _raw=engine.FireCloudApp._fetch_weather_locations([(s['lat'],s['lon']) for s in _sites],_model_id)
-                                        finally:
-                                            engine._CASE_REQUEST_CONTEXT=None
-                                    _compass_diag=estimate(result,cloud_evidence(_sites,_raw,_event_dt))
-                                except Exception as _exc:
-                                    st.warning('横向采样失败：'+str(_exc))
-                            if _compass_diag:
-                                st.session_state[_compass_key]=_compass_diag
-                if _compass_diag:
-                    st.image(render_compact(_compass_diag),use_container_width=True)
-                    st.caption("已绑定当前单次单模式结果。黄色虚线：太阳方向；彩色区域：八方位补全显示的相对受光代理，不是各中间角度已独立严格验证的球面光路。")
+            # Independent 360° sampled-light panel; no traditional cloud-hole prerequisite.
+            from burning_sky.compass360_web import render_web_panel
+            with st.expander("360°八方位受光补全图（替代二维霞云图）", expanded=True):
+                render_web_panel(st, engine, result, meta, key, replay_only=bool(use_case_cache))
             _profile_fig = _web_profile_figure(result)
             if _profile_fig is not None:
                 st.image(_profile_fig, use_container_width=True)

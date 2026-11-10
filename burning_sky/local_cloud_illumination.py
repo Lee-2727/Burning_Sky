@@ -137,6 +137,17 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
         point['geometry_valid']=bool(frac>1e-5)
         point['tintable_cloud_area']=round(frac*illumination['target_weight'],6) if active else 0.
         dominant=row.get('dominant') if row else None
+        # Passive diagnostics: trace which target cloud supplied the minute's
+        # hue. Does not change probability, tint area, or RGB computation.
+        if dominant and active:
+            point['cloud_color_source'] = {
+                'target_face_km': round(float(dominant['face_km']), 2),
+                'height_band_km': [round(float(v), 2) for v in dominant['height_km']],
+                'target_solar_altitude_deg': round(float(dominant['solar_altitude_deg']), 3),
+                'target_illuminated_height_fraction': round(float(dominant['illumination_fraction']), 4),
+            }
+        else:
+            point['cloud_color_source'] = None
         if dominant and active:
             # Brightness represents the dominant illuminated cloud's light,
             # NOT the total colored-cloud area. Atmospheric transmission
