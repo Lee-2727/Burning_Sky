@@ -226,6 +226,27 @@ with st.sidebar:
     evening_cloud_base = st.number_input("晚霞手动云底/回退值（km）", 0.1, 15.0, 2.0, 0.1)
     evening_aod_text = str(st.session_state.get("manual_evening_aod",0.30)) if aod_source == "手动输入" else ""
     st.divider()
+    # Case-library archive is separate from the temporary Streamlit session.
+    from burning_sky import case_library as _case_library
+    with st.expander("📚 网页案例库：保存、下载、删除", expanded=False):
+        if not os.environ.get("BURNING_SKY_CASE_LIBRARY_DIR") and not _case_library.github_enabled():
+            st.warning("当前案例库使用服务器本地目录；Streamlit Cloud 重新部署可能清空。永久存档请配置 BURNING_SKY_CASE_LIBRARY_DIR 为持久化挂载目录。")
+        for _record in _case_library.list_cases():
+            _cid = _record['id']
+            st.caption(f"{_record.get('created_at')} · {_record.get('place')} · {_record.get('date')} · {_record.get('model')} · {_record.get('note','')}")
+            _lc, _rc = st.columns([2, 1])
+            with _lc:
+                try:
+                    _raw = _case_library.read(_cid)
+                    st.download_button("下载已存案例ZIP", data=_raw, file_name=f"BurningSky_Archive_{_cid[:8]}.zip", mime="application/zip", key=f"case_dl_{_cid}")
+                except Exception as _read_err:
+                    st.error(f"案例读取失败：{_read_err}")
+            with _rc:
+                _confirm = st.checkbox("确认删除", key=f"case_confirm_{_cid}")
+                if st.button("删除案例", key=f"case_del_{_cid}", disabled=not _confirm):
+                    _case_library.delete(_cid)
+                    st.rerun()
+
     st.subheader("案例缓存")
     case_upload = st.file_uploader("加载案例 ZIP（桌面端保存的案例文件夹压缩包）", type=["zip"], key="case_zip_upload")
     if case_upload is not None:
@@ -1002,6 +1023,14 @@ if run:
                 "primary_spherical_path_gate": True,
             })
         st.download_button("保存当前查询案例 ZIP", data=_bundle.getvalue(), file_name=f"BurningSky_{forecast_date.isoformat()}_{place}_{_case_state_out['model_code']}.zip", mime="application/zip")
+        _archive_note = st.text_input("案例备注（可选）", key="archive_note_current")
+        if st.button("保存到网页案例库", key="save_case_in_library"):
+            try:
+                _entry = _case_library.save(_bundle.getvalue(), note=_archive_note)
+                st.success(f"已保存案例ID：{_entry['id'][:12]}；请在上方案例库下载或管理。")
+            except Exception as _archive_exc:
+                st.error(f"案例存档失败：{_archive_exc}")
+
 
 def _styled_cloud_summary(summary):
     """Display-only styling: emphasize mid/high cloud percentages without changing values."""
@@ -1169,6 +1198,13 @@ if results:
         st.download_button('保存完整当前案例 ZIP（含人工修正）',data=_current_zip.getvalue(),
             file_name=f"BurningSky_Repro_{meta.get('date','case')}_{_state_now['model_code']}.zip",
             mime='application/zip',key='download_complete_case')
+        if st.button('存档当前人工修正案例到网页库', key='archive_recalculated_case'):
+            try:
+                _entry = _case_library.save(_current_zip.getvalue(), note='含人工修正')
+                st.success('已存档：' + _entry['id'][:12])
+            except Exception as _archive_exc:
+                st.error('存档失败：' + str(_archive_exc))
+
     else:
         st.warning('当前缺少完整请求缓存，不能导出可保证离线复测的案例。')
 
@@ -1270,7 +1306,7 @@ if results:
             # Optional lateral compass: never make extra API requests during normal forecast.
             # Four side points are a cloud-cover proxy, not independent ray-traced probabilities.
             from burning_sky.sunset_compass import transverse_sites, cloud_evidence, estimate, render_compact
-            with st.expander("二维八方位图", expanded=False):
+            with st.expander("八方位补全图（替代二维霞云图）", expanded=True):
                 _compass_key = f"web_compass_{meta.get('date')}_{meta.get('lat')}_{meta.get('lon')}_{meta.get('model')}_{key}"
                 _compass_diag = st.session_state.get(_compass_key) or result.get('sunset_compass')
                 _origin = result.get('origin')
@@ -1279,8 +1315,8 @@ if results:
                     try: _event_dt = __import__('datetime').datetime.fromisoformat(_event_dt)
                     except ValueError: _event_dt = None
                 if not _compass_diag:
-                    st.caption("需要额外获取 4 个横向采样点；仅点击按钮时联网。")
-                    if st.button("生成八方位图（4点采样）",key=_compass_key+'_run'):
+                    st.caption("基于当前单次单模式结果生成八方位补全图，用于替代原二维霞云图。需要额外获取4个横向采样点；仅点击按钮时联网。")
+                    if st.button("生成/刷新八方位补全图",key=_compass_key+'_run'):
                         if not _origin or _event_dt is None:
                             st.warning("缺少观测坐标或事件时刻。")
                         else:
@@ -1309,11 +1345,12 @@ if results:
                                 st.session_state[_compass_key]=_compass_diag
                 if _compass_diag:
                     st.image(render_compact(_compass_diag),use_container_width=True)
-                    st.caption("黄色虚线：太阳方向；彩色区域：横向云量支持的相对受光代理，不是八方位独立概率或已验证的球面光路。")
+                    st.caption("已绑定当前单次单模式结果。黄色虚线：太阳方向；彩色区域：八方位补全显示的相对受光代理，不是各中间角度已独立严格验证的球面光路。")
             _profile_fig = _web_profile_figure(result)
             if _profile_fig is not None:
                 st.image(_profile_fig, use_container_width=True)
-            with st.expander("二维霞云 · 低中高云空间分布", expanded=False):
+            with st.expander("旧版二维霞云 · 低中高云空间分布（已由八方位补全图替代）", expanded=False):
+                st.caption("当前建议优先查看上方八方位补全图；此旧版二维图保留作对照。")
                 from burning_sky.web_cloud_2d import render_cloud_2d
                 _cloud_layer = st.selectbox("二维云图图层", ["综合", "低云", "中云", "高云"], key=f"cloud2d_{key}")
                 _map_image, _map_note = render_cloud_2d(result, _cloud_layer)

@@ -16,10 +16,10 @@ import urllib.request
 
 _LOCK = threading.RLock()
 _STATE = Path(os.environ.get('BURNING_SKY_RATE_STATE', '/tmp/burning_sky_open_meteo_rate.json'))
-# Explicit profiles: scheduled restores the previously working task-level pacing;
-# only manual overview is paced; interactive and scheduled use legacy unpaced requests.
+# All interactive and dashboard calls use global pacing at the HTTP boundary.
+# Manual overview stays on its more conservative existing budget.
 _PROFILE = os.environ.get('BURNING_SKY_REQUEST_PROFILE', 'interactive').lower()
-_POLICY = {'manual': (7.6, 8)}
+_POLICY = {'manual': (7.6, 8), 'interactive': (1.6, 35), 'scheduled': (1.6, 35)}
 _MIN_INTERVAL, _MAX_PER_MINUTE = _POLICY.get(_PROFILE, (0.0, 0))
 _COOLDOWN = 20 * 60
 

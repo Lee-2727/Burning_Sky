@@ -666,6 +666,8 @@ class FireCloudApp(tk.Tk):
         ttk.Button(case_buttons, text="保存案例", command=self.save_case).pack(side="left", fill="x", expand=True, padx=3)
         ttk.Button(case_buttons, text="记录现场实况", command=self.record_field_observation).pack(side="left", fill="x", expand=True, padx=(3, 0))
         ttk.Button(left, text="导出案例 ZIP（供网页加载）", command=self.export_case_zip).pack(fill="x", pady=(0, 8))
+        ttk.Button(left, text="360°独立受光实验（未绑定单次结果）",
+                   command=self.open_experimental_compass360).pack(fill="x", pady=(0, 8))
         ttk.Checkbutton(left, text="从案例缓存读取（不请求天气 API）", variable=self.case_cache_var).pack(anchor="w", pady=(0, 8))
         ttk.Button(left, text="实况模拟（读取 Excel）", style="Accent.TButton", command=self.run_live_simulation).pack(fill="x", pady=(0, 10))
         ttk.Label(left, text="云图人工修正（每行：起点,终点,低云,中云,高云；空云量保留原值）", style="Sub.TLabel", wraplength=320).pack(anchor="w")
@@ -871,7 +873,7 @@ class FireCloudApp(tk.Tk):
         morning_actions.pack(fill="x", pady=(0, 10))
         ttk.Button(morning_actions, text="查看朝霞地图云层分布", command=lambda: self.show_path_cloud_map("morning")).pack(side="left")
         ttk.Button(morning_actions, text="剖面图", command=lambda: self.show_path_cloud_profile("morning")).pack(side="left", padx=(5, 0))
-        ttk.Button(morning_actions, text="二维霞云图", command=lambda: self.show_2d_illumination("morning")).pack(side="left", padx=(5, 0))
+        ttk.Button(morning_actions, text="八方位补全图", command=lambda: self.show_2d_illumination("morning")).pack(side="left", padx=(5, 0))
         ttk.Button(morning_actions, text="显示朝霞各采样点具体云况", command=lambda: self.show_direction_details("morning")).pack(side="right")
 
         evening_result_row = ttk.Frame(right, style="Card.TFrame")
@@ -936,7 +938,7 @@ class FireCloudApp(tk.Tk):
         evening_actions.pack(fill="x", pady=(0, 8))
         ttk.Button(evening_actions, text="查看晚霞地图云层分布", command=lambda: self.show_path_cloud_map("evening")).pack(side="left")
         ttk.Button(evening_actions, text="剖面图", command=lambda: self.show_path_cloud_profile("evening")).pack(side="left", padx=(5, 0))
-        ttk.Button(evening_actions, text="二维霞云图", command=lambda: self.show_2d_illumination("evening")).pack(side="left", padx=(5, 0))
+        ttk.Button(evening_actions, text="八方位补全图", command=lambda: self.show_2d_illumination("evening")).pack(side="left", padx=(5, 0))
         ttk.Button(evening_actions, text="显示晚霞各采样点具体云况", command=lambda: self.show_direction_details("evening")).pack(side="right")
         ttk.Label(right, text="采样范围根据各点推算的有效云底动态扩展；单次最远限制 1000 km，严格光路按极限云距的 1.3 倍验证。具体云况默认收起，点击上方按钮查看。", style="Sub.TLabel", wraplength=620).pack(anchor="w", pady=(2, 0))
 
@@ -1357,7 +1359,7 @@ class FireCloudApp(tk.Tk):
                 max_reach = max(reaches) if reaches else 0.0
                 # 至少到 200 km；按 50 km 步长向外扩展，并给最远理论范围预留约 100 km 的采样缓冲。
                 source_scan_target = 1.3 * max_reach
-                sample_limit = min(1000, max(200, int(math.ceil(max(max_reach + 100.0, source_scan_target) / 50.0) * 50)))
+                sample_limit = max(200, int(math.ceil(max(max_reach + 100.0, source_scan_target) / 50.0) * 50))
                 distances = [0, 25, 50, 100, 150, 200]
                 distances.extend(range(250, sample_limit + 1, 50))
                 distances = sorted(set(d for d in distances if d <= sample_limit))
@@ -1601,6 +1603,126 @@ class FireCloudApp(tk.Tk):
                 local_reach = local_geometry.get("reach_km") if local_geometry else None
                 if not isinstance(local_reach, (int, float)):
                     local_reach = max_reach if max_reach > 0 else None
+                # Final reach is known only after pressure-level reconstruction and AOD.
+                # The initial 200-km coarse estimate can be shorter than this reach:
+                # always complete the required 1.3x corridor BEFORE strict tracing.
+                # Recompute after each extension; do not claim completion for missing data.
+                for _extension_round in range(3):
+                    _required_end = 1.3 * float(local_reach or 0.0)
+                    _actual_end = max((float(p.get('distance_km', 0)) for p in profiles if p.get('levels')), default=0.0)
+                    if _required_end <= _actual_end + 0.01:
+                        break
+                    _new_end = int(math.ceil((_required_end + 0.01) / 50.0) * 50)
+                    _missing_distances = [d for d in range(250, _new_end + 1, 50)
+                                          if d not in {int(x) for x in distances}]
+                    if not _missing_distances:
+                        # Missing level data inside the nominal sampled range;
+                        # preserve the unresolved-data result instead of inventing coverage.
+                        break
+                    _extra_coords = [destination_point(data['lat'], data['lon'], azimuth, d)
+                                     for d in _missing_distances]
+                    _extra_groups = []
+                    for _clat, _clon in _extra_coords:
+                        _group = [(_clat, _clon)]
+                        for _off in (-40.0, -25.0, -12.0, 12.0, 25.0, 40.0):
+                            _bearing = (azimuth + (90.0 if _off > 0 else -90.0)) % 360
+                            _group.append(destination_point(_clat, _clon, _bearing, abs(_off)))
+                        _group.append(destination_point(_clat, _clon, azimuth, 12.0))
+                        _group.append(destination_point(_clat, _clon, (azimuth + 180.0) % 360, 12.0))
+                        _extra_groups.append(_group)
+                    self._set_main_progress(base_progress + 44,
+                        f'{direction_name}：补齐严格光路上游剖面至 {_new_end} km……')
+                    try:
+                        _extra_weather = self._fetch_weather_locations(
+                            [pt for group in _extra_groups for pt in group], model_id)
+                        _extra_profile_result = self._fetch_cloud_base_profiles(
+                            _extra_coords, _missing_distances, event_utc, model_id,
+                            local_ground_elevation_m=data.get('elevation_m'))
+                        _extra_profiles = _extra_profile_result['samples']
+                        # Weather cloud fields are needed for the ray-trace target mask,
+                        # not just pressure levels; build exactly the same 9-point mean.
+                        for _dist, _coord, _group, _chunk in zip(
+                                _missing_distances, _extra_coords, _extra_groups,
+                                [_extra_weather[i:i+9] for i in range(0, len(_extra_weather), 9)]):
+                            _records = []
+                            for _index, (_subcoord, _loc) in enumerate(zip(_group, _chunk)):
+                                _hourly = _loc.get('hourly', {})
+                                _times = _hourly.get('time', [])
+                                if not _times:
+                                    continue
+                                _idx = min(range(len(_times)), key=lambda i:
+                                    abs((datetime.fromisoformat(_times[i]) - event_utc).total_seconds()))
+                                if abs((datetime.fromisoformat(_times[_idx]) - event_utc).total_seconds()) > 5400:
+                                    continue
+                                _rec = {'lat':_subcoord[0], 'lon':_subcoord[1],
+                                        'time':_times[_idx],
+                                        'cross_track_offset_km':(None if _index == 0 or _index >= 7 else
+                                            (-40.0,-25.0,-12.0,12.0,25.0,40.0)[_index-1])}
+                                for _key in cloud_keys:
+                                    _series = _hourly.get(_key, [])
+                                    _value = _series[_idx] if _idx < len(_series) else None
+                                    _rec[_key] = _value if isinstance(_value, (int,float)) and math.isfinite(_value) else None
+                                _wind = _hourly.get('wind_direction_10m', [])
+                                _rec['wind_direction_10m'] = _wind[_idx] if _idx < len(_wind) and isinstance(_wind[_idx], (int,float)) else None
+                                _records.append(_rec)
+                            if not _records:
+                                raise ValueError(f'{_dist} km 缺少有效小时数据')
+                            def _mean(key):
+                                vals = [r[key] for r in _records if r.get(key) is not None]
+                                return sum(vals)/len(vals) if vals else None
+                            _cross = [r['cloud_cover_low'] for r in _records
+                                      if r.get('cross_track_offset_km') is not None and r.get('cloud_cover_low') is not None]
+                            _wind_dirs = [r['wind_direction_10m'] for r in _records
+                                          if isinstance(r.get('wind_direction_10m'), (int,float))]
+                            _wind_dir = (math.degrees(math.atan2(
+                                sum(math.sin(math.radians(v)) for v in _wind_dirs),
+                                sum(math.cos(math.radians(v)) for v in _wind_dirs)))%360) if _wind_dirs else None
+                            _sample = {'distance_km':_dist,'lat':_coord[0],'lon':_coord[1],
+                                'time':_records[0]['time'],'cloud_cover':_mean('cloud_cover'),
+                                'cloud_cover_low':_mean('cloud_cover_low'),
+                                'cloud_cover_mid':_mean('cloud_cover_mid'),
+                                'cloud_cover_high':_mean('cloud_cover_high'),
+                                'visibility_m':_mean('visibility'), 'wind_ms':_mean('wind_speed_10m'),
+                                'precipitation_probability':_mean('precipitation_probability'),
+                                'precipitation':_mean('precipitation'),
+                                'wind_gusts':_mean('wind_gusts_10m'), 'wind_direction':_wind_dir,
+                                'center_cloud_cover_low':_records[0].get('cloud_cover_low'),
+                                'cross_track_low_cover':_cross,
+                                'cross_track_offsets_km':[r['cross_track_offset_km'] for r in _records if r.get('cross_track_offset_km') is not None],
+                                'cross_track_low_ge70_count':sum(v>=70 for v in _cross),
+                                'cross_track_low_ge70_fraction':sum(v>=70 for v in _cross)/len(_cross) if _cross else None,
+                                'area_radius_km':15,'area_sample_count':len(_records)}
+                            samples.append(_sample)
+                            raw_details.append({'distance_km':_dist,'center':_coord,
+                                                'records':_records,'mean':_sample})
+                        profiles.extend(_extra_profiles)
+                        coords.extend(_extra_coords)
+                        distances.extend(_missing_distances)
+                        apply_overrides(samples, _manual_overrides)
+                        try:
+                            from burning_sky.cloud_height_reconstruction import reconstruct as _reconstruct_cloud_heights
+                            _cloud_height_sources = _reconstruct_cloud_heights(profiles, samples)
+                        except Exception:
+                            pass
+                        apply_overrides_to_profiles(profiles, samples, _manual_overrides)
+                        elevation_filter_result = apply_high_elevation_nearby_low_cloud_filter(
+                            samples, profiles, data.get('elevation_m',0.0), radius_km=80.0)
+                        geometry = analyze_cloud_base_geometry(
+                            samples, profiles, aod_samples, data['date'], data['utc_offset'],
+                            data['lat'], data['lon'], cloud_base_mode, cloud_base_km,
+                            manual_aod=manual_aod, weighted_aod=effective_aod, scale_height_km=0.5,
+                            event_type='sunrise' if direction_key=='morning' else 'sunset',
+                            ground_elevation_m=data.get('elevation_m',0.0))
+                        local_geometry = next((r for r in geometry.get('rows', [])
+                                               if r.get('distance_km') == 0), None)
+                        local_reach = (local_geometry.get('reach_km') if local_geometry else None) or max_reach
+                    except Exception as _extension_error:
+                        # This is a real data failure; strict verification will report
+                        # unresolved_data if profile coverage remains incomplete.
+                        print(f'[STRICT CORRIDOR EXTENSION] {_extension_error}', flush=True)
+                        break
+                samples.sort(key=lambda x: float(x.get('distance_km',0)))
+                profiles.sort(key=lambda x: float(x.get('distance_km',0)))
                 boundaries = estimate_path_cloud_boundaries(samples, local_reach)
                 # Preserve sampled physical clear intervals separately from verified illumination.
                 # Never feed these diagnostic gaps back into geometric scoring.
@@ -1793,7 +1915,7 @@ class FireCloudApp(tk.Tk):
                     gap_text = gap_ranges if all_gaps else '未形成可判读的晴空间隔'
                 if all_gaps and search_stage in ('spherical_raytrace_no_clear_path','spherical_raytrace_unresolved','spherical_raytrace_error'):
                     inferred.setdefault('score_notes', []).append('存在晴空间隔，但球面光路未证实本地目标云层受光；两项独立判定。')
-                cap_note = "已触及 1000 km 采样上限；上游验证可能仍不完整。" if sample_limit >= 1000 and source_scan_target > 1000 else ""
+                cap_note = "必要上游剖面数据可能不完整，请查看严格验证状态。" if max((float(p.get('distance_km',0)) for p in profiles if p.get('levels')),default=0) + 0.01 < 1.3 * float(local_reach or 0) else ""
                 # Debug30: Desktop rainbow diagnostics in console and per-case file.
                 # No additional weather API calls; records existing intermediate results.
                 try:
@@ -2274,6 +2396,7 @@ class FireCloudApp(tk.Tk):
                                           "distances": distances, "max_reach": max_reach, "aod": effective_aod, "aod_source": aod_source, "aod_vertical_diagnostic": _vertical_aod,
                                           "rainbow": rainbow_result, "dynamic_light_curve": dynamic_curve,
                                           "origin": (data["lat"], data["lon"]), "azimuth": azimuth, "event_dt": event_dt,
+                                          "query_model_id": model_id, "query_model_label": model_label,
                                           "boundaries": boundaries,
                                           # 保存本次实际请求返回的原始天气响应，供案例复盘；不额外发起请求。
                                           "raw_weather": raw_locations}
@@ -3620,62 +3743,44 @@ class FireCloudApp(tk.Tk):
 
 
     def show_2d_illumination(self, direction_key):
-        """Compass polygon using main-line result plus four lateral cloud probes."""
+        """Open the actual independent 16-target spherical-light compass for this result.
+
+        The old four-lateral-probe figure is intentionally NOT used here: it
+        requires a traditional clear gap and is not the 360-degree experiment.
+        """
         result = getattr(self, 'direction_results', {}).get(direction_key)
         if not result:
-            messagebox.showinfo('尚无数据', '请先完成单次朝霞/晚霞查询。'); return
-        from burning_sky.sunset_compass import transverse_sites, cloud_evidence, estimate, render
-        from PIL import ImageTk
+            messagebox.showinfo('尚无数据', '请先完成相应的单次朝霞或晚霞查询。')
+            return
+        from burning_sky.experimental_compass360 import launch_desktop
         from datetime import datetime
-        origin=result.get('origin'); event_dt=result.get('event_dt')
-        if isinstance(event_dt,str):event_dt=datetime.fromisoformat(event_dt)
-        if not origin or event_dt is None:
-            messagebox.showerror('缺少参数','当前结果缺少观测坐标或日出日落时间。');return
-        bearing=float(result.get('azimuth') or 0)
-        sites,gap=transverse_sites(origin[0],origin[1],bearing,result.get('boundaries') or {})
-        win=tk.Toplevel(self);win.title('八方位晚霞多边形 · 云洞横向扫描');win.geometry('1040x940')
-        status=ttk.Label(win,wraplength=1000);status.pack(anchor='w',padx=10,pady=8)
-        picture=ttk.Label(win);picture.pack(fill='both',expand=True)
-        def display(im):
-            if not win.winfo_exists():return
-            photo=ImageTk.PhotoImage(im);picture.configure(image=photo);picture.image=photo
-        if not sites:
-            diag=estimate(result,[]);result['sunset_compass']=self._json_safe(diag)
-            display(render(diag));status.configure(text='未找到可用于横向扫描的主贡献云洞：南北可见角度未知；不生成预测多边形。');return
-        status.configure(text='主贡献云洞附近横向采样：±15/±30 km，共4个位置；沿用请求缓存。')
-        def worker():
+        origin = result.get('origin')
+        event_dt = result.get('event_dt')
+        if isinstance(event_dt, str):
             try:
-                model_id=_weather_model_id_from_label(self.vars['weather_model'].get())
-                raws=self._fetch_weather_locations([(q['lat'],q['lon']) for q in sites],model_id)
-                samples=cloud_evidence(sites,raws,event_dt)
-                diag=estimate(result,samples)
-                diag['raw_weather']=raws  # Case save keeps complete API responses.
-                result['sunset_compass']=self._json_safe(diag)
-                im=render(diag)
-                def done():
-                    if not win.winfo_exists():return
-                    display(im)
-                    status.configure(text='完成：主线概率和峰值云色 + 云洞横向4点云量证据。注意侧向未做球面光路验证，图中不是独立方位概率。保存案例可保留完整响应。')
-                win.after(0,done)
-            except Exception as exc:
-                # Optional transverse observations must not block the main compass.
-                msg=str(exc)
-                diag=estimate(result,[])
-                diag['transverse_error']=msg
-                diag['transverse_status']='unavailable'
-                result['sunset_compass']=self._json_safe(diag)
-                try:
-                    im=render(diag)
-                except Exception as render_exc:
-                    error=str(render_exc)
-                    win.after(0,lambda:status.configure(text='二维图绘制失败：'+error))
-                    return
-                def show_partial():
-                    if not win.winfo_exists():return
-                    display(im)
-                    status.configure(text='横向采样失败：无法判断南北晚霞可见角度，图中不绘制预测多边形。错误：'+msg)
-                win.after(0,show_partial)
-        threading.Thread(target=worker,daemon=True).start()
+                event_dt = datetime.fromisoformat(event_dt)
+            except ValueError:
+                event_dt = None
+        if not origin or event_dt is None:
+            messagebox.showerror('缺少参数', '当前单次结果缺少精确观测坐标或事件时间。')
+            return
+        # Take model metadata captured with THIS result, not mutable left-form
+        # controls that may have been changed after the query.
+        model_id = result.get('query_model_id')
+        model_label = result.get('query_model_label') or self.vars['weather_model'].get()
+        if not model_id:
+            model_id = _weather_model_id_from_label(model_label)
+        if model_id not in ('ecmwf_ifs025', 'ncep_gfs_global'):
+            messagebox.showwarning('实验支持范围', '360°受光实验目前支持EC/GFS。')
+            return
+        label = '朝霞' if direction_key == 'morning' else '晚霞'
+        initial_hour = max(0, min(23, event_dt.hour + (1 if event_dt.minute >= 30 else 0)))
+        launch_desktop(
+            self, model_id, float(origin[0]), float(origin[1]),
+            event_dt.date().isoformat(), event_hour=initial_hour,
+            direction_label=label, model_label=model_label,
+            event_time=event_dt.strftime('%H:%M'),
+        )
 
     def show_path_cloud_profile(self, direction_key):
         """球面光线与云量灰阶剖面，图形诊断不影响预测。"""
@@ -4357,36 +4462,44 @@ class FireCloudApp(tk.Tk):
         width = max(canvas.winfo_width(), 380)
         canvas.configure(height=136)
         if dynamic:
-            # 主图显示本次预测的相对亮度（峰值归一化为100）；原始指数仍保留在峰值标签和报告中。
+            # Dual-layer timeline: strict light is a pale categorical band,
+            # while vivid foreground height is the actual minute's colored
+            # cloud area proxy. Five percent is a display threshold only.
             x0, x1, y0, y1 = 38, width-12, 25, 76
-            canvas.create_text(8, 5, text="云色时序（不考虑云量）", anchor="nw",
+            canvas.create_text(8, 5, text="云色时序：浅色=有效光路，实色=染色面积≥5%", anchor="nw",
                                fill="#243447", font=("Microsoft YaHei UI", 9, "bold"))
             def xx(i): return x0+(x1-x0)*i/max(1,len(dynamic)-1)
             def yy(v): return y1-(y1-y0)*max(0,min(100,float(v)))/100.0
             canvas.configure(background="white")
-            for val in (0,20,40,60,80,100):
+            for val in (0,5,20,40,60,80,100):
                 y=yy(val); canvas.create_line(x0,y,x1,y,fill="#d9dee7",width=1)
                 canvas.create_text(x0-7,y,text=str(val),anchor="e",fill="#475569",font=("Microsoft YaHei UI",7))
-            # 白底图直接使用模型估算色，不做额外增艳/提亮，避免视觉效果偏离输入条件。
+            canvas.create_line(x0,yy(5),x1,yy(5),fill="#ae7278",dash=(3,3),width=1)
+            def _rgb(p):
+                return tuple(max(0,min(255,int(v))) for v in p.get("color",(190,125,105)))
+            def _hex(c): return '#%02x%02x%02x'%c
+            interval=(x1-x0)/max(1,len(dynamic)-1)
+            for i,p in enumerate(dynamic):
+                if p.get('strict_light_window', False):
+                    c=_rgb(p)
+                    pale=tuple(int(255*.87 + v*.13) for v in c)
+                    canvas.create_rectangle(max(x0,xx(i)-interval/2),y0,
+                        min(x1,xx(i)+interval/2),y1,fill=_hex(pale),outline='')
+            for i,p in enumerate(dynamic):
+                if p.get('major_coloration_valid', False):
+                    c=_rgb(p); top_y=yy(p.get('colored_cloud_area_pct',0))
+                    canvas.create_rectangle(max(x0,xx(i)-interval/2),top_y,
+                        min(x1,xx(i)+interval/2),y1,fill=_hex(c),outline='')
             for i in range(len(dynamic)-1):
-                x_a,x_b=xx(i),xx(i+1)
-                y_a,y_b=yy(dynamic[i]["relative_brightness"]),yy(dynamic[i+1]["relative_brightness"])
-                c=tuple(max(0,min(255,int(v))) for v in dynamic[i].get("color",(190,125,105)))
-                # 面积填色仅作轻量辅助；曲线线段使用原始估算 RGB。
-                bg=(255,255,255)
-                fill_rgb=tuple(int(bg[k]*0.08+c[k]*0.92) for k in range(3))
-                fill_hex="#%02x%02x%02x"%fill_rgb
-                line_hex="#%02x%02x%02x"%c
-                canvas.create_polygon(x_a,y1,x_a,y_a,x_b,y_b,x_b,y1,
-                                      fill=fill_hex,outline="",smooth=False)
-                canvas.create_line(x_a,y_a,x_b,y_b,fill=line_hex,width=3)
-            # 分段线因每分钟颜色不同，Tk Canvas 在色段接缝处偶尔会露出白色细缝；
-            # 用同色小圆点覆盖接缝，保持曲线连续，不改变任何采样值。
-            for i, point in enumerate(dynamic):
-                px, py = xx(i), yy(point["relative_brightness"])
-                c = tuple(max(0,min(255,int(v))) for v in point.get("color",(190,125,105)))
-                hx = "#%02x%02x%02x" % c
-                canvas.create_oval(px-1.6,py-1.6,px+1.6,py+1.6,fill=hx,outline=hx,width=0)
+                a,b=dynamic[i],dynamic[i+1]
+                if a.get('major_coloration_valid',False) and b.get('major_coloration_valid',False):
+                    canvas.create_line(xx(i),yy(a.get('colored_cloud_area_pct',0)),
+                        xx(i+1),yy(b.get('colored_cloud_area_pct',0)),
+                        fill=_hex(_rgb(a)),width=2)
+            if not any('colored_cloud_area_pct' in p for p in dynamic):
+                canvas.create_text((x0+x1)/2,(y0+y1)/2,
+                    text="旧缓存缺少面积时序数据；请重新查询",fill="#64748b",
+                    font=("Microsoft YaHei UI",8))
             # 标出日出/日落时刻，并显示横轴钟点刻度；刻度标签直接使用实际本地时间。
             event_i=min(range(len(dynamic)),key=lambda i:abs(dynamic[i].get("minutes_from_event",0)))
             ex=xx(event_i); canvas.create_line(ex,y0,ex,y1,fill="#64748b",dash=(2,3),width=1)
@@ -4405,9 +4518,11 @@ class FireCloudApp(tk.Tk):
             peak=direction_result.get("dynamic_light_curve",{}).get("peak")
             if peak:
                 pi=min(range(len(dynamic)),key=lambda i:abs((dynamic[i]["datetime"]-peak["datetime"]).total_seconds()))
-                px,py=xx(pi),yy(peak["relative_brightness"])
-                canvas.create_oval(px-3,py-3,px+3,py+3,fill="#ffffff",outline="#ffffff")
-                peak_txt=f"相对峰值 {peak['relative_brightness']:.1f}/100 · 原始指数 {peak['brightness']:.1f} · {peak['datetime'].strftime('%H:%M')}"
+                px,py=xx(pi),yy(dynamic[pi].get('colored_cloud_area_pct',0))
+                if dynamic[pi].get('major_coloration_valid',False):
+                    canvas.create_oval(px-3,py-3,px+3,py+3,fill="#ffffff",outline="#aa566c")
+                peak_txt=(f"主要染色门槛≥5% · 峰值面积 {max(p.get('colored_cloud_area_pct',0) for p in dynamic):.1f}%"
+                          f" · {peak['datetime'].strftime('%H:%M')}")
                 canvas.create_text(x0+3,126,text=peak_txt,anchor="w",fill="#334155",font=("Microsoft YaHei UI",8))
             return
         canvas.configure(background="white")
@@ -4417,7 +4532,7 @@ class FireCloudApp(tk.Tk):
             # 这里只画零亮度参考线和时间轴，不伪造动态采样，也不修改任何评分/天气算法。
             canvas.configure(background="white")
             x0, x1, y0, y1 = 38, width-12, 25, 76
-            canvas.create_text(8, 5, text="云色时序（不考虑云量）", anchor="nw",
+            canvas.create_text(8, 5, text="云色时序 · 受光窗口与染色面积", anchor="nw",
                                fill="#243447", font=("Microsoft YaHei UI", 9, "bold"))
             def empty_yy(v): return y1-(y1-y0)*max(0,min(100,float(v)))/100.0
             for val in (0,20,40,60,80,100):
@@ -5132,31 +5247,13 @@ class FireCloudApp(tk.Tk):
 
     @staticmethod
     def _dynamic_cloud_color(solar_altitude_deg):
-        """根据太阳高度角生成基础色相；大气灰化由独立的 atmospheric_color_quality 控制。
+        """Solar-altitude reference colour, with pink/magenta twilight support.
 
-        注意：这里不再把太阳仍在地平线上方直接画成灰色。太阳高度角主要控制暖色到红色的色相变化，
-        而空气浑浊度由能见度/AOD/可用湿度数据另行控制饱和度。
+        This remains an illustrative hue, not a real-world RGB prediction.
+        Strict light gates, cloud area, AOD and visibility live in other modules.
         """
-        def blend(a, b, t):
-            t=max(0.0,min(1.0,float(t)))
-            return tuple(int(round(a[i]*(1-t)+b[i]*t)) for i in range(3))
-        # 基础色带采用可辨识的暖色，避免先天低饱和导致曲线发灰。
-        # 这是太阳高度对应的参考色相，不代表每次实景必然出现这些 RGB。
-        pale_gold=(255,202,105)
-        warm_orange=(255,126,48)
-        red=(245,48,35)
-        dark_red=(132,17,31)
-        night=(35,22,39)
-        alt=float(solar_altitude_deg)
-        if alt >= 0.5:
-            return pale_gold
-        if alt >= -0.5:
-            return blend(pale_gold, warm_orange, (0.5-alt)/1.0)
-        if alt >= -2.0:
-            return blend(warm_orange, red, (-0.5-alt)/1.5)
-        if alt >= -4.5:
-            return blend(red, dark_red, (-2.0-alt)/2.5)
-        return blend(dark_red, night, min(1.0,(-4.5-alt)/3.0))
+        from burning_sky.cloud_color_palette import cloud_rgb
+        return cloud_rgb(solar_altitude_deg)
 
     def _build_dynamic_light_curve(self, data, zones, sun_event, single_mode=False, accepted_gaps=None):
         """按分钟扫描日出/日落前后动态受光，输出 0–100 亮度指数与示意色。
@@ -6411,6 +6508,21 @@ class FireCloudApp(tk.Tk):
         out_path = os.path.join(folder, f"{direction_key}_live_simulation_debug.xlsx")
         wb.save(out_path)
         return out_path
+
+    def open_experimental_compass360(self):
+        """Opt-in cloud survey; baseline Burning Sky evaluation is untouched."""
+        from burning_sky.experimental_compass360 import launch_desktop
+        try:
+            model_id = _weather_model_id_from_label(self.vars["weather_model"].get())
+            if model_id not in ("ecmwf_ifs025", "ncep_gfs_global"):
+                messagebox.showwarning("实验支持范围", "当前实验仅支持EC/GFS，请先选择对应气象模式。")
+                return
+            day = self.vars['date'].get()
+            date.fromisoformat(day)
+            launch_desktop(self, model_id, float(self.vars['lat'].get()),
+                           float(self.vars['lon'].get()), day)
+        except Exception as exc:
+            messagebox.showerror("360°实验启动失败", str(exc))
 
     def save_case(self):
         if not getattr(self, "direction_results", None):

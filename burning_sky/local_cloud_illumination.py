@@ -150,6 +150,13 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
                 point['color']=(round(255*r),round(255*g),round(255*b))
         else:
             point['brightness']=0.
+        # Two independent timeline layers. The foreground threshold is DISPLAY
+        # ONLY; do not modify the official ratio, probability, scale or peak.
+        # The strict per-target minute evidence is already included in row.fraction.
+        point['strict_light_window']=bool(active and frac > 1e-8)
+        point['colored_cloud_area_pct']=round(100.0 * frac, 3) if active else 0.0
+        point['major_coloration_valid']=bool(point['strict_light_window'] and
+                                              point['colored_cloud_area_pct'] >= 5.0)
         point['local_cloud_illumination_fraction']=round(frac,6)
         point['local_cloud_strict_fraction']=round(row['strict_fraction'],6) if row else 0.
         point['local_cloud_possible_fraction']=round(row['possible_fraction'],6) if row else 0.

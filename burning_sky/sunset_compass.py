@@ -82,6 +82,27 @@ def _font(size):
         except OSError:pass
     return ImageFont.load_default()
 
+
+
+def _clamp(v, lo=0.0, hi=100.0):
+    return max(lo, min(hi, float(v)))
+
+
+def _mix_hex(a, b, t):
+    t=max(0.0,min(1.0,float(t)))
+    ar,ag,ab=a; br,bg,bb=b
+    return (int(round(ar+(br-ar)*t)), int(round(ag+(bg-ag)*t)), int(round(ab+(bb-ab)*t)))
+
+
+def _ray_color(base_rgb, strength, az, sun_az):
+    strength=_clamp(strength)/100.0
+    diff=abs((az-sun_az+180)%360-180)
+    if diff<=22.5: target=(255,183,77)
+    elif diff<=55: target=(255,124,69)
+    elif diff<=95: target=(255,98,146)
+    else: target=(190,120,255)
+    return _mix_hex(tuple(base_rgb), target, 0.35+0.55*strength)
+
 def render(diag):
     from PIL import ImageColor
     im=Image.new('RGB',(1000,920),'#f8fafc');d=ImageDraw.Draw(im,'RGBA')
@@ -120,10 +141,10 @@ def render(diag):
         d.text((500,375),'横向采样失败 / 数据不完整',font=_font(28),fill='#991b1b',anchor='mm')
         d.text((500,415),'南北晚霞可见角度：未知（不绘制预测多边形）',font=_font(19),fill='#991b1b',anchor='mm')
     d.ellipse((cx-8,cy-8,cx+8,cy+8),fill='#0f172a')
-    d.text((35,24),'Burning Sky | 晚霞方位多边形 · 八方位罗盘',font=_font(29),fill='#0f172a')
+    d.text((35,24),'Burning Sky | 八方位补全图',font=_font(29),fill='#0f172a')
     d.text((35,67),f"太阳方位 {az:.1f}°  主线常规概率 {diag['main_probability']:.0f}%  主线云洞 {diag['gap_count']} 个",font=_font(21),fill='#334155')
-    d.text((35,740),'黄虚线：太阳方位；彩色棱角：仅横向采样支持的相对受光代理（非真实方位概率）',font=_font(19),fill='#9a3412')
-    d.text((35,776),'云色沿用主线峰值云色；未采样方向不做填充；没有验证的方向不宣称可见。',font=_font(19),fill='#475569')
+    d.text((35,740),'黄虚线：太阳方位；彩色区域：基于当前结果的八方位补全显示（非中间角度独立严格验证）',font=_font(19),fill='#9a3412')
+    d.text((35,776),'颜色已按方向作差异化增强；仍属于辅助方位图，不替代主算法概率与剖面验证。',font=_font(19),fill='#475569')
     for i,r in enumerate(rays):
         v=r.get('strength_proxy');s='未知' if v is None else f'{v:.0f}/100'
         d.text((30+i*190,818),f"{r['offset_km']:+.0f} km: {s}",font=_font(18),fill='#334155')
@@ -134,35 +155,63 @@ def render(diag):
 
 
 def render_compact(diag, size=760):
-    """Web-only compact compass: no explanatory paragraphs inside the image."""
-    from PIL import Image, ImageDraw
-    im=Image.new('RGB',(size,size),'#f8fafc')
+    """Web compact compass: complete radar-like polygon bound to the current single-result context."""
+    im=Image.new('RGB',(size,size), '#f8fafc')
     d=ImageDraw.Draw(im,'RGBA')
-    cx=cy=size//2;R=size*.365
+    cx=cy=size//2; R=size*0.355
     def point(az,r):
         a=math.radians(az)
-        return (cx+math.sin(a)*r,cy-math.cos(a)*r)
-    for fraction in (.25,.5,.75,1.):
-        rad=R*fraction
-        d.ellipse((cx-rad,cy-rad,cx+rad,cy+rad),outline='#cbd5e1',width=2)
-    for i,label in enumerate(('北','东北','东','东南','南','西南','西','西北')):
-        az=i*45
-        d.line((*point(az,0),*point(az,R)),fill='#d4dde8',width=2)
-        d.text(point(az,R+size*.048),label,font=_font(20),fill='#334155',anchor='mm')
-    az=float(diag.get('sun_azimuth') or 0)
-    ex,ey=point(az,R)
+        return (cx+math.sin(a)*r, cy-math.cos(a)*r)
+    # octagonal guides
+    headings=[0,45,90,135,180,225,270,315]
+    for frac in (.25,.5,.75,1.0):
+        pts=[]
+        rr=R*frac
+        for az in headings: pts.extend(point(az,rr))
+        d.polygon(pts, outline='#d4dde8')
+    for az,label in zip(headings,('北','东北','东','东南','南','西南','西','西北')):
+        d.line((*point(az,0), *point(az,R)), fill='#d4dde8', width=2)
+        d.text(point(az,R+size*.05), label, font=_font(20), fill='#334155', anchor='mm')
+    sun_az=float(diag.get('sun_azimuth') or 0)
     for i in range(20):
         if i%2==0:
-            d.line((*point(az,R*i/20),*point(az,R*(i+1)/20)),fill='#eab308',width=4)
+            d.line((*point(sun_az,R*i/20), *point(sun_az,R*(i+1)/20)), fill='#eab308', width=4)
+    sx,sy=point(sun_az,R+18); d.ellipse((sx-7,sy-7,sx+7,sy+7),fill='#facc15')
+    d.text((sx,sy),'日',font=_font(12),fill='#5b4200',anchor='mm')
     rays=diag.get('rays') or []
-    lateral=[r for r in rays if r.get('offset_km')!=0 and r.get('strength_proxy') is not None]
-    if len(lateral)==4 and diag.get('transverse_status')=='sampled':
-        active=[r for r in rays if r.get('strength_proxy') is not None]
-        points=[point(float(r['azimuth']),R*max(0,min(100,float(r['strength_proxy'])))/100) for r in active]
-        rgb=tuple(int(max(0,min(255,v))) for v in (diag.get('peak_rgb') or [245,120,95])[:3])
-        if len(points)>=3:
-            d.polygon([(cx,cy)]+points,fill=(*rgb,100))
-            d.line(points,fill=(*rgb,255),width=4,joint='curve')
-        for p in points:d.ellipse((p[0]-5,p[1]-5,p[0]+5,p[1]+5),fill=(*rgb,255))
-    d.ellipse((cx-6,cy-6,cx+6,cy+6),fill='#0f172a')
+    active=[r for r in rays if r.get('strength_proxy') is not None]
+    base_rgb=tuple(int(max(0,min(255,v))) for v in (diag.get('peak_rgb') or [245,120,95])[:3])
+    if active:
+        # build full 8-direction support by distributing nearest measured support; unsampled sectors stay faint
+        support={az:0.0 for az in headings}; colors={az:(98,111,128) for az in headings}
+        for az in headings:
+            nearest=min(active, key=lambda r: abs(((float(r['azimuth'])-az+180)%360)-180))
+            diff=abs(((float(nearest['azimuth'])-az+180)%360)-180)
+            raw=float(nearest.get('strength_proxy') or 0.0)
+            factor=max(0.0, 1.0-diff/90.0)
+            val=raw*factor
+            support[az]=val
+            if raw>0 and factor>0.15:
+                colors[az]=_ray_color(base_rgb, raw, az, sun_az)
+            elif nearest.get('evidence')=='main_line_model':
+                colors[az]=_mix_hex(base_rgb,(98,111,128),0.45)
+        # sector fills
+        for i,az in enumerate(headings):
+            az2=headings[(i+1)%8]
+            p1=point(az, R*support[az]/100.0)
+            p2=point(az2, R*support[az2]/100.0)
+            fill=_mix_hex(colors[az], colors[az2], 0.5)
+            d.polygon([(cx,cy),p1,p2], fill=(*fill,120), outline=None)
+        # outline polygon
+        poly=[]
+        for az in headings: poly.append(point(az, R*support[az]/100.0))
+        d.line(poly+[poly[0]], fill='#f6c453', width=4, joint='curve')
+        for az,p in zip(headings, poly):
+            d.ellipse((p[0]-4,p[1]-4,p[0]+4,p[1]+4), fill='#fff7dd')
+            # show representative high-cloud number if nearest site has it
+            nearest=min(active, key=lambda r: abs(((float(r['azimuth'])-az+180)%360)-180))
+            cloud=(nearest.get('cloud_cover') or {}).get('high') if nearest.get('cloud_cover') else None
+            lx,ly=point(az, max(( (p[0]-cx)**2 + (p[1]-cy)**2 )**0.5 + 18, 48))
+            d.text((lx,ly), '?' if cloud is None else str(int(round(float(cloud)))), font=_font(18), fill='#ffffff', anchor='mm')
+    d.ellipse((cx-6,cy-6,cx+6,cy+6), fill='#0f172a')
     return im
