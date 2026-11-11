@@ -562,6 +562,8 @@ class FireCloudApp(tk.Tk):
         self.cloud_path_result = None
         self.last_report = ""
         self.direction_results = {}
+        self.satellite_correction_overrides = {"morning": [], "evening": []}
+        self.satellite_correction_metadata = {}
         self.fetch_in_progress = False
         self.loaded_case_path = None
         self.case_cache_var = tk.BooleanVar(value=False)
@@ -673,7 +675,8 @@ class FireCloudApp(tk.Tk):
         ttk.Label(left, text="云图人工修正（每行：起点,终点,低云,中云,高云；空云量保留原值）", style="Sub.TLabel", wraplength=320).pack(anchor="w")
         self.cloud_override_text=tk.Text(left,height=4,width=34)
         self.cloud_override_text.pack(fill="x",pady=(3,4))
-        ttk.Button(left,text="重新计算云图（不联网）",command=self.recalculate_cloud_overrides).pack(fill="x",pady=(0,8))
+        ttk.Button(left,text="重新计算云图（不联网）",command=self.recalculate_cloud_overrides).pack(fill="x",pady=(0,4))
+        ttk.Button(left,text="清除卫星修正（恢复原始草稿）",command=self.clear_satellite_corrections).pack(fill="x",pady=(0,8))
         ttk.Label(left, text="预报设置", style="Section.TLabel").pack(anchor="w", pady=(0, 10))
         form = ttk.Frame(left, style="Card.TFrame")
         form.pack(fill="x")
@@ -874,6 +877,7 @@ class FireCloudApp(tk.Tk):
         ttk.Button(morning_actions, text="查看朝霞地图云层分布", command=lambda: self.show_path_cloud_map("morning")).pack(side="left")
         ttk.Button(morning_actions, text="剖面图", command=lambda: self.show_path_cloud_profile("morning")).pack(side="left", padx=(5, 0))
         ttk.Button(morning_actions, text="八方位补全图", command=lambda: self.show_2d_illumination("morning")).pack(side="left", padx=(5, 0))
+        ttk.Button(morning_actions, text="卫星图修正", command=lambda: self.open_satellite_calibration("morning")).pack(side="left", padx=(5, 0))
         ttk.Button(morning_actions, text="显示朝霞各采样点具体云况", command=lambda: self.show_direction_details("morning")).pack(side="right")
 
         evening_result_row = ttk.Frame(right, style="Card.TFrame")
@@ -939,6 +943,7 @@ class FireCloudApp(tk.Tk):
         ttk.Button(evening_actions, text="查看晚霞地图云层分布", command=lambda: self.show_path_cloud_map("evening")).pack(side="left")
         ttk.Button(evening_actions, text="剖面图", command=lambda: self.show_path_cloud_profile("evening")).pack(side="left", padx=(5, 0))
         ttk.Button(evening_actions, text="八方位补全图", command=lambda: self.show_2d_illumination("evening")).pack(side="left", padx=(5, 0))
+        ttk.Button(evening_actions, text="卫星图修正", command=lambda: self.open_satellite_calibration("evening")).pack(side="left", padx=(5, 0))
         ttk.Button(evening_actions, text="显示晚霞各采样点具体云况", command=lambda: self.show_direction_details("evening")).pack(side="right")
         ttk.Label(right, text="采样范围根据各点推算的有效云底动态扩展；单次最远限制 1000 km，严格光路按极限云距的 1.3 倍验证。具体云况默认收起，点击上方按钮查看。", style="Sub.TLabel", wraplength=620).pack(anchor="w", pady=(2, 0))
 
@@ -1182,6 +1187,8 @@ class FireCloudApp(tk.Tk):
                     self.case_request_cache = {}
                     _CASE_REQUEST_CONTEXT = {"mode": "capture", "cache": self.case_request_cache}
                 self._cloud_original_results=None
+                self.satellite_correction_overrides={"morning": [], "evening": []}
+                self.satellite_correction_metadata={}
                 try:
                     self._fetch_weather_task(direction_key)
                 except RuntimeError as replay_error:
@@ -1216,48 +1223,182 @@ class FireCloudApp(tk.Tk):
 
         threading.Thread(target=worker, daemon=True, name="single-weather-query").start()
 
+    def open_satellite_calibration(self, direction):
+        """Bind a satellite screenshot to an EXISTING single-result direction."""
+        result=(getattr(self,'direction_results',{}) or {}).get(direction)
+        if not result:
+            messagebox.showinfo('卫星图实况修正','请先完成相应朝霞或晚霞的单次查询，再上传卫星截图。')
+            return
+        if self.fetch_in_progress:
+            messagebox.showwarning('卫星图实况修正','当前查询还未完成。');return
+        # Never silently attach an earlier result to newly edited query settings.
+        try:
+            model_id=_weather_model_id_from_label(self.vars['weather_model'].get())
+            original=result.get('origin')
+            if result.get('query_model_id') and model_id!=result['query_model_id']:
+                raise ValueError('当前已选择的模型与已完成结果不同。请切回原模型或重新查询。')
+            if original and (abs(float(original[0])-float(self.vars['lat'].get()))>0.001 or
+                             abs(float(original[1])-float(self.vars['lon'].get()))>0.001):
+                raise ValueError('当前地点坐标与已完成结果不同。请切回原地点或重新查询。')
+            event=result.get('event_dt')
+            if event is not None and str(event)[:10]!=self.vars['date'].get()[:10]:
+                raise ValueError('当前选择的日期与已完成结果不同。请切回原日期或重新查询。')
+            from burning_sky.satellite_calibration import launch
+            launch(self,result,direction,self._accept_satellite_edits)
+        except Exception as exc:
+            messagebox.showerror('卫星图实况修正',str(exc))
+
+    def _accept_satellite_edits(self,direction,edits,metadata):
+        """Store human-confirmed proposals per direction, never directly edit raw API data."""
+        result=(self.direction_results or {}).get(direction)
+        if not result:raise ValueError('当前方向结果已不存在')
+        samples=sorted([float(s['distance_km']) for s in result.get('samples',[]) if isinstance(s.get('distance_km'),(float,int))])
+        if not samples:raise ValueError('缺少原始距离采样')
+        by_dist={}
+        centers=sorted(set(float(item[0]) for item in edits))
+        for dist,val,row in edits:
+            # The 10km target is approximate (e.g. a 25km gap yields 8.33km).
+            # Keep approved spans nonoverlapping, including irregular spacing.
+            center=float(dist)
+            neighbors=[abs(center-x) for x in centers if abs(center-x)>1e-6]
+            half=min(float(row.get('segment_half_width_km',4.8)),
+                     0.45*min(neighbors) if neighbors else 4.8)
+            by_dist[round(center,3)]=(round(max(0.,center-half),3),
+                                       round(center+half,3),None,None,float(val))
+        if not getattr(self,'_cloud_original_results',None):
+            self._cloud_original_results=copy.deepcopy(self.direction_results)
+        self.satellite_correction_overrides[direction]=sorted(by_dist.values(),key=lambda r:r[0])
+        self.satellite_correction_metadata[direction]=metadata
+        self.fetch_status_var.set(f'已确认{len(by_dist)}处卫星修正，正在准备当前方向重新计算……')
+        self._recalculate_satellite_direction(direction)
+
+
+    def _recalculate_satellite_direction(self, direction):
+        """Apply approved IR corrections to ONE direction and refresh the visible result.
+
+        Capture mode first reuses exact cached API requests, then fetches only
+        missing requests (including additional spatial samples). On failure,
+        preserve the old result and the pending edits for retry.
+        """
+        if self.fetch_in_progress:
+            messagebox.showwarning('卫星修正', '当前另一个查询仍在运行，请结束后再重试。')
+            return
+        try:
+            manual=parse_overrides(self.cloud_override_text.get('1.0','end'))
+            satellite=list((self.satellite_correction_overrides or {}).get(direction) or [])
+            combined=sorted(manual+satellite,key=lambda r:r[0])
+            for i in range(1,len(combined)):
+                if combined[i][0]<combined[i-1][1]-1e-8:
+                    raise ValueError('卫星修正与已有人工修正区间重叠，请先消除冲突。')
+            # Probe around the center/boundary of selected cloud-hole changes.
+            # Only points inside the existing main path are added.
+            extra=[]
+            for start,end,*_ in satellite:
+                mid=(float(start)+float(end))/2
+                extra.extend([max(0.,mid-4.),mid,min(mid+4.,end)])
+            extra=sorted({round(x,2) for x in extra if x>=0})[:24]
+        except Exception as exc:
+            messagebox.showerror('卫星修正参数错误',str(exc))
+            return
+        previous=copy.deepcopy((self.direction_results or {}).get(direction))
+        self.fetch_in_progress=True
+        for btn in getattr(self,'fetch_buttons',{}).values():
+            try:btn.configure(state='disabled')
+            except Exception:pass
+        label='朝霞' if direction=='morning' else '晚霞'
+        self.fetch_status_var.set(f'{label}卫星校准：正在复用已有气象数据，必要时联网补采……')
+        def worker():
+            global _CASE_REQUEST_CONTEXT
+            original_context=_CASE_REQUEST_CONTEXT
+            try:
+                # Existing request cache remains valid; capture mode fetches only misses.
+                cache=getattr(self,'case_request_cache',None)
+                if not isinstance(cache,dict):cache={};self.case_request_cache=cache
+                _CASE_REQUEST_CONTEXT={
+                    'mode':'capture','cache':cache,
+                    'cloud_overrides':combined,
+                    'satellite_extra_distances':extra,
+                    'satellite_recompute':True,
+                    'saved_rainbow':(previous or {}).get('rainbow'),
+                }
+                # The forecasting engine handles full geometry, coloring and plots.
+                self._fetch_weather_task(direction, raise_errors=True, notify_success=False)
+                new=(self.direction_results or {}).get(direction)
+                if not new or new is previous:
+                    raise RuntimeError('本次没有生成新的单次结果。')
+                old_inf=(previous or {}).get('inferred') or {}
+                new_inf=new.get('inferred') or {}
+                def v(info,key):
+                    x=info.get(key)
+                    return '—' if x is None else str(x)
+                old_line=(f"原始/先前：概率 {v(old_inf,'regular_score')}% | 色彩 {v(old_inf,'color_score')}"
+                          f" | 可染色占比 {v(old_inf,'tintable_ratio')}% | 染色云面积 {v(old_inf,'burn_scale_index')}%")
+                new_line=(f"卫星修正后：概率 {v(new_inf,'regular_score')}% | 色彩 {v(new_inf,'color_score')}"
+                          f" | 可染色占比 {v(new_inf,'tintable_ratio')}% | 染色云面积 {v(new_inf,'burn_scale_index')}%")
+                self.after(0,lambda: self.fetch_status_var.set(f'{label}卫星校准已完成，主页面已刷新；新增路径采样 {len(extra)} 个。'))
+                self.after(0,lambda: messagebox.showinfo('卫星校准完成',old_line+'\n'+new_line+'\n原始预测保留在本次案例状态，可清除修正恢复。'))
+            except Exception as exc:
+                error=str(exc)
+                if previous is not None:
+                    self.direction_results[direction]=previous
+                self.after(0,lambda: self.fetch_status_var.set(f'{label}卫星校准未成功，保留原结果：{error[:120]}'))
+                self.after(0,lambda: messagebox.showerror('卫星校准重算失败',error+'\n已保留原结果与待审核修正；检查网络后可重试。'))
+            finally:
+                _CASE_REQUEST_CONTEXT=original_context
+                self.after(0,lambda: self._finish_fetch_weather(preserve_status=True))
+        threading.Thread(target=worker,name='satellite-one-direction-recompute',daemon=True).start()
+
+    def clear_satellite_corrections(self):
+        self.satellite_correction_overrides={'morning':[], 'evening':[]}
+        self.satellite_correction_metadata={}
+        self.fetch_status_var.set('已清除卫星修正草稿；点击“重新计算云图（不联网）”即可恢复原始/人工修正结果。')
+
     def recalculate_cloud_overrides(self):
-        """Replay the last exact-request cache; do not fetch weather or alter originals."""
-        import copy
+        """Replay cached weather; manual edits apply both, satellite edits only own direction."""
         if self.fetch_in_progress:
             messagebox.showerror('云图修正','查询尚未结束。');return
         try:
-            overrides=parse_overrides(self.cloud_override_text.get('1.0','end'))
+            manual=parse_overrides(self.cloud_override_text.get('1.0','end'))
             if not getattr(self,'case_request_cache',None):
                 raise ValueError('当前没有完整请求缓存。请先联网查询一次，或加载包含 request_cache.json 的案例。')
             if not getattr(self,'_cloud_original_results',None):
                 self._cloud_original_results=copy.deepcopy(self.direction_results)
-            if not overrides:
+            satellite=getattr(self,'satellite_correction_overrides',{}) or {}
+            if not manual and not any(satellite.values()):
                 self.direction_results=copy.deepcopy(self._cloud_original_results)
                 self.last_report='\n\n'.join(v.get('details','') for v in self.direction_results.values())
                 for direction,widget in (('morning',self.morning_summary),('evening',self.evening_summary)):
                     if direction in self.direction_results:self._set_text(widget,self.direction_results[direction].get('summary',''))
                 self.fetch_status_var.set('云图修正已清空，恢复原始结果（无 API 请求）')
                 return
-            # All required HTTP payloads must already exist; any cache miss fails closed.
             global _CASE_REQUEST_CONTEXT
             previous=_CASE_REQUEST_CONTEXT
-            _CASE_REQUEST_CONTEXT={'mode':'replay','cache':self.case_request_cache,'cloud_overrides':overrides}
             try:
-                directions=list(self._cloud_original_results)
-                for direction in directions:
-                    if direction in ('morning','evening'):self._fetch_weather_task(direction)
+                for direction in list(self._cloud_original_results):
+                    if direction not in ('morning','evening'):continue
+                    combined=sorted(manual+list(satellite.get(direction) or []),key=lambda r:r[0])
+                    for i in range(1,len(combined)):
+                        if combined[i][0]<combined[i-1][1]-1e-8:
+                            raise ValueError('人工修正与卫星修正在同一距离段重叠，请清理冲突区间后再计算。')
+                    _CASE_REQUEST_CONTEXT={'mode':'replay','cache':self.case_request_cache,'cloud_overrides':combined}
+                    self._fetch_weather_task(direction)
             finally:
                 _CASE_REQUEST_CONTEXT=previous
-            self.fetch_status_var.set('人工云图已重新计算（无 API 请求；原始数据保留）')
+            self.fetch_status_var.set('气象缓存已按方向重算（无 API 请求）；原始数据保留。')
         except Exception as exc:
             messagebox.showerror('云图修正失败',str(exc))
 
-    def _finish_fetch_weather(self):
+    def _finish_fetch_weather(self, preserve_status=False):
         self.fetch_in_progress = False
         try:
             for button in getattr(self, "fetch_buttons", {}).values():
                 button.configure(state="normal")
-            self.fetch_status_var.set("查询结束。若显示 HTTP 429，请先暂停 10–20 分钟再试。")
+            if not preserve_status:
+                self.fetch_status_var.set("查询结束。若显示 HTTP 429，请先暂停 10–20 分钟再试。")
         except Exception:
             pass
 
-    def _fetch_weather_task(self, requested_direction="both"):
+    def _fetch_weather_task(self, requested_direction="both", raise_errors=False, notify_success=True):
         """后台查询：每个方向使用独立的计算调用，避免循环局部变量污染。"""
         if requested_direction == "both":
             # Desktop and web must use the exact same two independent engine
@@ -1362,6 +1503,8 @@ class FireCloudApp(tk.Tk):
                 sample_limit = max(200, int(math.ceil(max(max_reach + 100.0, source_scan_target) / 50.0) * 50))
                 distances = [0, 25, 50, 100, 150, 200]
                 distances.extend(range(250, sample_limit + 1, 50))
+                if _CASE_REQUEST_CONTEXT and _CASE_REQUEST_CONTEXT.get('satellite_extra_distances'):
+                    distances.extend(float(d) for d in _CASE_REQUEST_CONTEXT['satellite_extra_distances'] if 0<=float(d)<=sample_limit)
                 distances = sorted(set(d for d in distances if d <= sample_limit))
                 coords = [destination_point(data["lat"], data["lon"], azimuth, d) for d in distances]
 
@@ -2224,6 +2367,11 @@ class FireCloudApp(tk.Tk):
                 inferred["burn_scale_index"] = burn_scale_index
                 inferred["burn_scale_label"] = burn_scale_label
                 inferred["tintable_ratio"] = tintable_ratio
+                # Different quantities: share of clouds illuminated vs share
+                # of the sampled corridor actually covered by lit clouds.
+                inferred["satellite_corrected_colored_area_pct"] = burn_scale_index
+                inferred["satellite_corrected_cloud_cover_pct"] = round(local_cover,2)
+                inferred["satellite_correction_active"] = bool(_manual_overrides)
                 special_summary_line = (f"\n特殊判定：{inferred.get('verdict_override')}" if inferred.get("verdict_override") else "")
                 # Color score uses the bounded local cloud resource.
                 potential_limit = boundaries.get("fire_cloud_range_km")
@@ -2365,7 +2513,8 @@ class FireCloudApp(tk.Tk):
                     dynamic_curve=apply_to_curve(dynamic_curve,_local_light,
                         atmospheric_factor=_vis_factor*_aod_factor,
                         color_fn=self._dynamic_cloud_color,
-                        aod_color_quality=_color_quality)
+                        aod_color_quality=_color_quality,
+                        target_cloud_cover_pct=local_cover)
                     inferred['timeline_geometry_gate']=dynamic_curve.get('geometry_gate_diagnostic',{})
                 else:
                     # Do not display a fabricated twilight if local cloud data
@@ -2463,9 +2612,12 @@ class FireCloudApp(tk.Tk):
                 else:
                     status_var.set("该方向 CAMS AOD 不可用；未做 AOD 修正")
             done_name = "朝霞" if requested_direction == "morning" else "晚霞" if requested_direction == "evening" else "朝霞与晚霞"
-            messagebox.showinfo("查询完成", f"已完成 {model_label} {done_name}预报。")
+            if notify_success:
+                messagebox.showinfo("查询完成", f"已完成 {model_label} {done_name}预报。")
         except Exception as exc:
             self._set_main_progress(0, "查询失败；请查看错误提示")
+            if raise_errors:
+                raise
             messagebox.showerror("获取失败", f"无法完成朝霞/晚霞预报：\n{exc}")
 
     @staticmethod
@@ -6547,12 +6699,27 @@ class FireCloudApp(tk.Tk):
                 "aod_inputs": {k: self.vars[k].get() for k in ("morning_aod", "evening_aod")},
                 "cloud_base_inputs": {k: self.vars[k].get() for k in ("morning_cloud_base_km", "evening_cloud_base_km")},
                 "last_fetch_time": self.last_fetch_time,
+                "satellite_correction_overrides": self._json_safe(self.satellite_correction_overrides),
+                "satellite_correction_metadata": self._json_safe(self.satellite_correction_metadata),
                 # 原始 API 响应单独放在 weather_raw.json，避免状态文件重复膨胀。
                 "direction_results": self._json_safe({k: {kk: vv for kk, vv in v.items() if kk != "raw_weather"}
                                                        for k, v in self.direction_results.items()}),
                 "last_report": self.last_report,
                 "note": "历史案例加载时原样显示已保存结果；不会自动重新请求天气 API。",
             }
+            # Preserve screenshot evidence with the case if the source still exists.
+            for _dir,_meta in (self.satellite_correction_metadata or {}).items():
+                if not isinstance(_meta,dict):continue
+                _src=_meta.get('screenshot_path')
+                if _src and os.path.isfile(_src):
+                    import shutil
+                    _ext=os.path.splitext(_src)[1].lower()
+                    if _ext not in ('.png','.jpg','.jpeg','.webp'):continue
+                    _dest=f'satellite_{_dir}{_ext}'
+                    if os.path.abspath(_src)!=os.path.abspath(os.path.join(folder,_dest)):
+                        shutil.copy2(_src,os.path.join(folder,_dest))
+                    state['satellite_correction_metadata'][_dir]['screenshot_in_case']=_dest
+                    state['satellite_correction_metadata'][_dir].pop('screenshot_path',None)
             with open(os.path.join(folder, "analysis_state.json"), "w", encoding="utf-8") as f:
                 json.dump(state, f, ensure_ascii=False, indent=2)
             # 完整保存沿线天气 API 返回值；若当前旧案例没有原始响应，至少保留所有已解析采样数据。
@@ -6678,6 +6845,9 @@ class FireCloudApp(tk.Tk):
             # JSON 会把 datetime/date 对象序列化为 ISO 字符串；加载案例时恢复
             # 分析结果中需要参与时间格式化/运算的字段，避免 str.strftime 报错。
             self.direction_results = self._restore_case_datetime_fields(self.direction_results)
+            self._cloud_original_results=None  # loaded case retains its evaluated state
+            self.satellite_correction_overrides={k:[tuple(row) for row in (state.get('satellite_correction_overrides') or {}).get(k,[])] for k in ('morning','evening')}
+            self.satellite_correction_metadata=state.get('satellite_correction_metadata') or {}
             self.loaded_case_state = state
             try:
                 with open(os.path.join(folder, "request_cache.json"), "r", encoding="utf-8") as _cf:

@@ -8,25 +8,53 @@ per-minute area field must be recomputed rather than recolored artificially.
 
 def draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
     from PIL import Image, ImageDraw, ImageFont
-    W, H = 1400, 530
+    W, H = 1400, 575
     img = Image.new('RGB', (W, H), '#ffffff')
     d = ImageDraw.Draw(img)
-    # Prefer CJK glyphs for labels on supported systems; preserve fallback.
+    # On Streamlit Cloud packages.txt installs fonts-noto-cjk. On a host without
+    # CJK fonts, switch ALL drawn annotations to English instead of tofu boxes.
+    # Do not ship third-party font binaries in the project ZIP.
     from pathlib import Path
+    import os
+    import subprocess
+    candidates = [
+        'C:/Windows/Fonts/msyh.ttc',
+        'C:/Windows/Fonts/simhei.ttf',
+        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',
+        '/usr/share/fonts/truetype/arphic/uming.ttc',
+        '/usr/share/fonts/truetype/arphic-gbsn00lp/gbsn00lp.ttf',
+    ]
+    try:
+        r = subprocess.run(['fc-match','-f','%{file}','sans:lang=zh-cn'],capture_output=True,text=True,timeout=2)
+        if r.returncode==0 and r.stdout.strip():
+            candidates.append(r.stdout.strip())
+    except (OSError, subprocess.TimeoutExpired):
+        pass
     font = small = None
-    for face in ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-                 '/usr/share/fonts/truetype/arphic/uming.ttc',
-                 'C:/Windows/Fonts/msyh.ttc',
-                 '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'):
-        if Path(face).exists():
-            try:
-                font = ImageFont.truetype(face, 17)
-                small = ImageFont.truetype(face, 14)
-                break
-            except Exception:
-                pass
+    cjk = False
+    for face in candidates:
+        if not Path(face).is_file():
+            continue
+        try:
+            candidate=ImageFont.truetype(face,19)
+            # CJK glyph sanity check: U+4E91 must not render the same bitmap as
+            # an unsupported private-use glyph placeholder.
+            if bytes(candidate.getmask('云')) == bytes(candidate.getmask('\ue000')):
+                continue
+            font=candidate
+            small=ImageFont.truetype(face,16)
+            cjk=True
+            break
+        except (OSError, ValueError, AttributeError):
+            continue
     if font is None:
-        font = small = ImageFont.load_default()
+        try:
+            font=ImageFont.truetype('DejaVuSans.ttf',19)
+            small=ImageFont.truetype('DejaVuSans.ttf',16)
+        except OSError:
+            font=small=ImageFont.load_default()
+    def tr(zh,en): return zh if cjk else en
     left, right, top, bottom = 78, W-30, 42, 385
     def x(i): return left+(right-left)*i/max(1,len(samples)-1)
     def y(v): return bottom-(bottom-top)*max(0.,min(100.,float(v)))/100.
@@ -40,14 +68,14 @@ def draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
         return 'colored_cloud_area_pct' in point and 'strict_light_window' in point
     def active(point): return bool(point.get('strict_light_window')) if available(point) else False
     def major(point): return bool(point.get('major_coloration_valid')) if available(point) else False
-    d.text((left,12),'有效染色云面积占比 %',font=font,fill=(42,52,69))
+    d.text((left,12),tr('有效染色云面积占比 %','Colored cloud area (%)'),font=font,fill=(42,52,69))
     for v in (0,5,20,40,60,80,100):
         yy=y(v); d.line((left,yy,right,yy),fill=(222,228,238),width=1)
         d.text((left-12,yy-8),str(v),font=small,fill=(78,91,111),anchor='ra')
     d.line((left,top,left,bottom),fill=(110,120,139),width=2)
     d.line((left,bottom,right,bottom),fill=(110,120,139),width=2)
     d.line((left,y(5),right,y(5)),fill=(183,113,106),width=2)
-    d.text((right-6,y(5)-20),'主要染色门槛 5%',font=small,fill=(145,86,92),anchor='ra')
+    d.text((right-6,y(5)-20),tr('主要染色门槛 5%','Main coloration threshold 5%'),font=small,fill=(145,86,92),anchor='ra')
     if samples:
         step=(right-left)/max(1,len(samples)-1)
         # Draw every strict witness as a background band. A clear path is
@@ -74,7 +102,7 @@ def draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
             xx=x(i);d.line((xx,bottom,xx,bottom+7),fill=(110,120,139),width=1)
             dt=samples[i].get('datetime')
             txt=dt.strftime('%H:%M') if hasattr(dt,'strftime') else str(samples[i].get('minutes_from_event',''))
-            if i==event_i: txt+=' 日出' if direction_key=='morning' else ' 日落'
+            if i==event_i: txt+=(' 日出' if direction_key=='morning' else ' 日落') if cjk else (' Sunrise' if direction_key=='morning' else ' Sunset')
             d.text((xx,bottom+10),txt,font=small,fill=(51,65,85),anchor='ma')
         valid=[i for i,p in enumerate(samples) if major(p)]
         if valid:
@@ -82,14 +110,19 @@ def draw_dynamic_color_curve(samples, peak=None, direction_key="evening"):
             xx,yy=x(i),y(samples[i]['colored_cloud_area_pct'])
             d.ellipse((xx-6,yy-6,xx+6,yy+6),fill=(255,255,255),outline=rgb(samples[i]),width=3)
         if not any(available(p) for p in samples):
-            d.text(((left+right)/2,top+70),'旧缓存缺少逐分钟面积数据，请重新计算以显示双层时序',font=font,fill=(108,114,130),anchor='ma')
+            d.text(((left+right)/2,top+70),tr('旧缓存缺少逐分钟面积数据，请重新计算以显示双层时序','Missing per-minute area in old cache; rerun forecast'),font=font,fill=(108,114,130),anchor='ma')
     else:
-        d.text(((left+right)/2,(top+bottom)/2),'当前没有云色时序数据',font=font,fill=(108,114,130),anchor='ma')
-    # Legend uses separate semantics: band = strict illumination available,
-    # actual colored fill = measured proxy above display threshold.
-    d.rectangle((left,451,left+28,466),fill=(242,221,225))
-    d.text((left+38,451),'浅色背景：严格有效光路窗口（不代表面积100%）',font=font,fill=(70,80,96))
-    d.rectangle((left+720,451,left+748,466),fill=(218,84,110))
-    d.text((left+758,451),'彩色前景：染色云面积 ≥ 5%',font=font,fill=(70,80,96))
-    d.text((left,490),'色彩为逐分钟模型估计色相；阴影断开处不进行插值。纵轴是沿采样剖面的云面积代理，并非全天空实测面积。',font=small,fill=(93,104,122))
+        d.text(((left+right)/2,(top+bottom)/2),tr('当前没有云色时序数据','No cloud-color timeline available'),font=font,fill=(108,114,130),anchor='ma')
+    # Separate legend rows so long CJK labels never run into each other.
+    # Keep all text inside the image bounds after resizing to mobile widths.
+    d.rectangle((left,437,left+28,455),fill=(242,221,225))
+    d.text((left+42,435),tr('浅色背景：严格有效光路窗口（不代表面积100%）',
+                           'Light background: strictly valid light window (not 100% area)'),
+           font=font,fill=(70,80,96))
+    d.rectangle((left,477,left+28,495),fill=(218,84,110))
+    d.text((left+42,475),tr('彩色前景：染色云面积 ≥ 5%',
+                           'Color fill: colored-cloud area >= 5%'),font=font,fill=(70,80,96))
+    d.text((left,531),tr('色彩为逐分钟模型估计色相；空白时段不插值。纵轴为采样剖面云面积代理，并非全天空实测面积。',
+                         'Colors are minute-by-minute estimates. Gaps are not interpolated; area is a modeled proxy.'),
+           font=small,fill=(93,104,122))
     return img

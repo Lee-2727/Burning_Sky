@@ -122,20 +122,38 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
 
 
 def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
-                   aod_color_quality=1.):
+                   aod_color_quality=1., target_cloud_cover_pct=None):
+    """Render illuminated *cloud area* rather than just illuminated fraction.
+
+    fraction is the fraction of eligible cloud targets that receive light.
+    Cloud area = fraction * mid/high cloud cover within the potential range;
+    thus a satellite edit that removes half the target clouds must change the
+    area even if the fraction of remaining clouds illuminated stays constant.
+    This is a 1D sampled-corridor proxy, not satellite-measured sky area.
+    """
     if not isinstance(curve,dict) or not illumination.get('available'): return curve
     import colorsys
     by_time={p['datetime'].replace(second=0,microsecond=0):p for p in illumination['times']}
     original=curve.get('samples') or []
     peak_fraction=max((p['fraction'] for p in illumination['times']),default=0.)
+    if target_cloud_cover_pct is None:
+        # Backwards-compatible estimate if a caller has no main-line cover.
+        # The target weights are distance(km) times cover(0-1), accumulated
+        # across eligible altitude bands; clamp overlapping bands at 100%.
+        reach=max(1e-9,float(illumination.get('potential_km') or 0.))
+        target_cloud_cover_pct=100.0*float(illumination.get('target_weight') or 0.)/reach
+    target_cloud_cover_pct=max(0.0,min(100.0,float(target_cloud_cover_pct)))
     for point in original:
         dt=point.get('datetime')
         row=by_time.get(dt.replace(second=0,microsecond=0)) if dt is not None else None
-        active=(row is not None and (point.get('minutes_from_event',0)>0 if
-                illumination.get('direction')=='evening' else point.get('minutes_from_event',0)<0))
+        active=(row is not None and (point.get('minutes_from_event',0)>=0 if
+                illumination.get('direction')=='evening' else point.get('minutes_from_event',0)<=0))
         frac=row['fraction'] if active else 0.
         point['geometry_valid']=bool(frac>1e-5)
-        point['tintable_cloud_area']=round(frac*illumination['target_weight'],6) if active else 0.
+        # Use a consistent 0–100% sampled-corridor area proxy throughout the
+        # timeline, peak selection, and the 5% foreground cutoff.
+        absolute_area_pct=frac*target_cloud_cover_pct if active else 0.0
+        point['tintable_cloud_area']=round(absolute_area_pct,6)
         dominant=row.get('dominant') if row else None
         # Passive diagnostics: trace which target cloud supplied the minute's
         # hue. Does not change probability, tint area, or RGB computation.
@@ -165,7 +183,8 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
         # ONLY; do not modify the official ratio, probability, scale or peak.
         # The strict per-target minute evidence is already included in row.fraction.
         point['strict_light_window']=bool(active and frac > 1e-8)
-        point['colored_cloud_area_pct']=round(100.0 * frac, 3) if active else 0.0
+        point['colored_cloud_area_pct']=round(absolute_area_pct,3)
+        point['illuminated_target_fraction_pct']=round(100.0*frac,3) if active else 0.0
         point['major_coloration_valid']=bool(point['strict_light_window'] and
                                               point['colored_cloud_area_pct'] >= 5.0)
         point['local_cloud_illumination_fraction']=round(frac,6)
@@ -181,6 +200,9 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
             point['geometry_valid']=False
             point['brightness']=0.
             point['tintable_cloud_area']=0.
+            point['colored_cloud_area_pct']=0.0
+            point['major_coloration_valid']=False
+            point['strict_light_window']=False
     peak_b=max((p['brightness'] for p in original),default=0.)
     for point in original:
         point['relative_brightness']=round(100*point['brightness']/peak_b,1) if peak_b else 0.
@@ -196,8 +218,8 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
     curve['raw_peak_brightness']=round(peak_b,1)
     curve['geometry_gate_diagnostic']={'mode':'continuous_local_target_faces',
         'target_count':illumination['target_count'],'potential_range_km':illumination['potential_km'],
-        'peak_fraction':peak_fraction,'strict_peak':max(p['strict_fraction'] for p in illumination['times']),
+        'peak_fraction':peak_fraction,'target_cover_pct':round(target_cloud_cover_pct,3),'peak_colored_area_pct':round(max((p.get('colored_cloud_area_pct',0.) for p in original),default=0.),3),'strict_peak':max(p['strict_fraction'] for p in illumination['times']),
         'possible_peak':max(p['possible_fraction'] for p in illumination['times']),
         'caveat':illumination['caveat']}
-    curve['note']='球面连续目标云面解析光路；无部分云量透射；颜色由主导显色云太阳高度角及大气通透度决定，纵轴为亮度指数。'
+    curve['note']='球面连续目标云面解析光路；无部分云量透射；颜色由主导显色云太阳高度角及大气通透度决定，纵轴为严格受光的采样云面积代理（不是受光云占比）。'
     return curve

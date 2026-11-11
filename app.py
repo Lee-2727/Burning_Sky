@@ -156,6 +156,7 @@ st.markdown("""<style>
 }
 </style>""", unsafe_allow_html=True)
 with st.sidebar:
+    st.page_link('pages/1_Advanced_Analysis.py', label='卫星实况 · 进阶分析', icon='🛰️', use_container_width=True)
     if st.button("未来多日概览", use_container_width=True, key="open_multi_day_overview"):
         st.session_state["show_multi_day_overview"] = True
         st.session_state["show_manual_overview"] = False
