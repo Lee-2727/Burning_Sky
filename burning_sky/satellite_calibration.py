@@ -6,7 +6,7 @@ spatial edits to the existing single-result forecasting pipeline.
 """
 import math
 from dataclasses import dataclass
-from PIL import Image, ImageTk
+from PIL import Image
 from .spherical_raytrace import destination
 
 # City coordinates are only navigation control points, not a dated forecast.
@@ -226,6 +226,7 @@ def compare_samples(im, landmarks, cloud_rgb, warm_rgb, result, band_rgb=None):
 def launch(parent, result, direction, on_apply):
     import tkinter as tk
     from tkinter import ttk, filedialog, messagebox
+    from PIL import ImageTk
     if not result:messagebox.showinfo('卫星校准','请先完成当前方向单次查询。');return
     if not result.get('samples'):messagebox.showinfo('卫星校准','当前结果缺少距离采样。');return
     win=tk.Toplevel(parent)
