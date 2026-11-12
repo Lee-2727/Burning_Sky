@@ -31,80 +31,160 @@ CITIES.update({k:v for k,v in EXTRA_CITIES.items() if k not in CITIES})
 
 
 def _city_of(s):
-    name=''.join(ch for ch in str(s).strip() if '\u4e00' <= ch <= '\u9fff')
-    for suffix in ('自治州','地区','市','县','区'):
-        if name.endswith(suffix): name=name[:-len(suffix)]
-    return name if name in CITIES else None
+    """Recognize OCR labels; never invent an unseen city from a fuzzy match."""
+    import unicodedata
+    import difflib
+    name=unicodedata.normalize('NFKC',str(s or '')).strip()
+    name=name.replace('巿','市').replace('柿','市').replace('巾','市')
+    name=''.join(ch for ch in name if '\u4e00' <= ch <= '\u9fff')
+    for suffix in ('壮族自治区','回族自治区','自治州','地区','自治县','市','县'):
+        if name.endswith(suffix):name=name[:-len(suffix)]
+    if name in CITIES:return name, 'exact'
+    # OCR often replaces one glyph in a 3+ CJK-character label. This is only
+    # admitted if unique and later confirmed by map geometry.
+    if len(name)>=3:
+        options=[city for city in CITIES if len(city)>=3 and abs(len(city)-len(name))<=1]
+        near=difflib.get_close_matches(name,options,n=2,cutoff=.78)
+        if len(near)==1:return near[0], 'fuzzy'
+    return None, None
 
 
-def _fit_best(marks):
-    """Fit once, drop at most 2 worst OCR outliers when >=5 found.
+def _ocr_variant(image,kind):
+    view=image.convert('RGB')
+    w,h=view.size
+    scale=min(2.4,max(1.0,2100/max(w,1)))
+    if scale!=1:view=view.resize((round(w*scale),round(h*scale)),Image.Resampling.LANCZOS)
+    if kind=='contrast':
+        view=ImageEnhance.Contrast(view).enhance(1.6)
+    else:
+        # A second image variant recovers pale labels on busy cloud backgrounds.
+        view=ImageEnhance.Sharpness(view).enhance(1.5)
+        view=ImageEnhance.Contrast(view.convert('L')).enhance(2.0)
+    return view,scale
 
-    Label text center has nonzero offset from true city marker and this method
-    reports that uncertainty explicitly. Do not silently assert precision.
-    """
-    current=list(marks)
-    for _ in range(3):
-        if len(current)<3: return current,None
-        try:
-            _,q=_fit_affine([(x['city'],x['x'],x['y']) for x in current])
-        except Exception: return current,None
-        errors=q['errors_px']
-        if len(current)<=4 or max(errors)<21:break
-        idx=max(range(len(errors)), key=lambda i: errors[i])
-        current.pop(idx)
+
+def _read_ocr(image,kind):
+    view,scale=_ocr_variant(image,kind)
+    data=io.BytesIO();view.save(data,format='PNG')
     try:
-        _,q=_fit_affine([(x['city'],x['x'],x['y']) for x in current])
-    except Exception:return current,None
-    return current,q
+        p=subprocess.run(['tesseract','stdin','stdout','-l','chi_sim+eng',
+                          '--psm','11','tsv'],input=data.getvalue(),
+                         capture_output=True,timeout=24,check=False)
+    except (OSError,subprocess.TimeoutExpired):return [],'执行超时'
+    if p.returncode:return [],'中文OCR语言包不可用'
+    rows=list(csv.DictReader(io.StringIO(p.stdout.decode('utf-8','replace')),delimiter='\t'))
+    # Group neighbouring OCR tokens that belong to one line, restoring
+    # split labels like "桂林" + "市" and "广" + "州" + "市".
+    units=[]
+    for r in rows:
+        try:
+            if float(r['conf'])<15:continue
+            x,y,ww,hh=(float(r[q])/scale for q in ('left','top','width','height'))
+            units.append({'text':r['text'],'x':x,'y':y,'w':ww,'h':hh,
+                          'conf':float(r['conf']), 'line':(r['block_num'],r['par_num'],r['line_num'])})
+        except (KeyError,ValueError):continue
+    variants=[]
+    for u in units:
+        variants.append(u)
+    byline={}
+    for u in units:byline.setdefault(u['line'],[]).append(u)
+    for group in byline.values():
+        group.sort(key=lambda q:q['x'])
+        for i in range(len(group)):
+            for n in (2,3):
+                part=group[i:i+n]
+                if len(part)!=n:continue
+                if any((part[j+1]['x']-(part[j]['x']+part[j]['w']))>max(15,part[j]['h']*.9)
+                       for j in range(n-1)):continue
+                variants.append({'text':''.join(u['text'] for u in part),
+                                 'x':part[0]['x'],'y':min(u['y'] for u in part),
+                                 'w':part[-1]['x']+part[-1]['w']-part[0]['x'],
+                                 'h':max(u['y']+u['h'] for u in part)-min(u['y'] for u in part),
+                                 'conf':min(u['conf'] for u in part)})
+    return variants,None
+
+
+def _geometric_consensus(candidates, image_size):
+    """Spatial consistency filtering with affine pixel-vs-Mercator geometry.
+
+    Exhaustively seed three geographically separated landmarks (bounded to a
+    small top-confidence set) and keep inliers with <= adaptive residual.
+    Requires at least four inliers for automatic acceptance, while three may
+    still be displayed as an unconfirmed draft for a one-tap correction.
+    """
+    from .satellite_calibration import _merc
+    from itertools import combinations
+    pts=list(candidates)
+    if len(pts)<3:return pts,None
+    cap=min(15,len(pts))
+    pool=sorted(pts,key=lambda m:m['confidence'],reverse=True)[:cap]
+    best=None
+    threshold=max(24, min(image_size)*.032)
+    for trio in combinations(pool,3):
+        try:
+            tf,q=_fit_affine([(p['city'],p['x'],p['y']) for p in trio])
+        except Exception:continue
+        # Three almost collinear points give unstable affine extrapolation.
+        x1,y1=trio[0]['x'],trio[0]['y']
+        x2,y2=trio[1]['x'],trio[1]['y']
+        x3,y3=trio[2]['x'],trio[2]['y']
+        area=abs((x2-x1)*(y3-y1)-(x3-x1)*(y2-y1))/2
+        if area<image_size[0]*image_size[1]*.002:continue
+        inliers=[]
+        for p in pts:
+            px,py=tf(*CITIES[p['city']])
+            if math.hypot(px-p['x'],py-p['y'])<=threshold:inliers.append(p)
+        # Fitted residual is NOT independent validation, just geometric agreement.
+        if len(inliers)<3:continue
+        quality=sum(p['confidence'] for p in inliers)
+        value=(len(inliers),round(quality,1))
+        if best is None or value>best[0]:best=(value,inliers)
+    if best:
+        current=best[1]
+        try:
+            _,q=_fit_affine([(p['city'],p['x'],p['y']) for p in current])
+        except Exception:q=None
+        return current,q
+    return [],None
 
 
 def recognize_cities(image:Image.Image):
-    """Run ONE tesseract OCR pass per upload, return validated suggestions.
-
-    Requires tesseract + chi_sim data. Missing dependency becomes explicit
-    warning; web UI remains usable with manual landmarks.
-    """
+    """OCR + spatial consistency; output always needs user visual review."""
     if not shutil.which('tesseract'):
         return {'status':'unavailable','message':'服务器未安装Tesseract OCR，仍可手动校准。','landmarks':[]}
     w,h=image.size
-    scale=min(2.0, 2200/max(w,1))
-    if scale<1: scale=1.0
-    view=image.convert('RGB')
-    if scale!=1: view=view.resize((round(w*scale),round(h*scale)),Image.Resampling.LANCZOS)
-    view=ImageEnhance.Contrast(view).enhance(1.45)
-    buf=io.BytesIO();view.save(buf,format='PNG')
-    try:
-        # stdin/stdout: no temporary screenshot written to persistent web disk.
-        p=subprocess.run(['tesseract','stdin','stdout','-l','chi_sim+eng','--psm','11','tsv'],
-                         input=buf.getvalue(),capture_output=True,timeout=22,check=False)
-    except (OSError,subprocess.TimeoutExpired):
-        return {'status':'error','message':'OCR执行超时或失败，可使用手动校准。','landmarks':[]}
-    if p.returncode:
-        return {'status':'unavailable','message':'OCR中文语言包不可用；请确认tesseract-ocr-chi-sim已安装。','landmarks':[]}
-    lines=list(csv.DictReader(io.StringIO(p.stdout.decode('utf-8','replace')),delimiter='\t'))
     picks={}
-    for row in lines:
-        city=_city_of(row.get('text',''))
-        if not city:continue
-        try:
-            confidence=float(row['conf']); x=float(row['left']);y=float(row['top']);
-            tw=float(row['width']);th=float(row['height'])
-        except (ValueError,KeyError):continue
-        if confidence<40:continue
-        px=(x+tw/2)/scale;py=(y+th/2)/scale
-        # omit controls at top/bottom, but do not assume every image is a phone screenshot.
-        if not (0<=px<w and .025*h<=py<.93*h):continue
-        candidate={'city':city,'x':round(px,1),'y':round(py,1),'confidence':round(confidence,1)}
-        if city not in picks or confidence>picks[city]['confidence']:picks[city]=candidate
-    selected,quality=_fit_best(list(picks.values()))
-    reliable=bool(quality and len(selected)>=4 and quality['rms_px']<=18 and quality['max_px']<=30)
-    # NOTE: OCR label center is offset from actual geo marker even if RMS small.
+    errors=[]
+    for kind in ('contrast','grayscale'):
+        rows,error=_read_ocr(image,kind)
+        if error:errors.append(error)
+        for r in rows:
+            city,match=_city_of(r.get('text'))
+            if not city:continue
+            x=r['x']+r['w']/2; y=r['y']+r['h']/2
+            if not (.01*w<x<.99*w and .10*h<y<.90*h):continue
+            conf=float(r['conf'])
+            if match=='fuzzy':conf-=17
+            if conf<25:continue
+            cand={'city':city,'x':round(x,1),'y':round(y,1),
+                  'confidence':round(conf,1),'recognition':match}
+            if city not in picks or conf>picks[city]['confidence']:
+                picks[city]=cand
+        # Most screenshots succeed in first pass; avoid duplicate OCR cost.
+        if len(picks)>=6:break
+    selected,quality=_geometric_consensus(list(picks.values()),(w,h))
+    if not selected and len(picks)<4:
+        selected,quality=_fit_best(list(picks.values()))
+    reliable=bool(quality and len(selected)>=4 and
+                  quality['rms_px']<=max(18,min(w,h)*.025) and
+                  quality['max_px']<=max(30,min(w,h)*.045))
+    message=('已识别城市并通过空间位置一致性检查，仍请检查预览标记。'
+             if reliable else '已找到一些城市文字，但自动地理配准尚未可靠通过；请核对或补充地标。')
     return {'status':'review' if selected else 'no_cities',
-            'message':('已自动发现城市标签；请核对图中标记，确认后才能用于云图修正。' if selected
-                       else '没有找到足够可信的中文城市地标，请手动标定。'),
+            'message':message if selected else ('OCR地标不足或空间关系冲突；请人工补充。 '+','.join(errors)),
             'landmarks':selected,'quality':quality,'registration_candidate':reliable,
-            'candidates_total':len(picks)}
+            'candidates_total':len(picks),
+            'all_candidate_cities':[v['city'] for v in picks.values()]}
 
 
 def auto_cloud_references(image:Image.Image):
