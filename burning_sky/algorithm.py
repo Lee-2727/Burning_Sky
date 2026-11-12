@@ -1443,6 +1443,10 @@ def apply_path_score_pair(inferred, geometry, boundaries, samples=None):
     profile_base_agl = local.get("cloud_base_agl_km") if local else None
     profile_based = bool(local and "剖面" in str(local.get("base_source", "")))
 
+    # Record the un-zeroed cloud/geometry score for the late, strictly lit
+    # low-cloud-overburn exception. Never restore a score if ray validation fails.
+    inferred['pre_low_gate_regular_score'] = int(round(max(0, min(100, regular))))
+    inferred['pre_low_gate_upper_score'] = int(round(max(0, min(100, upper))))
     verdict_override = None
     new_rule_notes = []
     if profile_based and isinstance(profile_base_agl, (int, float)) and profile_base_agl < 0.5:
@@ -1624,6 +1628,52 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
     upper = inferred.get("upper_score")
     if isinstance(upper, (int, float)):
         inferred["upper_score"] = int(round(max(score, min(100, float(upper)))))
+    return inferred
+
+
+
+def apply_low_cloud_overburn_exception(inferred, tintable_ratio,
+                                       strict_path_verified=False,
+                                       complete_no_local_path=False):
+    """Restore strictly illuminated high-cloud chance after a local low-cloud hard gate.
+
+    This exception only removes the *local low-cloud/cloud-base zero*.  It must
+    never overturn a separate strict geometric no-path conclusion. The ratio
+    and low-cloud amount are both percentages, not fractions.
+    """
+    inferred = inferred if isinstance(inferred, dict) else dict(inferred or {})
+    diag = inferred.get('special_rule_diagnostics') or {}
+    local_low = diag.get('local_low_cloud_pct')
+    low_rule = inferred.get('verdict_rule')
+    hard_local_gate = low_rule in ('profile_cloud_base_below_500m',
+                                   'local_low_cloud_at_least_90pct')
+    qualified = (hard_local_gate and bool(strict_path_verified)
+                 and not complete_no_local_path
+                 and isinstance(tintable_ratio, (int, float))
+                 and math.isfinite(float(tintable_ratio))
+                 and isinstance(local_low, (int, float))
+                 and math.isfinite(float(local_low))
+                 and float(tintable_ratio) > 0.5 * float(local_low)
+                 and float(tintable_ratio) > 0)
+    inferred['low_cloud_overburn'] = False
+    inferred['low_cloud_overburn_threshold_pct'] = (
+        round(float(local_low)*0.5, 2)
+        if isinstance(local_low, (int, float)) and math.isfinite(float(local_low))
+        else None)
+    if not qualified:
+        return inferred
+    baseline = inferred.get('pre_low_gate_regular_score')
+    if not isinstance(baseline, (int,float)) or not math.isfinite(float(baseline)) or baseline <= 0:
+        return inferred
+    preserved = int(round(max(0., min(100., float(baseline)))))
+    inferred['regular_score'] = inferred['score'] = preserved
+    inferred['upper_score'] = max(preserved, int(inferred.get('upper_score') or 0))
+    inferred['verdict_override'] = None
+    inferred['verdict_rule'] = 'strictly_lit_cloud_above_local_low_cloud'
+    inferred['low_cloud_overburn'] = True
+    inferred.setdefault('score_notes', []).append(
+        f'低云上烧：受光云占比{float(tintable_ratio):.1f}% > 本地低云{float(local_low):.1f}% × 0.5；'
+        '解除云底/本地低云硬归零，地面可见性仍受低云影响。')
     return inferred
 
 
@@ -2051,7 +2101,7 @@ __all__ = [
     "apply_high_elevation_nearby_low_cloud_filter", "estimate_cloud_base_from_profile",
     "analyze_cloud_base_geometry", "estimate_path_cloud_boundaries", "infer_from_cloud_path",
     "analyze", "aod_score_penalties", "aod_color_quality_factor", "adjust_color_for_aod",
-    "apply_peak_cloud_color", "apply_path_score_pair", "enforce_single_mode_special_verdicts", "calculate_color_performance_score",
+    "apply_peak_cloud_color", "apply_path_score_pair", "apply_low_cloud_overburn_exception", "enforce_single_mode_special_verdicts", "calculate_color_performance_score",
     "has_local_low_cloud_above_ground", "apply_low_cloud_screen_constraint",
     "apply_extended_gap_scan_modifier",
     "staged_cloud_hole_search",

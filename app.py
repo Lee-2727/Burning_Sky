@@ -1236,7 +1236,7 @@ if results:
             burn_label, burn_index = _burn_label(inferred, result.get("summary", ""))
             regular_label = _probability_label(regular_score)
             color_class = _color_label(color_score)
-            burn_text = burn_label
+            burn_text = inferred.get('burn_summary_label') or burn_label
             color_palette = {"平平无奇": "#e2c76a", "普通": "#c99b24", "绚烂": "#e67e22", "史诗": "#d62828", "世纪": "#9d174d"}
             color_hex = color_palette.get(color_class, "#4b5563")
             special_verdict = inferred.get("verdict_override")

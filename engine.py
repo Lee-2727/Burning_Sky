@@ -2358,6 +2358,11 @@ class FireCloudApp(tk.Tk):
                     tintable_ratio = 0.0
                     tintable_text = '约 0%'
                     inferred['tintable_ratio_diagnostic'] = _scale_zero_reason
+                inferred = apply_low_cloud_overburn_exception(
+                    inferred, tintable_ratio,
+                    strict_path_verified=bool(_primary_path_verified),
+                    complete_no_local_path=bool(_complete_no_local_path))
+                _low_pct = (inferred.get('special_rule_diagnostics') or {}).get('local_low_cloud_pct')
                 burn_scale_index, burn_scale_label = (None, '暂不可估') if tintable_ratio is None else calculate_burn_scale(local_cover, 0.0, tintable_ratio)
                 # 视野内低云提示仍保留原几何可见距离定义，不参与规模计算。
                 visible_cover = visible_cloud_coverage(samples)
@@ -2366,6 +2371,8 @@ class FireCloudApp(tk.Tk):
                 inferred['potential_range_mid_high_pct'] = round(local_cover, 2)
                 inferred["burn_scale_index"] = burn_scale_index
                 inferred["burn_scale_label"] = burn_scale_label
+                inferred['burn_summary_label'] = ('低云上烧' if inferred.get('low_cloud_overburn') and
+                     isinstance(burn_scale_index,(int,float)) and burn_scale_index > 0 else burn_scale_label)
                 inferred["tintable_ratio"] = tintable_ratio
                 # Different quantities: share of clouds illuminated vs share
                 # of the sampled corridor actually covered by lit clouds.
@@ -2373,6 +2380,9 @@ class FireCloudApp(tk.Tk):
                 inferred["satellite_corrected_cloud_cover_pct"] = round(local_cover,2)
                 inferred["satellite_correction_active"] = bool(_manual_overrides)
                 special_summary_line = (f"\n特殊判定：{inferred.get('verdict_override')}" if inferred.get("verdict_override") else "")
+                if inferred.get('low_cloud_overburn'):
+                    special_summary_line = (f"\n一句话总结：{inferred['regular_score']}%常规概率，低云上烧；"
+                                            f"可染色云占比{tintable_ratio}% > 本地低云{_low_pct:.0f}%的一半。")
                 # Color score uses the bounded local cloud resource.
                 potential_limit = boundaries.get("fire_cloud_range_km")
                 if potential_limit is not None:
@@ -2588,7 +2598,7 @@ class FireCloudApp(tk.Tk):
                 if not _verdict and isinstance(_scale, (int,float)) and _scale <= 0:
                     _verdict = '不烧'
                 self._set_judgment_text(getattr(self, f"{prefix}_judgment_label"), regular_score, color_score,
-                                         _verdict or inferred_result.get("burn_scale_label"))
+                                         _verdict or inferred_result.get('burn_summary_label') or inferred_result.get("burn_scale_label"))
                 rainbow = result.get("rainbow", {})
                 getattr(self, f"{prefix}_rainbow_label").configure(
                     text=self._rainbow_indicator_text(rainbow, result.get("event_dt"), direction_key))
