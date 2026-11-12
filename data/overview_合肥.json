@@ -5,10 +5,10 @@
   "longitude": 117.2272,
   "elevation_m": 30.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": "2026-11-12 16:57:45 CST",
+  "updated_at": "2026-11-12 21:00:47 CST",
   "direction_updated_at": {
-    "morning": "2026-11-12 16:57:45 CST",
-    "evening": "2026-11-12 16:57:45 CST"
+    "morning": "2026-11-12 21:00:47 CST",
+    "evening": "2026-11-12 21:00:47 CST"
   },
   "days": [
     {
@@ -28,7 +28,7 @@
         "GFS Global": {
           "probability": 0.0,
           "color_score": 1.0,
-          "burn_scale": 2.2,
+          "burn_scale": 0.2,
           "local_mid_cloud": 100.0,
           "local_high_layer_cloud": 100.0,
           "local_high_cloud": 100.0,
@@ -90,13 +90,13 @@
       },
       "evening": {
         "ECMWF IFS 0.25°": {
-          "probability": 42.0,
-          "color_score": 17.0,
+          "probability": 41.0,
+          "color_score": 11.0,
           "burn_scale": 3.8,
           "local_mid_cloud": 70.55555555555556,
           "local_high_layer_cloud": 100.0,
           "local_high_cloud": 100.0,
-          "fire_score_no_color": 1.6,
+          "fire_score_no_color": 1.56,
           "burn_scale_label": "微烧",
           "event_time": "2026-11-13T17:12:58.078919"
         },
@@ -131,9 +131,9 @@
           "probability": 0.0,
           "color_score": 0.0,
           "burn_scale": 0.0,
-          "local_mid_cloud": 85.55555555555556,
-          "local_high_layer_cloud": 9.88888888888889,
-          "local_high_cloud": 95.44444444444444,
+          "local_mid_cloud": 80.77777777777777,
+          "local_high_layer_cloud": 0.0,
+          "local_high_cloud": 80.77777777777777,
           "fire_score_no_color": 0.0,
           "burn_scale_label": "不烧",
           "event_time": "2026-11-14T06:38:08.653628"
@@ -155,9 +155,9 @@
           "probability": 0.0,
           "color_score": 0.0,
           "burn_scale": 0.0,
-          "local_mid_cloud": 0.0,
+          "local_mid_cloud": 3.3333333333333335,
           "local_high_layer_cloud": 0.0,
-          "local_high_cloud": 0.0,
+          "local_high_cloud": 3.3333333333333335,
           "fire_score_no_color": 0.0,
           "burn_scale_label": "不烧",
           "event_time": "2026-11-14T17:12:23.450370"
