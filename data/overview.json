@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_at": "2026-11-12T08:59:16+08:00",
+  "updated_at": "2026-11-12T12:55:24+08:00",
   "cities": {
     "合肥": {
       "schema_version": 2,
@@ -9,10 +9,10 @@
       "longitude": 117.2272,
       "elevation_m": 30.0,
       "timezone": "Asia/Shanghai",
-      "updated_at": "2026-11-12 08:59:16 CST",
+      "updated_at": "2026-11-12 12:55:24 CST",
       "direction_updated_at": {
-        "morning": "2026-11-12 08:59:16 CST",
-        "evening": "2026-11-12 08:59:16 CST"
+        "morning": "2026-11-12 12:55:24 CST",
+        "evening": "2026-11-12 12:55:24 CST"
       },
       "days": [
         {
@@ -20,13 +20,13 @@
           "morning": {
             "ECMWF IFS 0.25°": {
               "probability": 43.0,
-              "color_score": 20.0,
-              "burn_scale": 0.0,
-              "local_mid_cloud": 82.44444444444444,
+              "color_score": 18.0,
+              "burn_scale": 2.0,
+              "local_mid_cloud": 91.88888888888889,
               "local_high_layer_cloud": 100.0,
               "local_high_cloud": 100.0,
-              "fire_score_no_color": 0.0,
-              "burn_scale_label": "不烧",
+              "fire_score_no_color": 0.86,
+              "burn_scale_label": "微烧",
               "event_time": "2026-11-12T06:36:23.644298"
             },
             "GFS Global": {
@@ -46,7 +46,7 @@
               "probability": 10.0,
               "color_score": 0.0,
               "burn_scale": 0.0,
-              "local_mid_cloud": 72.88888888888889,
+              "local_mid_cloud": 100.0,
               "local_high_layer_cloud": 100.0,
               "local_high_cloud": 100.0,
               "fire_score_no_color": 0.0,
@@ -73,8 +73,8 @@
               "probability": 0.0,
               "color_score": 0.0,
               "burn_scale": 0.0,
-              "local_mid_cloud": 44.55555555555556,
-              "local_high_layer_cloud": 87.55555555555556,
+              "local_mid_cloud": 21.0,
+              "local_high_layer_cloud": 95.44444444444444,
               "local_high_cloud": 100.0,
               "fire_score_no_color": 0.0,
               "burn_scale_label": "不烧",
@@ -96,11 +96,11 @@
             "ECMWF IFS 0.25°": {
               "probability": 43.0,
               "color_score": 17.0,
-              "burn_scale": 0.9,
-              "local_mid_cloud": 91.88888888888889,
-              "local_high_layer_cloud": 94.55555555555556,
+              "burn_scale": 0.5,
+              "local_mid_cloud": 86.88888888888889,
+              "local_high_layer_cloud": 99.55555555555556,
               "local_high_cloud": 100.0,
-              "fire_score_no_color": 0.39,
+              "fire_score_no_color": 0.21,
               "burn_scale_label": "微烧",
               "event_time": "2026-11-13T17:12:58.078919"
             },
@@ -124,9 +124,9 @@
               "probability": 0.0,
               "color_score": 0.0,
               "burn_scale": 0.0,
-              "local_mid_cloud": 78.55555555555556,
-              "local_high_layer_cloud": 32.333333333333336,
-              "local_high_cloud": 100.0,
+              "local_mid_cloud": 74.66666666666667,
+              "local_high_layer_cloud": 17.11111111111111,
+              "local_high_cloud": 91.77777777777779,
               "fire_score_no_color": 0.0,
               "burn_scale_label": "不烧",
               "event_time": "2026-11-14T06:38:08.653628"
@@ -145,12 +145,12 @@
           },
           "evening": {
             "ECMWF IFS 0.25°": {
-              "probability": 10.0,
+              "probability": 0.0,
               "color_score": 0.0,
               "burn_scale": 0.0,
-              "local_mid_cloud": 45.22222222222222,
-              "local_high_layer_cloud": 34.888888888888886,
-              "local_high_cloud": 80.11111111111111,
+              "local_mid_cloud": 27.77777777777778,
+              "local_high_layer_cloud": 8.88888888888889,
+              "local_high_cloud": 36.66666666666667,
               "fire_score_no_color": 0.0,
               "burn_scale_label": "不烧",
               "event_time": "2026-11-14T17:12:23.450370"
