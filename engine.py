@@ -372,7 +372,7 @@ def _request_json_impl(req, timeout=20, retries=3, cache_key=None, cache_ttl=Non
                     except Exception:
                         pass
                     extra = (f"\n接口说明：{reason}" if reason else (f"\n接口返回：{body[:300]}" if body else ""))
-                    raise RuntimeError("Open-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请暂停查询 10–20 分钟后再试。" + extra) from exc
+                    raise RuntimeError("Open-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请根据页面显示的冷却剩余时间再试；429可能涉及分钟额度或数据量额度。" + extra) from exc
                 # 5xx 多为服务端临时不可用；少量退避重试，不对 429 重试，避免加重限流。
                 if exc.code in (500, 502, 503, 504) and attempt < max(0, retries):
                     retry_after = exc.headers.get("Retry-After") if exc.headers else None

@@ -30,6 +30,7 @@ from burning_sky.satellite_auto_vision import recognize_cities, auto_cloud_refer
 from burning_sky.spherical_raytrace import destination
 from burning_sky.web_color_curve import draw_dynamic_color_curve
 from burning_sky.profile_image import render_profile
+from burning_sky.api_rate_limit import set_request_profile, reset_request_profile, cooldown_remaining
 
 st.set_page_config(page_title='进阶分析 | Burning Sky',page_icon='🛰️',layout='wide')
 password = os.getenv('APP_PASSWORD','')
@@ -115,6 +116,7 @@ def _compute(config,direction,cache=None,overrides=None,extra=None, saved_rainbo
     if extra:context['satellite_extra_distances']=extra
     if overrides:context['satellite_recompute']=True
     if saved_rainbow:context['saved_rainbow']=saved_rainbow
+    token=set_request_profile("satellite_advanced")
     try:
         engine._CASE_REQUEST_CONTEXT=context
         engine.messagebox.last_error=None
@@ -123,7 +125,9 @@ def _compute(config,direction,cache=None,overrides=None,extra=None, saved_rainbo
         result=r.direction_results.get(direction)
         if not result or not result.get('inferred'):raise RuntimeError('分析没有返回完整结果')
         return result,request_cache
-    finally:engine._CASE_REQUEST_CONTEXT=prior
+    finally:
+        engine._CASE_REQUEST_CONTEXT=prior
+        reset_request_profile(token)
 
 def _fig(result,direction):
     curve=result.get('dynamic_light_curve') or {}
@@ -221,12 +225,17 @@ with st.sidebar:
 config={'place':place,'lat':lat,'lon':lon,'elev':elev,'date':day.isoformat(),'model':model,'direction':direction}
 ident=_key(place,lat,lon,elev,day.isoformat(),model,direction)
 base_key=ident+'_base'; corrected_key=ident+'_corrected'
+partial_key=ident+'_supplement_cache'
 base=_load(base_key); corrected=_load(corrected_key)
+remaining=cooldown_remaining()
+if remaining:
+    st.warning(f'Open-Meteo 冷却中，约剩余 {remaining} 秒。已保存的预测仍可查看；期间不要重复点击重算。')
+st.caption('卫星进阶查询使用专用慢速档：真实HTTP请求至少间隔8秒，最多每分钟7次。缓存命中不占额度；遇到429时暂停，保留成功补采。')
 
 col1,col2,col3=st.columns([1,1,2])
-run_new=col1.button('计算/覆盖基础单次',type='primary',use_container_width=True)
+run_new=col1.button('计算/覆盖基础单次',type='primary',use_container_width=True,disabled=remaining>0)
 if col2.button('删除当前进阶缓存',use_container_width=True):
-    for key in (base_key,corrected_key):
+    for key in (base_key,corrected_key,partial_key):
         (CACHE/f'{key}.json').unlink(missing_ok=True)
     (CACHE/f'{corrected_key}.jpg').unlink(missing_ok=True)
     st.rerun()
@@ -240,6 +249,7 @@ if run_new:
         payload={'config':config,'result':result,'request_cache':cache,'saved_at':datetime.now().isoformat()}
         _write(base_key,payload)
         (CACHE/f'{corrected_key}.json').unlink(missing_ok=True)
+        (CACHE/f'{partial_key}.json').unlink(missing_ok=True)
         st.rerun()
     except Exception as exc:st.error('单次计算失败：'+str(exc))
 
@@ -384,7 +394,7 @@ if base:
                     edited=st.data_editor(edits_df,hide_index=True,use_container_width=True,key='adv_high_edits_'+ident,
                              disabled=['distance_km','建议高云%','置信度','类型'])
                 else:edited=edits_df
-                if st.button('确认修正并更新完整单次结果',type='primary',disabled=edited.empty):
+                if st.button('确认修正并更新完整单次结果',type='primary',disabled=edited.empty or remaining>0):
                     try:
                         segments=[];extra=[]
                         # Non-overlapping 9.6-km intervals around distinct 10-km candidate positions.
@@ -410,10 +420,25 @@ if base:
                         for i in range(1,len(segments)):
                             if segments[i][0]<segments[i-1][1]:
                                 raise ValueError('新旧校准区域存在重叠，请先清空进阶修正后重新选择。')
-                        with st.spinner('正在复用基础请求、必要时联网补采，并完整重算当前方向…'):
-                            new_result,updated_cache=_compute(config,direction,cache=copy.deepcopy(base['request_cache']),
-                                    overrides=segments,extra=sorted(set(round(x,2) for x in extra))[:60],
-                                    saved_rainbow=base['result'].get('rainbow'))
+                        # Save newly downloaded request batches even if a later
+                        # request hits HTTP 429. Never promote a partial result.
+                        attempt_cache=copy.deepcopy(base.get('request_cache') or {})
+                        if corrected:
+                            attempt_cache.update(corrected.get('request_cache') or {})
+                        checkpoint=_load(partial_key)
+                        if checkpoint and checkpoint.get('config')==config:
+                            attempt_cache.update(checkpoint.get('request_cache') or {})
+                        try:
+                            with st.spinner('慢速补采中：每次真实HTTP请求至少间隔8秒；失败会保存已完成数据…'):
+                                new_result,updated_cache=_compute(config,direction,cache=attempt_cache,
+                                        overrides=segments,extra=sorted(set(round(x,2) for x in extra))[:60],
+                                        saved_rainbow=base['result'].get('rainbow'))
+                        except Exception:
+                            if attempt_cache:
+                                _write(partial_key,{'config':config,'request_cache':attempt_cache,
+                                                    'saved_at':datetime.now().isoformat()})
+                            raise
+                        (CACHE/f'{partial_key}.json').unlink(missing_ok=True)
                         _write(corrected_key,{'config':config,'result':new_result,'request_cache':updated_cache,
                             'edits':segments,'observation_time':obs,'saved_at':datetime.now().isoformat(),
                             'registration_quality':quality,'satellite_screenshot':f'{corrected_key}.jpg'})
