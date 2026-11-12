@@ -430,12 +430,25 @@ def request_json(req, timeout=20, retries=3, cache_key=None, cache_ttl=None):
             return cache[url]
     # Reuse previously captured exact URL payloads, including sunshine-path samples.
     if context and context.get('mode')=='capture' and url in context.get('cache',{}):
+        observer=context.get('progress_observer')
+        if observer:
+            observer('cache_hit', {'url':url})
         return context['cache'][url]
-    payload = _request_json_impl(req, timeout=timeout, retries=retries, cache_key=cache_key, cache_ttl=cache_ttl)
+    observer=context.get('progress_observer') if context else None
+    if observer:
+        observer('request_start', {'url':url})
+    try:
+        payload = _request_json_impl(req, timeout=timeout, retries=retries, cache_key=cache_key, cache_ttl=cache_ttl)
+    except Exception as exc:
+        if observer:
+            observer('request_failed', {'url':url, 'error':str(exc)[:300]})
+        raise
     with _CASE_REQUEST_CONTEXT_LOCK:
         context = _CASE_REQUEST_CONTEXT
         if context and context.get("mode") == "capture":
             context.setdefault("cache", {})[url] = payload
+    if observer:
+        observer('request_completed', {'url':url})
     return payload
 
 
@@ -2753,6 +2766,11 @@ class FireCloudApp(tk.Tk):
         batch_size = 70
         for start in range(0, len(coords), batch_size):
             batch = coords[start:start + batch_size]
+            observer=(_CASE_REQUEST_CONTEXT or {}).get('progress_observer')
+            if observer:
+                observer('batch_start', {'batch_number':start//batch_size+1,
+                    'batch_total':(len(coords)+batch_size-1)//batch_size,
+                    'points_completed':start, 'points_total':len(coords)})
             params = {
                 "latitude": ",".join(f"{x[0]:.5f}" for x in batch),
                 "longitude": ",".join(f"{x[1]:.5f}" for x in batch),
@@ -2767,6 +2785,10 @@ class FireCloudApp(tk.Tk):
             if len(locations) != len(batch):
                 raise ValueError(f"天气接口返回 {len(locations)} 个位置，预期 {len(batch)} 个。")
             all_locations.extend(locations)
+            if observer:
+                observer('batch_completed', {'batch_number':start//batch_size+1,
+                    'batch_total':(len(coords)+batch_size-1)//batch_size,
+                    'points_completed':len(all_locations),'points_total':len(coords)})
         return all_locations
 
 

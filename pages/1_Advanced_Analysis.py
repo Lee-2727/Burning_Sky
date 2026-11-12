@@ -81,7 +81,10 @@ class _V:
 class _Label:
     def configure(self,**kwargs):pass
 class Runner(engine.FireCloudApp):
-    def _set_main_progress(self,*args,**kwargs):pass
+    def _set_main_progress(self, percent, status=None):
+        reporter=getattr(self,'_adv_progress_reporter',None)
+        if reporter:
+            reporter('stage', {'percent':percent,'message':status or '计算中'})
     def _set_text(self,*args,**kwargs):pass
     def _set_judgment_text(self,*args,**kwargs):pass
     def _draw_peak_color_swatch(self,*args,**kwargs):pass
@@ -107,7 +110,7 @@ def _runner(place,lat,lon,elev,day,model):
     r.morning_aod_status_var=_V('');r.evening_aod_status_var=_V('')
     return r
 
-def _compute(config,direction,cache=None,overrides=None,extra=None, saved_rainbow=None):
+def _compute(config,direction,cache=None,overrides=None,extra=None, saved_rainbow=None, progress_observer=None):
     r=_runner(config['place'],config['lat'],config['lon'],config['elev'],config['date'],config['model'])
     prior=engine._CASE_REQUEST_CONTEXT
     request_cache = cache if isinstance(cache,dict) else {}
@@ -116,6 +119,9 @@ def _compute(config,direction,cache=None,overrides=None,extra=None, saved_rainbo
     if extra:context['satellite_extra_distances']=extra
     if overrides:context['satellite_recompute']=True
     if saved_rainbow:context['saved_rainbow']=saved_rainbow
+    if progress_observer:
+        context['progress_observer']=progress_observer
+        r._adv_progress_reporter=progress_observer
     token=set_request_profile("satellite_advanced")
     try:
         engine._CASE_REQUEST_CONTEXT=context
@@ -128,6 +134,105 @@ def _compute(config,direction,cache=None,overrides=None,extra=None, saved_rainbo
     finally:
         engine._CASE_REQUEST_CONTEXT=prior
         reset_request_profile(token)
+
+def _make_progress(job_key, config, mode, request_cache, checkpoint_key=None):
+    """Persist actual request/batch counts and the engine's approximate stage value.
+
+    The stage percentage is the engine's rough progress, NOT a guarantee about
+    the number of requests remaining (which may expand dynamically).
+    """
+    previous=_load(job_key) or {}
+    state={'config':config,'mode':mode,'state':'running',
+           'started_at':datetime.now().isoformat(timespec='seconds'),
+           'updated_at':datetime.now().isoformat(timespec='seconds'),
+           'stage_percent':0,'stage':'准备计算',
+           'request_attempts':0,'request_completed':0,'cache_hits':0,
+           'batch_number':0,'batch_total':0,'points_completed':0,'points_total':0,
+           'cached_request_count':len(request_cache), 'events':[],
+           'previous_error':previous.get('error','')}
+    status_placeholder=st.empty()
+    bar=st.progress(0,text='准备计算')
+    counters=st.empty()
+    def publish():
+        state['updated_at']=datetime.now().isoformat(timespec='seconds')
+        state['cached_request_count']=len(request_cache)
+        _write(job_key,state)
+        bar.progress(min(99,max(0,int(state['stage_percent']))),
+                     text='计算阶段（估计） · '+str(state['stage'])[:75])
+        with counters.container():
+            st.caption(f"真实请求：成功 {state['request_completed']} / 发起 {state['request_attempts']} · "
+                       f"缓存命中 {state['cache_hits']} · 当前可复用请求 {state['cached_request_count']}")
+            if state['batch_total']:
+                st.caption(f"当前空间采样批次：{state['batch_number']}/{state['batch_total']}；"
+                           f"该段采样位置 {state['points_completed']}/{state['points_total']}。"
+                           '后续阶段可能新增其他请求。')
+        status_placeholder.caption('当前步骤：'+str(state['stage']))
+    def observe(kind, info):
+        if kind=='stage':
+            pct=max(0,min(99,int(float(info.get('percent') or 0))))
+            # Engine may emit 0 on exception; do not erase the last achieved stage.
+            state['stage_percent']=max(state['stage_percent'],pct)
+            state['stage']=info.get('message') or state['stage']
+        elif kind=='request_start':
+            state['request_attempts']+=1
+            state['stage']='请求 Open-Meteo 数据（限速等待及网络请求中）'
+        elif kind=='request_completed':
+            state['request_completed']+=1
+        elif kind=='request_failed':
+            state['stage']='网络请求失败：'+str(info.get('error') or '')[:160]
+        elif kind=='cache_hit':
+            state['cache_hits']+=1
+            if state['cache_hits'] % 10:
+                return
+        elif kind=='batch_start':
+            state['batch_number']=info['batch_number']
+            state['batch_total']=info['batch_total']
+            state['points_completed']=info['points_completed']
+            state['points_total']=info['points_total']
+        elif kind=='batch_completed':
+            state['batch_number']=info['batch_number']
+            state['batch_total']=info['batch_total']
+            state['points_completed']=info['points_completed']
+            state['points_total']=info['points_total']
+        # Request and batch events are durable even if another later request fails.
+        if kind not in ('cache_hit',):
+            state['events']=(state['events']+[{'at':datetime.now().strftime('%H:%M:%S'),
+                'kind':kind, 'detail':str(info.get('message') or info.get('error') or
+                 (str(info.get('batch_number',''))+'/'+str(info.get('batch_total','')) if 'batch' in kind else ''))[:150]}])[-35:]
+        publish()
+    def finish(ok, error=None):
+        state['state']='completed' if ok else 'paused'
+        state['stage_percent']=100 if ok else state['stage_percent']
+        state['stage']='完整重算成功' if ok else '中断：'+str(error)[:180]
+        state['error']='' if ok else str(error)[:550]
+        state['cooldown_seconds']=cooldown_remaining()
+        publish()
+    publish()
+    return observe, finish
+
+def _progress_history(job_key):
+    state=_load(job_key)
+    if not state:return
+    st.markdown('**最近一次校准任务进度**')
+    mode='基础单次' if state.get('mode')=='base' else '卫星修正'
+    status={'running':'进行中（页面可能已重启或断开）',
+            'paused':'已中断，可恢复补采','completed':'已完成'}.get(state.get('state'),'未知')
+    st.caption(f"{mode} · {status} · 更新时间 {state.get('updated_at','—')}")
+    st.progress(min(100,max(0,int(state.get('stage_percent') or 0))),
+                text=f"计算阶段估计 {state.get('stage_percent',0)}% · {str(state.get('stage',''))[:65]}")
+    st.caption(f"真实请求完成 {state.get('request_completed',0)} / 已发起 {state.get('request_attempts',0)}；"
+               f"缓存命中 {state.get('cache_hits',0)}；"
+               f"可复用请求 {state.get('cached_request_count',0)}。")
+    if state.get('batch_total'):
+        st.caption(f"最后空间批次 {state.get('batch_number')}/{state.get('batch_total')}；"
+                   f"该段 {state.get('points_completed')}/{state.get('points_total')} 个采样位置")
+    if state.get('error'):
+        st.warning('上次中断原因：'+state['error'])
+    st.caption('百分比来自主引擎的阶段性估计；动态增加采样时，总请求数无法预先准确确定。')
+    with st.expander('查看请求/计算节点记录',expanded=False):
+        events=state.get('events') or []
+        if events:st.dataframe(pd.DataFrame(events[::-1]),hide_index=True,use_container_width=True)
+        else:st.caption('暂无记录')
 
 def _fig(result,direction):
     curve=result.get('dynamic_light_curve') or {}
@@ -226,6 +331,8 @@ config={'place':place,'lat':lat,'lon':lon,'elev':elev,'date':day.isoformat(),'mo
 ident=_key(place,lat,lon,elev,day.isoformat(),model,direction)
 base_key=ident+'_base'; corrected_key=ident+'_corrected'
 partial_key=ident+'_supplement_cache'
+progress_key=ident+'_progress'
+pending_key=ident+'_pending_satellite'
 base=_load(base_key); corrected=_load(corrected_key)
 remaining=cooldown_remaining()
 if remaining:
@@ -235,23 +342,66 @@ st.caption('卫星进阶查询使用专用慢速档：真实HTTP请求至少间�
 col1,col2,col3=st.columns([1,1,2])
 run_new=col1.button('计算/覆盖基础单次',type='primary',use_container_width=True,disabled=remaining>0)
 if col2.button('删除当前进阶缓存',use_container_width=True):
-    for key in (base_key,corrected_key,partial_key):
+    for key in (base_key,corrected_key,partial_key,progress_key,pending_key):
         (CACHE/f'{key}.json').unlink(missing_ok=True)
     (CACHE/f'{corrected_key}.jpg').unlink(missing_ok=True)
+    (CACHE/f'{pending_key}.jpg').unlink(missing_ok=True)
     st.rerun()
 with col3:
     if base:st.success('基础预测缓存可用：'+str(base.get('saved_at','')))
     else:st.info('当前条件暂无有效基础缓存；请先计算。')
+_progress_history(progress_key)
+pending=_load(pending_key)
+if pending and pending.get('config')==config and base:
+    st.info('上次卫星修正任务尚未成功提交。已保存修正范围和补采缓存，可直接续跑，无须重新上传截图或勾选差异。')
+    retry_col,forget_col=st.columns(2)
+    if retry_col.button('继续上次中断的卫星修正',disabled=remaining>0,use_container_width=True):
+        attempt_cache=copy.deepcopy(base.get('request_cache') or {})
+        if corrected:attempt_cache.update(corrected.get('request_cache') or {})
+        checkpoint=_load(partial_key)
+        if checkpoint and checkpoint.get('config')==config:
+            attempt_cache.update(checkpoint.get('request_cache') or {})
+        observe,finish=_make_progress(progress_key,config,'satellite',attempt_cache,partial_key)
+        try:
+            new_result,updated_cache=_compute(config,direction,cache=attempt_cache,
+                overrides=pending['segments'],extra=pending.get('extra') or [],
+                saved_rainbow=base['result'].get('rainbow'),progress_observer=observe)
+            _write(corrected_key,{'config':config,'result':new_result,'request_cache':updated_cache,
+                'edits':pending['segments'],'observation_time':pending.get('observation_time'),
+                'saved_at':datetime.now().isoformat(),'registration_quality':pending.get('registration_quality'),
+                'satellite_screenshot':f'{corrected_key}.jpg' if (CACHE/f'{corrected_key}.jpg').exists() else None})
+            (CACHE/f'{partial_key}.json').unlink(missing_ok=True)
+            pending_image=CACHE/f'{pending_key}.jpg'
+            if pending_image.exists():os.replace(pending_image,CACHE/f'{corrected_key}.jpg')
+            (CACHE/f'{pending_key}.json').unlink(missing_ok=True)
+            finish(True)
+            st.success('已续跑并完成修正计算。')
+            st.rerun()
+        except Exception as exc:
+            if attempt_cache:
+                _write(partial_key,{'config':config,'request_cache':attempt_cache,
+                    'saved_at':datetime.now().isoformat()})
+            finish(False,exc)
+            st.error('续跑暂停，已保存进度：'+str(exc))
+    if forget_col.button('放弃这次待续跑任务',use_container_width=True):
+        (CACHE/f'{pending_key}.json').unlink(missing_ok=True)
+        st.rerun()
 if run_new:
+    request_cache={}
+    observe,finish=_make_progress(progress_key,config,'base',request_cache)
     try:
-        with st.spinner('正在查询单次单模式，可能访问 Open-Meteo…'):
-            result,cache=_compute(config,direction)
+        result,cache=_compute(config,direction,cache=request_cache,progress_observer=observe)
+        finish(True)
         payload={'config':config,'result':result,'request_cache':cache,'saved_at':datetime.now().isoformat()}
         _write(base_key,payload)
         (CACHE/f'{corrected_key}.json').unlink(missing_ok=True)
         (CACHE/f'{partial_key}.json').unlink(missing_ok=True)
+        (CACHE/f'{pending_key}.json').unlink(missing_ok=True)
+        (CACHE/f'{pending_key}.jpg').unlink(missing_ok=True)
         st.rerun()
-    except Exception as exc:st.error('单次计算失败：'+str(exc))
+    except Exception as exc:
+        finish(False,exc)
+        st.error('单次计算失败：'+str(exc))
 
 if base:
     display_mode=st.radio('查看版本',['基础单次','最新卫星修正'] if corrected else ['基础单次'],horizontal=True)
@@ -428,12 +578,21 @@ if base:
                         checkpoint=_load(partial_key)
                         if checkpoint and checkpoint.get('config')==config:
                             attempt_cache.update(checkpoint.get('request_cache') or {})
+                        # Save the confirmed correction plan BEFORE any network access.
+                        # A later retry does not need the original uploaded screenshot.
+                        _write(pending_key,{'config':config,'segments':segments,
+                             'extra':sorted(set(round(x,2) for x in extra))[:60],
+                             'observation_time':obs,'registration_quality':quality,
+                             'saved_at':datetime.now().isoformat()})
+                        image.save(CACHE/f'{pending_key}.jpg','JPEG',quality=82)
+                        observe,finish=_make_progress(progress_key,config,'satellite',attempt_cache,partial_key)
                         try:
-                            with st.spinner('慢速补采中：每次真实HTTP请求至少间隔8秒；失败会保存已完成数据…'):
-                                new_result,updated_cache=_compute(config,direction,cache=attempt_cache,
-                                        overrides=segments,extra=sorted(set(round(x,2) for x in extra))[:60],
-                                        saved_rainbow=base['result'].get('rainbow'))
-                        except Exception:
+                            new_result,updated_cache=_compute(config,direction,cache=attempt_cache,
+                                    overrides=segments,extra=sorted(set(round(x,2) for x in extra))[:60],
+                                    saved_rainbow=base['result'].get('rainbow'),progress_observer=observe)
+                            finish(True)
+                        except Exception as err:
+                            finish(False,err)
                             if attempt_cache:
                                 _write(partial_key,{'config':config,'request_cache':attempt_cache,
                                                     'saved_at':datetime.now().isoformat()})
@@ -448,6 +607,8 @@ if base:
                         tmp_image=CACHE/f'{corrected_key}.temp.jpg'
                         image.save(tmp_image,'JPEG',quality=83,optimize=True)
                         os.replace(tmp_image,CACHE/f'{corrected_key}.jpg')
+                        (CACHE/f'{pending_key}.json').unlink(missing_ok=True)
+                        (CACHE/f'{pending_key}.jpg').unlink(missing_ok=True)
                         st.success('卫星修正已完整重算，保留先前不重叠的修正区，并覆盖最新截图。')
                         st.rerun()
                     except Exception as exc:
