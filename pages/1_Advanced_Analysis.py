@@ -26,6 +26,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
 import engine
 from burning_sky.satellite_calibration import CITIES, _fit_affine, _avg_patch, compare_samples, _patch_evidence
+from burning_sky.satellite_auto_vision import recognize_cities, auto_cloud_references
 from burning_sky.spherical_raytrace import destination
 from burning_sky.web_color_curve import draw_dynamic_color_curve
 from burning_sky.profile_image import render_profile
@@ -149,12 +150,14 @@ def _show(result,direction,label):
         cols=['distance_km','cloud_cover_low','cloud_cover_mid','cloud_cover_high','manual_cloud_override']
         st.dataframe([{col:r.get(col) for col in cols} for r in rows],use_container_width=True)
 
-def _ref_inputs(image,w,h):
+def _ref_inputs(image,w,h,auto_marks=None):
     st.caption(f'原始截图尺寸：{w}×{h}。地标和云区参考位置使用原始图片像素坐标；需要至少3个地标，推荐4–6个。')
-    defaults=[{'城市':'上海','x':round(w*.55),'y':round(h*.47)},
-              {'城市':'南京','x':round(w*.32),'y':round(h*.31)},
-              {'城市':'杭州','x':round(w*.47),'y':round(h*.62)},
-              {'城市':'合肥','x':round(w*.21),'y':round(h*.38)}]
+    defaults=([{'城市':m['city'],'x':int(round(m['x'])),'y':int(round(m['y']))}
+               for m in (auto_marks or [])] or
+              [{'城市':'上海','x':None,'y':None},
+               {'城市':'南京','x':None,'y':None},
+               {'城市':'杭州','x':None,'y':None},
+               {'城市':'合肥','x':None,'y':None}])
     marks=st.data_editor(pd.DataFrame(defaults),num_rows='dynamic',hide_index=True,
                          column_config={'城市':st.column_config.SelectboxColumn('城市',options=list(CITIES))},
                          key='adv_landmarks',use_container_width=True)
@@ -264,17 +267,73 @@ if base:
         try:image=Image.open(io.BytesIO(screenshot.getvalue())).convert('RGB')
         except Exception as exc:
             st.error('截图损坏：'+str(exc));st.stop()
-        st.image(image,caption='上传的卫星截图',width=650)
-        landmarks,quality=_ref_inputs(image,*image.size)
-        st.markdown('**参考云区（原图像素坐标；冷云、灰白云带、暖背景各一个）**')
-        references={}
-        cc=st.columns(3)
-        for col,(tag,label) in zip(cc,[('cold','冷云顶厚云'),('band','灰白云带'),('warm','暖背景少云候选')]):
-            with col:
-                x=st.number_input(label+' x',min_value=0,max_value=image.width-1,value=image.width//2,key=tag+'x')
-                y=st.number_input(label+' y',min_value=0,max_value=image.height-1,value=image.height//2,key=tag+'y')
-                references[tag]=(x,y)
-        if st.button('分析截图与EC/GFS差异',disabled=not bool(landmarks),use_container_width=True):
+        st.image(image,caption='上传的卫星截图（自动识别结果只作为辅助证据）',use_container_width=True)
+        # Only once per uploaded bytes; no OCR calls on slider/button reruns.
+        upload_sig=hashlib.sha256(screenshot.getvalue()).hexdigest()
+        vision_key='adv_vision_'+ident
+        if st.session_state.get(vision_key,{}).get('file_sha')!=upload_sig:
+            with st.spinner('自动识别城市地标与卫星图云区纹理…'):
+                geo=recognize_cities(image)
+                appearances=auto_cloud_references(image)
+            st.session_state[vision_key]={'file_sha':upload_sig,'geo':geo,'appearance':appearances}
+            st.session_state.pop('adv_candidates_'+ident,None)
+            st.session_state.pop('adv_multiselect_'+ident,None)
+            st.session_state.pop('adv_high_edits_'+ident,None)
+            st.session_state.pop('adv_confirm_vision_'+ident,None)
+            # Image-dependent widget state is reset only when a NEW image is uploaded.
+            st.session_state.pop('adv_landmarks',None)
+            for tag in ('cold','band','warm'):
+                st.session_state.pop(tag+'x',None)
+                st.session_state.pop(tag+'y',None)
+        vision=st.session_state[vision_key]
+        geo=vision['geo']; appearances=vision['appearance']
+        st.markdown('**自动图像识别结果**')
+        if geo['landmarks']:
+            st.info(geo['message'])
+            st.caption('OCR定位到 '+', '.join(m['city'] for m in geo['landmarks'])+
+                       '；地图文字中心可能偏离真实城市中心，请检查黄圈。')
+            q=geo.get('quality')
+            if q:
+                st.caption(f"自动配准候选：{len(geo['landmarks'])}地标 · RMS {q['rms_px']}px · 最大残差 {q['max_px']}px。低残差仍不代表地名标注就是精确城市中心。")
+        else:
+            st.warning(geo['message'])
+        if len(appearances)<3:
+            st.warning('未能可靠找到三种不同的图像外观区域，请展开下方工具手动设置。')
+        # Pixel classes are palette appearance only, never measured cloud fraction.
+        st.caption('自动云区：彩色冷云顶、亮灰云带、偏暗暖背景。它们不是0%/55%/90%实测云量。')
+        preview=image.copy();pen=ImageDraw.Draw(preview)
+        for m in geo['landmarks']:
+            x,y=m['x'],m['y']
+            pen.ellipse((x-8,y-8,x+8,y+8),outline='#facc15',width=4)
+            pen.text((x+10,y),m['city'],fill='#facc15')
+        for tag,display,color in (('cold','冷云','#00e5ff'),('band','云带','#ffe070'),('warm','暖区','#ff8787')):
+            if tag in appearances:
+                x=appearances[tag]['x'];y=appearances[tag]['y']
+                pen.ellipse((x-12,y-12,x+12,y+12),outline=color,width=5)
+                pen.text((x+15,y),display,fill=color)
+        st.image(preview,caption='识别位置预览：黄色是城市文字参考位置，彩色圈是云区外观参考位置',use_container_width=True)
+        # The original editors remain available for overrides, but are folded on mobile.
+        with st.expander('人工核对 / 修改自动识别位置（识别错误时展开）', expanded=not bool(geo['landmarks'])):
+            landmarks,quality=_ref_inputs(image,*image.size,auto_marks=geo['landmarks'])
+            references={}
+            cc=st.columns(3)
+            for col,(tag,label) in zip(cc,[('cold','冷云顶厚云'),('band','灰白云带'),('warm','暖背景少云候选')]):
+                with col:
+                    seed=appearances.get(tag) or {'x':image.width//2,'y':image.height//2}
+                    x=st.number_input(label+' x',min_value=0,max_value=image.width-1,value=int(seed['x']),key=tag+'x')
+                    y=st.number_input(label+' y',min_value=0,max_value=image.height-1,value=int(seed['y']),key=tag+'y')
+                    references[tag]=(x,y)
+        # Never enable modification with <4 landmarks merely because three
+        # affine points fit exactly (without an independent residual check).
+        if landmarks and len(landmarks)<4:
+            st.warning('自动识别地标不足4处：先补充或核对地标，再允许应用修正。')
+        eligible=(len(landmarks)>=4 and quality is not None and quality['rms_px']<=18
+                  and all(tag in references for tag in ('cold','band','warm')))
+        if not eligible:
+            st.caption('自动校准尚未通过校验；可以手动补充地标和三类参考区域。')
+        confirmed=st.checkbox('我已核对城市地标位置与三类参考点（确认后才能分析差异）',key='adv_confirm_vision_'+ident)
+        eligible=eligible and confirmed
+        if st.button('分析截图与EC/GFS差异',disabled=not eligible,use_container_width=True):
             try:
                 dt=datetime.strptime(obs,'%Y-%m-%d %H:%M')
                 event=base['result'].get('event_dt')
