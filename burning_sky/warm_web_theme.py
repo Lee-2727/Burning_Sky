@@ -157,6 +157,43 @@ button[kind="primary"], [data-testid="stBaseButton-primary"]{
 button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover{
   filter: brightness(1.08); color: #1a120c !important;
 }
+
+/* Theme switcher pills: sit on the sky, only a faint white wash to separate.
+   No white card background. Selected pill keeps the accent tint. */
+.st-key-bs_theme_picker button,
+.stButtonGroup button[role="tab"]{
+  background: rgba(255,255,255,.07) !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  color: var(--bs-dim) !important;
+  border-radius: 10px !important;
+}
+.st-key-bs_theme_picker button:hover,
+.stButtonGroup button[role="tab"]:hover{
+  background: rgba(255,255,255,.14) !important;
+  color: var(--bs-ink) !important;
+}
+.st-key-bs_theme_picker button[aria-checked="true"],
+.stButtonGroup button[role="radio"][aria-checked="true"]{
+  background: rgba(255,255,255,.16) !important;
+  border-color: var(--bs-accent) !important;
+  color: var(--bs-ink) !important;
+}
+
+/* Sidebar: soften the native pale/dark hairlines into transparent white washes. */
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]{
+  border-color: rgba(255,255,255,.10) !important;
+  background: rgba(255,255,255,.07) !important;
+}
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover{
+  border-color: rgba(255,255,255,.18) !important;
+}
+[data-testid="stSidebar"] [data-testid="stBaseButton-headerNoPadding"]{
+  border-color: rgba(255,255,255,.12) !important;
+  color: var(--bs-dim) !important;
+  background: transparent !important;
+}
+[data-testid="stSidebar"]{ border-right-color: rgba(255,255,255,.10) !important; }
+[data-testid="stSidebar"] hr{ border-color: rgba(255,255,255,.10) !important; }
 [data-testid="stTextInput"] input, [data-testid="stNumberInput"] input,
 [data-testid="stDateInput"] input, textarea,
 [data-baseweb="select"] > div{
