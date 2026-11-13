@@ -298,38 +298,56 @@ def _ref_inputs(image,w,h,auto_marks=None):
     return landmarks,quality
 
 st.title('🛰️ 实况分析 · 进阶分析')
-st.caption('独立于普通单次查询及自动/手动多模概览。基础单次与最新卫星修正各保存24小时，可覆盖重算；不会修改普通概览。')
-with st.sidebar:
-    st.page_link('app.py',label='返回 Burning Sky 单次分析',icon='🌇')
-    st.header('进阶条件')
-    place=st.text_input('地点','上海')
-    from burning_sky.place_excel_paths import find_place_workbook
-    try:
-        df=pd.read_excel(find_place_workbook(),sheet_name='地名坐标表')
-        if '城市名称' in df.columns:
-            options=[str(x) for x in df['城市名称'].dropna().tolist() if place.strip() in str(x)][:20]
-            if options:
-                chosen=st.selectbox('地点库匹配',options)
-                row=df[df['城市名称'].astype(str)==chosen].iloc[0]
-                st.caption('已匹配地点；请检查下方坐标。')
-                place=chosen
-                chosen_lat=float(row.get('纬度',31.2304))
-                chosen_lon=float(row.get('经度',121.4737))
-                chosen_elev=float(row.get('海拔（m）',5.0))
+st.caption('支持从单次单方向直接继承结果及缓存，卫星修正前后各保存24小时。')
+from burning_sky import advanced_bridge as _advanced_bridge
+_handoff=st.session_state.get('bs_adv_handoff')
+if _handoff and _handoff.get('model') not in MODELS:
+    _handoff=None
+if _handoff:
+    config=dict(_handoff)
+    place=config['place'];lat=float(config['lat']);lon=float(config['lon'])
+    elev=float(config['elev']);day=date.fromisoformat(config['date'])
+    model=config['model'];direction=config['direction']
+    with st.sidebar:
+        st.page_link('app.py',label='返回单次分析 · 查看原始/修正版本',icon='🌇')
+        st.markdown('### 当前查询（继承单次结果）')
+        st.success(f"{place} · {day} · {model} · {'朝霞' if direction=='morning' else '晚霞'}")
+        st.caption('不重新计算基础单次。要修改地点或模式，可切换独立查询。')
+        if st.button('切换为独立进阶查询',use_container_width=True):
+            st.session_state.pop('bs_adv_handoff',None)
+            st.rerun()
+else:
+    with st.sidebar:
+        st.page_link('app.py',label='返回 Burning Sky 单次分析',icon='🌇')
+        st.header('进阶条件')
+        place=st.text_input('地点','上海')
+        from burning_sky.place_excel_paths import find_place_workbook
+        try:
+            df=pd.read_excel(find_place_workbook(),sheet_name='地名坐标表')
+            if '城市名称' in df.columns:
+                options=[str(x) for x in df['城市名称'].dropna().tolist() if place.strip() in str(x)][:20]
+                if options:
+                    chosen=st.selectbox('地点库匹配',options)
+                    row=df[df['城市名称'].astype(str)==chosen].iloc[0]
+                    st.caption('已匹配地点；请检查下方坐标。')
+                    place=chosen
+                    chosen_lat=float(row.get('纬度',31.2304))
+                    chosen_lon=float(row.get('经度',121.4737))
+                    chosen_elev=float(row.get('海拔（m）',5.0))
+                else:
+                    chosen_lat,chosen_lon,chosen_elev=31.2304,121.4737,5.0
             else:
                 chosen_lat,chosen_lon,chosen_elev=31.2304,121.4737,5.0
-        else:
+        except Exception:
             chosen_lat,chosen_lon,chosen_elev=31.2304,121.4737,5.0
-    except Exception:
-        chosen_lat,chosen_lon,chosen_elev=31.2304,121.4737,5.0
-    lat=st.number_input('纬度',value=chosen_lat,format='%.5f')
-    lon=st.number_input('经度',value=chosen_lon,format='%.5f')
-    elev=st.number_input('海拔（米）',value=chosen_elev)
-    day=st.date_input('预报日期',value=date.today())
-    model=st.selectbox('模式',list(MODELS))
-    direction_label=st.radio('方向',list(DIRS),horizontal=True)
-    direction=DIRS[direction_label]
-config={'place':place,'lat':lat,'lon':lon,'elev':elev,'date':day.isoformat(),'model':model,'direction':direction}
+        lat=st.number_input('纬度',value=chosen_lat,format='%.5f')
+        lon=st.number_input('经度',value=chosen_lon,format='%.5f')
+        elev=st.number_input('海拔（米）',value=chosen_elev)
+        day=st.date_input('预报日期',value=date.today())
+        model=st.selectbox('模式',list(MODELS))
+        direction_label=st.radio('方向',list(DIRS),horizontal=True)
+        direction=DIRS[direction_label]
+    config={'place':place,'lat':lat,'lon':lon,'elev':elev,'date':day.isoformat(),'model':model,'direction':direction}
 ident=_key(place,lat,lon,elev,day.isoformat(),model,direction)
 base_key=ident+'_base'; corrected_key=ident+'_corrected'
 partial_key=ident+'_supplement_cache'
@@ -342,7 +360,11 @@ if remaining:
 st.caption('卫星进阶查询使用专用慢速档：真实HTTP请求至少间隔8秒，最多每分钟7次。缓存命中不占额度；遇到429时暂停，保留成功补采。')
 
 col1,col2,col3=st.columns([1,1,2])
-run_new=col1.button('计算/覆盖基础单次',type='primary',use_container_width=True,disabled=remaining>0)
+if _handoff:
+    col1.caption('✅ 已继承单次基础预测，无须重复查询')
+    run_new=False
+else:
+    run_new=col1.button('计算/覆盖基础单次',type='primary',use_container_width=True,disabled=remaining>0)
 if col2.button('删除当前进阶缓存',use_container_width=True):
     for key in (base_key,corrected_key,partial_key,progress_key,pending_key):
         (CACHE/f'{key}.json').unlink(missing_ok=True)
@@ -406,6 +428,11 @@ if run_new:
         st.error('单次计算失败：'+str(exc))
 
 if base:
+    if _handoff:
+        if st.button('返回单次结果 · 查看完整修正图表',type='secondary',use_container_width=True):
+            if corrected:
+                st.session_state['sat_view_'+ident]='卫星修正'
+            st.switch_page('app.py')
     display_mode=st.radio('查看版本',['基础单次','最新卫星修正'] if corrected else ['基础单次'],horizontal=True)
     current=corrected if display_mode=='最新卫星修正' and corrected else base
     _show(current['result'],direction,display_mode)

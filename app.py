@@ -74,6 +74,12 @@ class _Var:
     def set(self, value):
         self.value = str(value)
 
+class _BoolVar:
+    """Tiny Tk-compatible bool adapter for explicit optional rainbow queries."""
+    def __init__(self, value=False): self.value = bool(value)
+    def get(self): return self.value
+    def set(self, value): self.value = bool(value)
+
 class _DummyLabel:
     def configure(self, **kwargs):
         pass
@@ -112,6 +118,7 @@ class WebForecastEngine(engine.FireCloudApp):
         self.evening_rainbow_label = _DummyLabel()
         self.morning_aod_status_var = _Var("")
         self.evening_aod_status_var = _Var("")
+        self.skip_rainbow_single_var = _BoolVar(not values.get("rainbow_enabled", False))
         self._error = None
     def after(self, delay_ms, callback=None, *args):
         """Tk compatibility: Streamlit renders results after computation, not via Tk callbacks."""
@@ -134,6 +141,11 @@ from burning_sky.warm_web_theme import apply_warm_theme
 apply_warm_theme()
 
 with st.sidebar:
+    st.markdown('### 导航')
+    if st.button('🌅 单次预测 · 快速查询', use_container_width=True, key='nav_single_forecast'):
+        st.session_state['show_multi_day_overview'] = False
+        st.session_state['show_manual_overview'] = False
+        st.rerun()
     st.page_link('pages/1_Advanced_Analysis.py', label='卫星实况 · 进阶分析', icon='🛰️', use_container_width=True)
     if st.button("未来多日概览", use_container_width=True, key="open_multi_day_overview"):
         st.session_state["show_multi_day_overview"] = True
@@ -253,6 +265,9 @@ with st.sidebar:
     if use_case_cache and not _case_state:
         st.warning("请先上传并加载包含原始请求缓存的案例 ZIP。")
 
+    st.markdown('#### 查询内容')
+    rainbow_enabled = st.checkbox('🌈 同时分析彩虹（需增加天气请求）', value=False, key='rainbow_with_fire')
+    st.caption('默认关闭以保证单次查询速度；也可以只使用下方「单独分析彩虹」。')
     morning_col, evening_col = st.columns(2)
     with morning_col:
         run_morning = st.button("查询朝霞", use_container_width=True)
@@ -276,20 +291,7 @@ with st.sidebar:
         st.session_state["show_manual_overview"] = False
     query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
 
-# Right-side AOD controls mirror the sidebar selection; both directions use the
-# same source, while manual numeric values remain direction-specific.
-def _set_aod_source_from_right(widget_key):
-    st.session_state["aod_source_selector"] = st.session_state[widget_key]
-
-_right_aod_options = ["CAMS", "CAMS（垂直分布）", "手动输入"]
-_right_aod_current = st.session_state.get("aod_source_selector", "CAMS")
-_aod_right_cols = st.columns(2)
-for _aod_direction, _aod_col in (("朝霞", _aod_right_cols[0]), ("晚霞", _aod_right_cols[1])):
-    _right_key = "right_aod_" + ("morning" if _aod_direction == "朝霞" else "evening")
-    st.session_state[_right_key] = _right_aod_current
-    with _aod_col:
-        st.selectbox(f"{_aod_direction} AOD 来源（与左侧同步）", _right_aod_options,
-                     key=_right_key, on_change=_set_aod_source_from_right, args=(_right_key,))
+# AOD is controlled only from the sidebar; remove the duplicate in-body controls.
 
 # Rainbow-only execution: do not invoke the fire-cloud forecast task.
 if rainbow_only_web:
@@ -915,6 +917,7 @@ if run:
         "lon": f"{lon:.6f}",
         "elevation": f"{elevation:.0f}",
         "weather_model": model_label,
+        "rainbow_enabled": bool(st.session_state.get("rainbow_with_fire", False)),
         "cloud_base_mode": cloud_base_mode,
         "aod_source": aod_source,
         "morning_cloud_base_km": f"{morning_cloud_base:.2f}",
@@ -1135,6 +1138,7 @@ if st.session_state.get('fire_cloud_original_results'):
             except Exception as _exc:
                 st.error(f'人工云图修正失败：{_exc}')
 
+from burning_sky import advanced_bridge as _advanced_bridge
 results = st.session_state.get("fire_cloud_last_results")
 meta = st.session_state.get("fire_cloud_last_meta", {})
 if results:
@@ -1191,9 +1195,78 @@ if results:
     directions = [("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")]
     if visible_direction in ("morning", "evening"):
         directions = [item for item in directions if item[0] == visible_direction]
-    columns = st.columns(len(directions))
+    # Each direction binds to its own immutable baseline and correction record.
+    # Satellite analysis must never silently modify the other direction.
+    _baseline_for_handoff = st.session_state.get('fire_cloud_original_results') or results
+    _cache_for_handoff = st.session_state.get('fire_cloud_replay_cache') or {}
+    # Full-width stacked reports instead of squeezed two-column figures.
+    # In particular, time-series labels and ray-trace profiles need legible width.
+    columns = [st.container() for _ in directions]
     for col, (key, title) in zip(columns, directions):
         result = results.get(key, {})
+        _bridge_config = None
+        try:
+            _bridge_config = _advanced_bridge.config_from_main(meta,key)
+        except (KeyError,ValueError,TypeError):
+            pass
+        _bridge_ident = _advanced_bridge.identity(_bridge_config) if _bridge_config else None
+        _base_archive = _advanced_bridge.read(_bridge_ident+'_base') if _bridge_ident else None
+        _sat_archive = _advanced_bridge.read(_bridge_ident+'_corrected') if _bridge_ident else None
+        if _sat_archive and not _advanced_bridge.same_config(_sat_archive.get('config',{}),_bridge_config):
+            _sat_archive = None
+        if _base_archive and not _advanced_bridge.same_config(_base_archive.get('config',{}),_bridge_config):
+            _base_archive = None
+        # A new model update for the same date/model/coordinates is NOT the same
+        # baseline. Do not attach an older satellite correction to newer results.
+        if _base_archive:
+            _current_original = _baseline_for_handoff.get(key) or {}
+            if _advanced_bridge.identity(_bridge_config) and _base_archive.get('result') != engine.FireCloudApp._json_safe(_current_original):
+                _sat_archive = None
+                _base_archive = None
+        # Main result always remains the unmodified original from this query.
+        # If a previous satellite correction exists for exactly these settings,
+        # allow the *whole* detail section to use its internally consistent result.
+        _view_key = f"sat_view_{_bridge_ident}" if _bridge_ident else f"sat_view_{key}"
+        with col:
+            if _bridge_config:
+                st.markdown('#### 🛰️ 卫星实况校准')
+                _btn_col,_version_col = st.columns([1,2])
+                with _btn_col:
+                    if st.button('校准当前'+('朝霞' if key=='morning' else '晚霞'),
+                                 key=f'sat_launch_{_bridge_ident}',type='secondary',use_container_width=True):
+                        _target = _advanced_bridge.prepare_handoff(meta,key,_baseline_for_handoff,
+                            _cache_for_handoff,engine.FireCloudApp._json_safe)
+                        if not _target:
+                            st.error('本次方向尚无完整单次结果，无法直接校准。')
+                        else:
+                            st.session_state['bs_adv_handoff']=_target
+                            st.switch_page('pages/1_Advanced_Analysis.py')
+                with _version_col:
+                    if _sat_archive:
+                        _versions=['原始预测','卫星修正']
+                        _choice=st.segmented_control('显示结果版本',_versions,key=_view_key,
+                            default='原始预测') if hasattr(st,'segmented_control') else st.radio(
+                                '显示结果版本',_versions,horizontal=True,key=_view_key)
+                        if _choice=='卫星修正':
+                            result=_sat_archive.get('result') or result
+                        base_inf=( (_base_archive or {}).get('result') or
+                            _baseline_for_handoff.get(key) or {}).get('inferred') or {}
+                        sat_inf=(_sat_archive.get('result') or {}).get('inferred') or {}
+                        def _sat_metric_value(inf,name):
+                            return inf.get(name, '—')
+                        with st.expander('修正前后指标对照',expanded=False):
+                            st.dataframe([
+                                {'指标':'常规概率','原始':_sat_metric_value(base_inf,'regular_score'),
+                                  '修正':_sat_metric_value(sat_inf,'regular_score')},
+                                {'指标':'色彩分','原始':_sat_metric_value(base_inf,'color_score'),
+                                  '修正':_sat_metric_value(sat_inf,'color_score')},
+                                {'指标':'可染色云占比','原始':_sat_metric_value(base_inf,'tintable_ratio'),
+                                  '修正':_sat_metric_value(sat_inf,'tintable_ratio')},
+                                {'指标':'火烧云规模','原始':_sat_metric_value(base_inf,'burn_scale_index'),
+                                  '修正':_sat_metric_value(sat_inf,'burn_scale_index')},
+                            ],hide_index=True,use_container_width=True)
+                    else:
+                        st.caption('暂无卫星修正版本；进入校准后可直接复用本次请求数据。')
         # The shared engine already applies all probability and special-verdict
         # rules (including strict geometry gates). Keep its result authoritative.
         # Do NOT infer cloud-base/low-cloud thresholds from rounded summary text,
@@ -1208,9 +1281,10 @@ if results:
             c1.metric("常规概率", f"{regular_score}%")
             c2.metric("上限概率", f"{upper_score}%")
             c3.metric("色彩评分", f"{color_score}/100")
-            st.caption('概率评价：低于45% 小概率；45%–75% 有概率；高于75% 高概率。概率为未经实况校准的经验估计。')
-            st.caption('色彩评价：低于30 平平无奇；30–不足50 普通；50–不足70 绚烂；70–不足90 史诗；90–100 世纪。')
-            st.caption('规模评价：0% 不烧；大于0%–不足10% 微烧；10–不足30% 小烧；30–不足60% 中烧；60–100% 大烧。')
+            with st.expander('概率、色彩和规模分级说明', expanded=False):
+                st.caption('概率：低于45% 小概率；45%–75% 有概率；高于75% 高概率。属于经验估计。')
+                st.caption('色彩：低于30 平平无奇；30–不足50 普通；50–不足70 绚烂；70–不足90 史诗；90–100 世纪。')
+                st.caption('规模：0% 不烧；大于0%–不足10% 微烧；10–不足30% 小烧；30–不足60% 中烧；60–100% 大烧。')
             burn_label, burn_index = _burn_label(inferred, result.get("summary", ""))
             regular_label = _probability_label(regular_score)
             color_class = _color_label(color_score)
@@ -1282,23 +1356,27 @@ if results:
             else:
                 st.caption("当前气压层资料不足，暂无法识别云属。")
             st.markdown("**" + _web_gap_text(result) + "**")
-            # Independent 360° sampled-light panel; no traditional cloud-hole prerequisite.
-            from burning_sky.compass360_web import render_web_panel
-            with st.expander("360°八方位受光补全图（替代二维霞云图）", expanded=True):
-                render_web_panel(st, engine, result, meta, key, replay_only=bool(use_case_cache))
+            # Primary evidence comes first; neither graph makes optional API calls.
+            st.markdown('#### 云色时序 · 受光面积与颜色变化')
+            st.image(_draw_dynamic_color_curve(points, curve.get("peak"), key), use_container_width=True)
+            st.markdown('#### 严格球面光路 · 云层剖面')
             _profile_fig = _web_profile_figure(result)
             if _profile_fig is not None:
                 st.image(_profile_fig, use_container_width=True)
-            with st.expander("旧版二维霞云 · 低中高云空间分布（已由八方位补全图替代）", expanded=False):
-                st.caption("当前建议优先查看上方八方位补全图；此旧版二维图保留作对照。")
+            else:
+                st.caption('当前结果没有可显示的严格光路剖面。')
+            # Optional expensive sampling must never run while the panel is closed.
+            from burning_sky.compass360_web import render_web_panel
+            with st.expander('🧭 八方位分析 · 按需展开与计算', expanded=False):
+                st.caption('可选实验图，需要时再计算；不影响本次单方向预测。')
+                render_web_panel(st, engine, result, meta, key, replay_only=bool(use_case_cache))
+            with st.expander('二维云量分布 · 原有辅助诊断', expanded=False):
                 from burning_sky.web_cloud_2d import render_cloud_2d
-                _cloud_layer = st.selectbox("二维云图图层", ["综合", "低云", "中云", "高云"], key=f"cloud2d_{key}")
+                _cloud_layer = st.selectbox('云图图层', ['综合', '低云', '中云', '高云'], key=f'cloud2d_{key}')
                 _map_image, _map_note = render_cloud_2d(result, _cloud_layer)
                 if _map_image is not None:
                     st.image(_map_image, use_container_width=True)
                 st.caption(_map_note)
-            st.subheader("云色时序")
-            st.image(_draw_dynamic_color_curve(points, curve.get("peak"), key), use_container_width=True)
             if points:
                 df = pd.DataFrame(points)
             else:
