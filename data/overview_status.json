@@ -1,28 +1,20 @@
 {
   "schema_version": 2,
-  "state": "completed",
+  "state": "running",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
-  "started_at": "2026-11-13 08:47:19 CST",
-  "updated_at": "2026-11-13 08:55:00 CST",
-  "current_model": "GFS Global",
-  "model_index": 2,
+  "started_at": "2026-11-13 12:49:58 CST",
+  "updated_at": "2026-11-13 12:49:58 CST",
+  "current_model": "ECMWF IFS 0.25°",
+  "model_index": 1,
   "model_total": 2,
-  "completed_models": [
-    "ECMWF IFS 0.25°",
-    "GFS Global"
-  ],
+  "completed_models": [],
   "cities": [
     "合肥"
   ],
-  "city_progress": 1,
+  "city_progress": 0,
   "city_total": 1,
-  "task_progress": 12,
+  "task_progress": 0,
   "task_total": 12,
-  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
-  "publish_error": "Command '['git', 'push', 'origin', 'HEAD:main']' returned non-zero exit status 1.",
-  "failure_count": 0,
-  "last_error": null,
-  "completed_at": "2026-11-13 08:55:00 CST",
-  "message": "晚霞双模式三日朝霞及晚霞数据已完整发布。"
+  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞"
 }
