@@ -33,6 +33,8 @@ from burning_sky.profile_image import render_profile
 from burning_sky.api_rate_limit import set_request_profile, reset_request_profile, cooldown_remaining
 
 st.set_page_config(page_title='进阶分析 | Burning Sky',page_icon='🛰️',layout='wide')
+from burning_sky.warm_web_theme import apply_warm_theme
+apply_warm_theme()
 password = os.getenv('APP_PASSWORD','')
 try: password = st.secrets.get('APP_PASSWORD',password)
 except Exception: pass

@@ -130,31 +130,9 @@ class WebForecastEngine(engine.FireCloudApp):
 from burning_sky.web_color_curve import draw_dynamic_color_curve as _draw_dynamic_color_curve
 
 st.title("🌇 Burning Sky")
-# 仅为“未来多日概览 / 手动查询多日概览”两个入口设置低饱和蓝色，不影响其他按钮。
-st.markdown("""<style>
-.st-key-open_multi_day_overview button {
-    background: #718EAA !important;
-    color: #FFFFFF !important;
-    border: 1px solid #718EAA !important;
-    font-weight: 600 !important;
-}
-.st-key-open_multi_day_overview button:hover {
-    background: #627F9B !important;
-    border-color: #627F9B !important;
-    color: #FFFFFF !important;
-}
-.st-key-open_manual_overview button {
-    background: #FFFFFF !important;
-    color: #4A6480 !important;
-    border: 1px solid #718EAA !important;
-    font-weight: 600 !important;
-}
-.st-key-open_manual_overview button:hover {
-    background: #EDF1F6 !important;
-    border-color: #627F9B !important;
-    color: #3C5468 !important;
-}
-</style>""", unsafe_allow_html=True)
+from burning_sky.warm_web_theme import apply_warm_theme
+apply_warm_theme()
+
 with st.sidebar:
     st.page_link('pages/1_Advanced_Analysis.py', label='卫星实况 · 进阶分析', icon='🛰️', use_container_width=True)
     if st.button("未来多日概览", use_container_width=True, key="open_multi_day_overview"):
