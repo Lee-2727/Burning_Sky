@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-canvas-width="1440" data-canvas-height="1680" style="width:1440px;height:1680px;">
+<head>
+<meta charset="UTF-8">
+<title>Burning Sky · 深色沉浸结果态</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { width:1440px; height:1680px; }
+  body {
+    font-family:"Noto Sans CJK SC","PingFang SC","SF Pro Display",sans-serif;
+    color:#F3F7FF; -webkit-font-smoothing:antialiased; letter-spacing:-.01em;
+    background:#080B10;
+  }
+  :root{
+    --ink:#FFFFFF; --dim:rgba(255,255,255,.68); --faint:rgba(255,255,255,.42);
+    --line:rgba(255,255,255,.16); --hairline:rgba(255,255,255,.11);
+    --card:linear-gradient(160deg, rgba(34,42,58,.50), rgba(20,26,40,.40));
+    --card-line:rgba(255,255,255,.18);
+    --accent:#FFCF8A; --eve:#FF9C7A;
+    --sky1:#2A2447; --sky2:#5B3E63; --sky3:#C2645A; --sky4:#7E4A44;
+    --glow-a:rgba(255,176,110,.55); --glow-b:rgba(255,120,76,.30); --glow-c:rgba(255,88,64,.13);
+    --floor:rgba(10,12,20,.50);
+  }
+  /* 主题：日落金橙（默认，明艳） */
+  [data-theme="golden"]{
+    --sky1:#2A2447; --sky2:#5B3E63; --sky3:#C2645A; --sky4:#7E4A44;
+    --glow-a:rgba(255,176,110,.55); --glow-b:rgba(255,120,76,.30); --glow-c:rgba(255,88,64,.13);
+  }
+  /* 蓝调时刻 */
+  [data-theme="blue"]{
+    --sky1:#142238; --sky2:#26405E; --sky3:#4A5E7E; --sky4:#2C3A52;
+    --glow-a:rgba(120,170,220,.30); --glow-b:rgba(90,140,200,.16); --glow-c:rgba(70,120,180,0);
+    --accent:#9FD2F5; --eve:#8FB8E8;
+  }
+  /* 晨霞粉金 */
+  [data-theme="dawn"]{
+    --sky1:#3A2E4E; --sky2:#7A5570; --sky3:#E89A86; --sky4:#C97A6A;
+    --glow-a:rgba(255,206,160,.50); --glow-b:rgba(255,150,120,.26); --glow-c:rgba(255,120,90,.12);
+    --accent:#FFD9A0; --eve:#FFB49A;
+  }
+  /* 深邃夜色 */
+  [data-theme="night"]{
+    --sky1:#0B1020; --sky2:#161E33; --sky3:#2A2C44; --sky4:#181B2E;
+    --glow-a:rgba(120,130,200,.22); --glow-b:rgba(90,100,170,.12); --glow-c:rgba(70,80,150,0);
+    --accent:#C9B8FF; --eve:#9FB0E8;
+  }
+  /* 赤红晚霞 */
+  [data-theme="crimson"]{
+    --sky1:#2A0E1C; --sky2:#6B1E2E; --sky3:#C8323C; --sky4:#7E2430;
+    --glow-a:rgba(255,110,80,.50); --glow-b:rgba(230,60,60,.26); --glow-c:rgba(200,40,50,.12);
+    --accent:#FFB3A0; --eve:#FF7E6E;
+  }
+  /* 鎏金日出 */
+  [data-theme="gold"]{
+    --sky1:#3A2A18; --sky2:#8A5A26; --sky3:#E8A94A; --sky4:#9C6A2E;
+    --glow-a:rgba(255,214,130,.55); --glow-b:rgba(255,170,80,.28); --glow-c:rgba(255,140,60,.12);
+    --accent:#FFE0A0; --eve:#FFC47A;
+  }
+  /* 橘粉暮光 */
+  [data-theme="peach"]{
+    --sky1:#3A2438; --sky2:#8A4A5E; --sky3:#F09A8E; --sky4:#C9747A;
+    --glow-a:rgba(255,186,150,.50); --glow-b:rgba(255,140,120,.26); --glow-c:rgba(255,120,110,.12);
+    --accent:#FFD2B8; --eve:#FFA898;
+  }
+  /* 青暮夜空 */
+  [data-theme="teal"]{
+    --sky1:#0E2630; --sky2:#1E4A52; --sky3:#3E7E78; --sky4:#244E52;
+    --glow-a:rgba(120,210,190,.26); --glow-b:rgba(80,170,160,.14); --glow-c:rgba(60,140,140,0);
+    --accent:#9FE8D8; --eve:#8FC8C0;
+  }
+  /* 淡紫暮霭 */
+  [data-theme="lilac"]{
+    --sky1:#241E3E; --sky2:#4E3E6E; --sky3:#8E6E9E; --sky4:#5E4A72;
+    --glow-a:rgba(190,160,230,.30); --glow-b:rgba(150,120,210,.16); --glow-c:rgba(120,100,190,0);
+    --accent:#D8C4FF; --eve:#B8A8E8;
+  }
+  .root{ width:1440px; height:1680px; position:relative; overflow:hidden; isolation:isolate; }
+
+  /* 全幅暮色天空 */
+  .sky{ position:absolute; inset:0; z-index:0;
+    background:linear-gradient(179deg, var(--sky1) 0%, var(--sky2) 34%, var(--sky3) 66%, var(--sky4) 100%);
+    transition:background 1s ease; }
+  .glow{ position:absolute; left:50%; bottom:-18%; width:130%; height:60%; transform:translateX(-50%);
+    background:radial-gradient(ellipse at 50% 84%, var(--glow-a) 0%, var(--glow-b) 26%, var(--glow-c) 48%, rgba(255,80,56,0) 70%);
+    filter:blur(34px); pointer-events:none; z-index:0; }
+  .floor{ position:absolute; left:0; right:0; bottom:0; height:46%;
+    background:linear-gradient(180deg, rgba(8,12,20,0) 0%, var(--floor) 100%); pointer-events:none; z-index:0; }
+  .clouds{ position:absolute; inset:-10% -20%; z-index:0; opacity:.30; }
+  .cloud{ position:absolute; border-radius:50%; filter:blur(34px);
+    background:radial-gradient(ellipse at 50% 45%, rgba(238,206,186,.50) 0%, rgba(220,178,162,.22) 42%, rgba(240,245,250,0) 70%); }
+  .cloud.c1{ width:78%; height:38%; left:-30%; top:6%; }
+  .cloud.c2{ width:64%; height:30%; left:10%; top:22%; }
+  .cloud.c3{ width:90%; height:44%; left:30%; top:-4%; opacity:.7; }
+
+  .frame{ position:relative; z-index:2; display:flex; height:1680px; }
+
+  /* ===== Sidebar ===== */
+  .sidebar{ width:300px; height:1680px; flex:none; padding:30px 22px; border-right:1px solid var(--hairline); }
+  .brand{ display:flex; align-items:center; gap:11px; margin-bottom:30px; }
+  .brand-mark{ width:34px; height:34px; border-radius:11px; background:rgba(255,255,255,.12); border:1px solid var(--card-line);
+    display:flex; align-items:center; justify-content:center; font-size:17px; }
+  .brand-name{ font-size:16px; font-weight:700; } .brand-sub{ font-size:11px; color:var(--faint); margin-top:1px; }
+
+  .nav{ display:flex; flex-direction:column; gap:3px; margin-bottom:26px; }
+  .nav-item{ display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:11px; font-size:13.5px; color:var(--dim); }
+  .nav-item.active{ background:rgba(255,255,255,.12); color:#fff; font-weight:600; }
+
+  .grp{ font-size:11px; font-weight:600; color:var(--faint); letter-spacing:.08em; margin:20px 0 10px; }
+  .field{ margin-bottom:13px; }
+  .field label{ display:block; font-size:12px; color:var(--dim); margin-bottom:6px; }
+  .input{ height:36px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; font-size:13.5px; padding:0 2px; }
+  .input .chev{ color:var(--faint); font-size:10px; }
+  .two{ display:flex; gap:16px; } .two .field{ flex:1; }
+  .hint{ font-size:11px; color:var(--faint); line-height:1.6; margin-top:6px; }
+  .seg{ display:flex; border-bottom:1px solid var(--line); }
+  .seg .opt{ flex:1; padding:8px 0; font-size:12.5px; color:var(--faint); text-align:center; }
+  .seg .opt.on{ color:#fff; font-weight:600; border-bottom:1.5px solid var(--accent); margin-bottom:-1px; }
+  .check{ display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--dim); margin:6px 0 12px; }
+  .tick{ width:15px; height:15px; border-radius:5px; border:1.5px solid var(--line); }
+  .tick.on{ background:var(--accent); border-color:var(--accent); position:relative; }
+  .tick.on::after{ content:"✓"; color:#2A1608; font-size:10px; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+
+  .btn{ height:40px; border-radius:12px; font-size:13.5px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:8px; }
+  .btn.dark{ background:rgba(255,255,255,.16); border:1px solid var(--card-line); color:#fff; backdrop-filter:blur(20px); }
+  .btn.ghost{ color:var(--dim); }
+  .btn-row{ display:flex; gap:10px; } .btn-row .btn{ flex:1; }
+  .divider{ height:1px; background:var(--hairline); margin:18px 0; }
+
+  /* ===== Main ===== */
+  .main{ flex:1; padding:30px 34px 30px; }
+  .top{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:22px; }
+  .top h1{ font-size:24px; font-weight:700; letter-spacing:-.02em; }
+  .meta{ font-size:13px; color:var(--dim); display:flex; gap:16px; } .meta b{ color:#fff; font-weight:600; }
+
+  /* Hero 沉浸图 + 毛玻璃叠层 */
+  .hero{ position:relative; height:330px; border-radius:24px; overflow:hidden; border:1px solid var(--card-line); margin-bottom:24px; }
+  .hero img{ width:100%; height:100%; object-fit:cover; }
+  .hero .scrim{ position:absolute; inset:0; background:linear-gradient(180deg,rgba(20,12,16,.20) 0%,rgba(20,12,16,0) 40%,rgba(20,12,16,.52) 100%); }
+  .hero-top{ position:absolute; top:20px; left:24px; right:24px; display:flex; justify-content:space-between; }
+  .hero-place .p{ font-size:16px; font-weight:600; color:#fff; }
+  .hero-place .d{ color:rgba(255,255,255,.82); font-size:12px; margin-top:4px; }
+  .hero-tag{ color:rgba(255,255,255,.82); font-size:12px; }
+  .hero-bottom{ position:absolute; left:24px; right:24px; bottom:20px; display:flex; justify-content:space-between; align-items:flex-end; }
+  .hero-verdict .v1{ color:#fff; font-size:27px; font-weight:700; letter-spacing:-.02em; }
+  .hero-verdict .v2{ color:rgba(255,255,255,.84); font-size:13px; margin-top:5px; }
+  .hero-nums{ display:flex; gap:32px; }
+  .hnum .n{ color:#fff; font-size:23px; font-weight:700; }
+  .hnum .l{ color:rgba(255,255,255,.78); font-size:11.5px; margin-top:3px; }
+
+  /* 毛玻璃卡片 */
+  .glass{ background:var(--card); border:1px solid var(--card-line); border-radius:22px;
+    backdrop-filter:blur(24px) saturate(150%); -webkit-backdrop-filter:blur(24px) saturate(150%);
+    box-shadow:0 12px 34px rgba(8,14,22,.22); }
+
+  .section-head{ display:flex; align-items:center; gap:11px; margin:4px 0 16px; }
+  .section-head .em{ font-size:17px; }
+  .section-head .t{ font-size:16px; font-weight:700; }
+  .section-head .spacer{ flex:1; }
+  .ver{ display:flex; gap:2px; font-size:12px; color:var(--faint); }
+  .ver .v{ padding:6px 12px; border-radius:9px; }
+  .ver .v.on{ background:rgba(255,255,255,.16); color:#fff; font-weight:600; }
+
+  .metrics{ display:flex; gap:40px; margin-bottom:16px; }
+  .metric .l{ font-size:12px; color:var(--dim); margin-bottom:5px; }
+  .metric .n{ font-size:25px; font-weight:700; letter-spacing:-.02em; }
+  .metric .n small{ font-size:12px; color:var(--faint); font-weight:500; }
+
+  .verdict-line{ display:flex; align-items:center; gap:12px; margin-bottom:11px; }
+  .verdict-tag{ font-size:15.5px; font-weight:700; }
+  .swatch{ width:30px; height:30px; border-radius:9px; border:1px solid rgba(255,255,255,.2); }
+  .verdict-sub{ font-size:13px; color:var(--dim); line-height:1.7; margin-bottom:16px; }
+
+  .summary{ display:flex; flex-direction:column; gap:10px; margin-bottom:20px; }
+  .sum{ display:flex; gap:12px; font-size:13px; color:var(--dim); line-height:1.6; }
+  .sum .k{ flex:none; width:70px; color:var(--faint); }
+  .sum .v b{ color:#fff; font-weight:600; }
+  .sum.warn{ color:var(--eve); font-weight:600; }
+
+  .fig{ margin-bottom:20px; }
+  .fig-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; }
+  .fig-title{ font-size:13px; font-weight:600; }
+  .fig-note{ font-size:11.5px; color:var(--faint); }
+  .fig svg{ width:100%; height:124px; display:block; }
+
+  .rows{ display:flex; flex-direction:column; }
+  .row{ display:flex; align-items:center; justify-content:space-between; padding:14px 0; border-top:1px solid var(--hairline); font-size:13.5px; color:var(--dim); }
+  .row:last-child{ border-bottom:1px solid var(--hairline); }
+  .row .left{ display:flex; gap:10px; align-items:center; }
+  .row .right{ display:flex; gap:10px; align-items:center; }
+  .row .chev{ color:var(--faint); }
+  .pill{ font-size:11px; color:var(--faint); }
+
+  .cols{ display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  .col{ padding:22px; }
+  .footer{ margin-top:22px; font-size:11.5px; color:var(--faint); text-align:center; line-height:1.7; }
+
+  /* 配色切换胶囊 */
+  .theme-switch{ display:flex; flex-wrap:wrap; gap:4px; max-width:520px; padding:4px; border-radius:999px;
+    background:rgba(255,255,255,.10); border:1px solid var(--card-line); backdrop-filter:blur(20px); }
+  .theme-switch button{ border:0; background:transparent; color:var(--dim); font-size:12px;
+    padding:6px 12px; border-radius:999px; cursor:pointer; font-family:inherit; letter-spacing:.02em; }
+  .theme-switch button.on{ background:rgba(255,255,255,.20); color:#fff; font-weight:600; }
+  .top-right{ display:flex; align-items:center; gap:16px; }
+</style>
+</head>
+<body style="width:1440px;height:1680px;">
+<main class="root" data-canvas-root style="width:1440px;height:1680px;">
+  <div class="sky"></div><div class="glow"></div><div class="floor"></div>
+  <div class="clouds"><div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div></div>
+
+  <div class="frame">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">🌇</div>
+        <div><div class="brand-name">Burning Sky</div><div class="brand-sub">火烧云 · 霞光预测</div></div>
+      </div>
+      <nav class="nav">
+        <div class="nav-item active">🌅 单次预测</div>
+        <div class="nav-item">🛰️ 卫星实况 · 进阶分析</div>
+        <div class="nav-item">📅 未来多日概览</div>
+        <div class="nav-item">🗂️ 手动多日概览</div>
+      </nav>
+
+      <div class="grp">预报设置</div>
+      <div class="field"><label>地点</label><div class="input"><span>合肥</span><span class="chev">▾</span></div></div>
+      <div class="two">
+        <div class="field"><label>纬度</label><div class="input">31.8047</div></div>
+        <div class="field"><label>经度</label><div class="input">117.2214</div></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>海拔（m）</label><div class="input">0</div></div>
+        <div class="field"><label>日期</label><div class="input"><span>11-13</span><span class="chev">▾</span></div></div>
+      </div>
+      <div class="field"><label>天气模式</label><div class="input"><span>ECMWF IFS 0.25°</span><span class="chev">▾</span></div>
+        <div class="hint">JMA MSM 已停用；ECMWF (AI) 部分云分层由湿度推算；CMA 公共服务可能拥堵，接口不可用时显示错误，不静默切换。</div>
+      </div>
+      <div class="field"><label>云底来源</label><div class="seg"><div class="opt on">自动剖面推算</div><div class="opt">手动指定</div></div></div>
+      <div class="field"><label>AOD 数据源</label><div class="input"><span>CAMS</span><span class="chev">▾</span></div></div>
+
+      <div class="divider"></div>
+      <div class="grp">朝霞 / 晚霞参数</div>
+      <div class="two">
+        <div class="field"><label>朝霞云底（km）</label><div class="input">2.0</div></div>
+        <div class="field"><label>晚霞云底（km）</label><div class="input">2.0</div></div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="grp">案例缓存</div>
+      <div class="field"><label>加载案例 ZIP</label><div class="input"><span style="color:var(--faint);">点击上传</span><span class="chev">⬆</span></div></div>
+      <div class="check"><div class="tick"></div>从案例读取数据（不请求 API）</div>
+
+      <div class="grp">查询内容</div>
+      <div class="check"><div class="tick"></div>🌈 同时分析彩虹（增加请求）</div>
+      <div class="btn-row"><div class="btn ghost">朝霞</div><div class="btn ghost">晚霞</div></div>
+      <div class="btn dark">查询朝霞与晚霞</div>
+      <div class="btn ghost">🌈 单独分析彩虹</div>
+    </aside>
+
+    <section class="main">
+      <div class="top">
+        <h1>单次预测</h1>
+        <div class="top-right">
+          <div class="meta"><span>📍 <b>合肥</b></span><span>2026-11-13</span><span>ECMWF IFS 0.25°</span><span>18:42 更新</span></div>
+          <div class="theme-switch" role="tablist" aria-label="配色主题">
+            <button type="button" data-t="golden" class="on">日落</button>
+            <button type="button" data-t="crimson">赤红</button>
+            <button type="button" data-t="gold">鎏金</button>
+            <button type="button" data-t="peach">橘粉</button>
+            <button type="button" data-t="blue">蓝调</button>
+            <button type="button" data-t="teal">青暮</button>
+            <button type="button" data-t="lilac">淡紫</button>
+            <button type="button" data-t="dawn">晨霞</button>
+            <button type="button" data-t="night">夜色</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero">
+        <img id="hero-img" src="assets/sky/sky02.jpg" alt="火烧云实拍">
+        <div class="scrim"></div>
+        <div class="hero-top">
+          <div class="hero-place"><div class="p">合肥 · 今日晚霞</div><div class="d">31.8047°N, 117.2214°E · 日落 17:21</div></div>
+          <div class="hero-tag">核心展示区 · 每日随机实拍</div>
+        </div>
+        <div class="hero-bottom">
+          <div class="hero-verdict">
+            <div class="v1">有概率 · 绚烂的中烧晚霞</div>
+            <div class="v2">常规概率 62%，色彩分 74，火烧云规模 48%</div>
+          </div>
+          <div class="hero-nums">
+            <div class="hnum"><div class="n">62%</div><div class="l">常规概率</div></div>
+            <div class="hnum"><div class="n">74</div><div class="l">色彩评分</div></div>
+            <div class="hnum"><div class="n">48%</div><div class="l">火烧云规模</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cols">
+        <!-- 朝霞 -->
+        <div class="col glass">
+          <div class="section-head">
+            <span class="em">🌄</span><span class="t">朝霞</span>
+            <span class="spacer"></span>
+            <div class="ver"><div class="v on">原始预测</div><div class="v">卫星修正</div></div>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="l">常规概率</div><div class="n">38<small>%</small></div></div>
+            <div class="metric"><div class="l">上限概率</div><div class="n">55<small>%</small></div></div>
+            <div class="metric"><div class="l">色彩评分</div><div class="n">46<small>/100</small></div></div>
+          </div>
+          <div class="verdict-line">
+            <span class="verdict-tag">小概率 · 普通的小烧朝霞</span>
+            <div class="swatch" style="background:#C99B24;"></div>
+          </div>
+          <div class="verdict-sub">预计小概率普通的小烧朝霞；常规概率 38%，色彩分 46，火烧云规模 18%。</div>
+          <div class="summary">
+            <div class="sum"><span class="k">模型时次</span><span class="v">ECMWF IFS 0.25° · 06:12 起算</span></div>
+            <div class="sum"><span class="k">云层</span><span class="v">总云 62% · 中云 <b>34%</b> · 高云 <b>21%</b></span></div>
+            <div class="sum"><span class="k">云底 / AOD</span><span class="v">云底 2.0 km · AOD 0.30</span></div>
+            <div class="sum warn"><span class="k">低云</span><span class="v">视野内低云 12.0%，结果不考虑低云影响可见性。</span></div>
+          </div>
+          <div class="fig">
+            <div class="fig-head"><div class="fig-title">云色时序 · 受光面积与颜色变化</div><div class="fig-note">峰值 06:38</div></div>
+            <svg viewBox="0 0 400 130" preserveAspectRatio="none">
+              <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#D6B84C" stop-opacity=".32"/><stop offset="1" stop-color="#D6B84C" stop-opacity="0"/>
+              </linearGradient></defs>
+              <line x1="0" y1="100" x2="400" y2="100" stroke="rgba(255,255,255,.14)" stroke-dasharray="4 4"/>
+              <path d="M0,100 C60,97 90,74 140,62 C190,50 230,76 280,84 C330,92 370,96 400,98 L400,116 L0,116 Z" fill="url(#g1)"/>
+              <path d="M0,100 C60,97 90,74 140,62 C190,50 230,76 280,84 C330,92 370,96 400,98" fill="none" stroke="#D6B84C" stroke-width="2"/>
+            </svg>
+          </div>
+          <div class="fig">
+            <div class="fig-head"><div class="fig-title">严格球面光路 · 云层剖面</div><div class="fig-note">连续面 · 严格几何门</div></div>
+            <svg viewBox="0 0 400 130" preserveAspectRatio="none">
+              <line x1="0" y1="96" x2="400" y2="96" stroke="rgba(255,255,255,.22)" stroke-width="1.6"/>
+              <path d="M20,96 L120,62 L220,76 L320,54 L380,84" fill="none" stroke="#9FB6C4" stroke-width="1.5"/>
+              <circle cx="120" cy="62" r="4" fill="#FFCF8A"/><circle cx="320" cy="54" r="4" fill="#FFCF8A"/>
+              <line x1="20" y1="96" x2="380" y2="34" stroke="rgba(255,207,138,.5)" stroke-width="1.1" stroke-dasharray="5 4"/>
+            </svg>
+          </div>
+          <div class="rows">
+            <div class="row"><span class="left">🧭 八方位分析 · 按需展开</span><span class="right"><span class="pill">可选实验图</span><span class="chev">▾</span></span></div>
+            <div class="row"><span class="left">☁️ 二维云量分布 · 辅助诊断</span><span class="right"><span class="pill">综合图层</span><span class="chev">▾</span></span></div>
+            <div class="row"><span class="left">📋 朝霞详细采样与报告</span><span class="right"><span class="chev">▾</span></span></div>
+          </div>
+        </div>
+
+        <!-- 晚霞 -->
+        <div class="col glass">
+          <div class="section-head">
+            <span class="em">🌆</span><span class="t">晚霞</span>
+            <span class="spacer"></span>
+            <div class="ver"><div class="v on">原始预测</div><div class="v">卫星修正</div></div>
+          </div>
+          <div class="metrics">
+            <div class="metric"><div class="l">常规概率</div><div class="n">62<small>%</small></div></div>
+            <div class="metric"><div class="l">上限概率</div><div class="n">78<small>%</small></div></div>
+            <div class="metric"><div class="l">色彩评分</div><div class="n">74<small>/100</small></div></div>
+          </div>
+          <div class="verdict-line">
+            <span class="verdict-tag">有概率 · 绚烂的中烧晚霞</span>
+            <div class="swatch" style="background:#E67E22;"></div>
+          </div>
+          <div class="verdict-sub">预计有概率绚烂的中烧晚霞；常规概率 62%，色彩分 74，火烧云规模 48%。</div>
+          <div class="summary">
+            <div class="sum"><span class="k">模型时次</span><span class="v">ECMWF IFS 0.25° · 17:21 起算</span></div>
+            <div class="sum"><span class="k">云层</span><span class="v">总云 71% · 中云 <b>45%</b> · 高云 <b>26%</b></span></div>
+            <div class="sum"><span class="k">云底 / AOD</span><span class="v">云底 2.0 km · AOD 0.30</span></div>
+            <div class="sum"><span class="k">峰值云色</span><span class="v">#E67E22 · 金橘偏橙红</span></div>
+          </div>
+          <div class="fig">
+            <div class="fig-head"><div class="fig-title">云色时序 · 受光面积与颜色变化</div><div class="fig-note">峰值 17:08</div></div>
+            <svg viewBox="0 0 400 130" preserveAspectRatio="none">
+              <defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#FF9C7A" stop-opacity=".34"/><stop offset="1" stop-color="#FF9C7A" stop-opacity="0"/>
+              </linearGradient></defs>
+              <line x1="0" y1="100" x2="400" y2="100" stroke="rgba(255,255,255,.14)" stroke-dasharray="4 4"/>
+              <path d="M0,101 C50,99 100,70 160,48 C220,26 260,44 300,66 C340,84 370,94 400,97 L400,116 L0,116 Z" fill="url(#g2)"/>
+              <path d="M0,101 C50,99 100,70 160,48 C220,26 260,44 300,66 C340,84 370,94 400,97" fill="none" stroke="#FF9C7A" stroke-width="2"/>
+            </svg>
+          </div>
+          <div class="fig">
+            <div class="fig-head"><div class="fig-title">严格球面光路 · 云层剖面</div><div class="fig-note">连续面 · 严格几何门</div></div>
+            <svg viewBox="0 0 400 130" preserveAspectRatio="none">
+              <line x1="0" y1="96" x2="400" y2="96" stroke="rgba(255,255,255,.22)" stroke-width="1.6"/>
+              <path d="M20,96 L100,58 L190,70 L280,48 L380,76" fill="none" stroke="#9FB6C4" stroke-width="1.5"/>
+              <circle cx="100" cy="58" r="4" fill="#FFCF8A"/><circle cx="280" cy="48" r="4" fill="#FFCF8A"/>
+              <line x1="20" y1="96" x2="380" y2="30" stroke="rgba(255,207,138,.5)" stroke-width="1.1" stroke-dasharray="5 4"/>
+            </svg>
+          </div>
+          <div class="rows">
+            <div class="row"><span class="left">🌈 彩虹分析 · 与晚霞重叠 45 min</span><span class="right"><span class="pill">主虹 52/100</span><span class="chev">▾</span></span></div>
+            <div class="row"><span class="left">🧭 八方位分析 · 按需展开</span><span class="right"><span class="pill">可选实验图</span><span class="chev">▾</span></span></div>
+            <div class="row"><span class="left">☁️ 二维云量分布 · 辅助诊断</span><span class="right"><span class="pill">综合图层</span><span class="chev">▾</span></span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">数字为未经历史校准的概率式评分，不是统计发生概率 · 规模：0% 不烧 · 0–10% 微烧 · 10–30% 小烧 · 30–60% 中烧 · 60–100% 大烧</div>
+    </section>
+  </div>
+
+<script>
+(function(){
+  // 四套配色：点击胶囊切换，写入本地记忆，下次进入沿用
+  var root=document.querySelector('.root');
+  var btns=document.querySelectorAll('.theme-switch button');
+  var saved=localStorage.getItem('bs-theme')||'golden';
+  function applyTheme(t){
+    root.setAttribute('data-theme',t);
+    btns.forEach(function(b){b.classList.toggle('on',b.dataset.t===t);});
+  }
+  applyTheme(saved);
+  btns.forEach(function(b){
+    b.addEventListener('click',function(){
+      applyTheme(b.dataset.t);
+      localStorage.setItem('bs-theme',b.dataset.t);
+    });
+  });
+
+  // 实拍图按日期每日随机：同一天内刷新保持同一张，跨天自动换
+  var sky=[
+    'assets/sky/sky01.jpg','assets/sky/sky02.jpg','assets/sky/sky03.jpg',
+    'assets/sky/sky04.jpg','assets/sky/sky05.jpg','assets/sky/sky06.jpg',
+    'assets/sky/sky07.jpg','assets/sky/sky08.jpg','assets/sky/sky09.jpg',
+    'assets/sky/sky10.jpg','assets/sky/sky11.jpg','assets/sky/sky12.jpg',
+    'assets/sky/sky13.jpg'
+  ];
+  var d=new Date();
+  var seed=d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate();
+  var idx=seed%sky.length;
+  document.getElementById('hero-img').src=sky[idx];
+})();
+</script>
+</main>
+</body>
+</html>

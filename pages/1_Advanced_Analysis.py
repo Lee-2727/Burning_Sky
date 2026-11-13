@@ -45,6 +45,9 @@ if password and not st.session_state.get('authenticated'):
         st.rerun()
     st.stop()
 
+from burning_sky.warm_web_theme import render_sky_hero
+render_sky_hero('卫星实况 · 进阶分析', '以原始 EC/GFS 预测为基础，验证云洞与受光路径。')
+
 CACHE = ROOT/'data'/'advanced_analysis_cache'
 TTL_SECONDS = 24*3600
 MODELS={'EC':'ECMWF IFS 0.25°','GFS':'GFS Global'}

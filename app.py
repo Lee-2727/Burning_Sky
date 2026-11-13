@@ -136,9 +136,9 @@ class WebForecastEngine(engine.FireCloudApp):
 
 from burning_sky.web_color_curve import draw_dynamic_color_curve as _draw_dynamic_color_curve
 
-st.title("🌇 Burning Sky")
-from burning_sky.warm_web_theme import apply_warm_theme
+from burning_sky.warm_web_theme import apply_warm_theme, render_sky_hero
 apply_warm_theme()
+render_sky_hero("Burning Sky", "让每一道晨昏光线，都有迹可循。 · 单次预测 / 多日概览 / 卫星校准")
 
 with st.sidebar:
     st.markdown('### 导航')
