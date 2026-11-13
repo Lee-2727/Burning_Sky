@@ -33,8 +33,9 @@ from burning_sky.profile_image import render_profile
 from burning_sky.api_rate_limit import set_request_profile, reset_request_profile, cooldown_remaining
 
 st.set_page_config(page_title='进阶分析 | Burning Sky',page_icon='🛰️',layout='wide')
-from burning_sky.warm_web_theme import apply_warm_theme
+from burning_sky.warm_web_theme import apply_warm_theme, render_theme_switcher
 apply_warm_theme()
+render_theme_switcher()
 password = os.getenv('APP_PASSWORD','')
 try: password = st.secrets.get('APP_PASSWORD',password)
 except Exception: pass
@@ -44,9 +45,6 @@ if password and not st.session_state.get('authenticated'):
         st.session_state['authenticated']=True
         st.rerun()
     st.stop()
-
-from burning_sky.warm_web_theme import render_sky_hero
-render_sky_hero('卫星实况 · 进阶分析', '以原始 EC/GFS 预测为基础，验证云洞与受光路径。')
 
 CACHE = ROOT/'data'/'advanced_analysis_cache'
 TTL_SECONDS = 24*3600

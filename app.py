@@ -136,9 +136,10 @@ class WebForecastEngine(engine.FireCloudApp):
 
 from burning_sky.web_color_curve import draw_dynamic_color_curve as _draw_dynamic_color_curve
 
-from burning_sky.warm_web_theme import apply_warm_theme, render_sky_hero
+st.title("🌇 Burning Sky")
+from burning_sky.warm_web_theme import apply_warm_theme, render_theme_switcher, render_hero
 apply_warm_theme()
-render_sky_hero("Burning Sky", "让每一道晨昏光线，都有迹可循。 · 单次预测 / 多日概览 / 卫星校准")
+render_theme_switcher()
 
 with st.sidebar:
     st.markdown('### 导航')
@@ -910,6 +911,8 @@ if st.session_state.get("show_manual_overview"):
 if run:
     engine.messagebox.last_error = None
     engine.messagebox.last_info = None
+    # 展示层：核心实拍区（每日随机），仅装饰，不读取或改动预测数据。
+    render_hero(f"{place} · {'今日晚霞' if query_direction in ('evening','all') else '今日朝霞'}")
     values = {
         "place": place,
         "date": forecast_date.isoformat(),
@@ -1388,5 +1391,6 @@ if results:
                 else:
                     st.info("当前结果没有可显示的路径采样数据。")
 else:
+    render_hero("设置地点、日期和模式，然后点击查询", "左侧选择条件后，这里会展示朝霞 / 晚霞的概率、色彩分、规模与光路剖面")
     st.info("请在左侧设置地点、日期和模式，然后点击查询。")
 
