@@ -1,45 +1,20 @@
 {
   "schema_version": 2,
-  "state": "failed",
+  "state": "running",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
-  "started_at": "2026-11-14 04:44:15 CST",
-  "updated_at": "2026-11-14 04:50:44 CST",
-  "current_model": "GFS Global",
-  "model_index": 2,
+  "started_at": "2026-11-14 08:40:45 CST",
+  "updated_at": "2026-11-14 08:40:45 CST",
+  "current_model": "ECMWF IFS 0.25°",
+  "model_index": 1,
   "model_total": 2,
-  "completed_models": [
-    "ECMWF IFS 0.25°"
-  ],
+  "completed_models": [],
   "cities": [
     "合肥"
   ],
-  "city_progress": 1,
+  "city_progress": 0,
   "city_total": 1,
-  "task_progress": 10,
+  "task_progress": 0,
   "task_total": 12,
-  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
-  "failure_count": 2,
-  "last_error": {
-    "city": "合肥",
-    "date": "2026-11-15",
-    "model": "GFS Global",
-    "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请根据页面显示的冷却剩余时间再试；429可能涉及分钟额度或数据量额度。\n接口说明：Minutely API request limit exceeded. Please try again in one minute."
-  },
-  "failed_at": "2026-11-14 04:50:44 CST",
-  "failures": [
-    {
-      "city": "合肥",
-      "date": "2026-11-14",
-      "model": "ECMWF IFS 0.25°",
-      "error": "无法完成朝霞/晚霞预报：\n天气接口连接失败或超时（单次最多等待 20 秒）：<urlopen error _ssl.c:1001: The handshake operation timed out>"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-15",
-      "model": "GFS Global",
-      "error": "无法完成朝霞/晚霞预报：\nOpen-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请根据页面显示的冷却剩余时间再试；429可能涉及分钟额度或数据量额度。\n接口说明：Minutely API request limit exceeded. Please try again in one minute."
-    }
-  ],
-  "message": "本轮晚霞有 2 项失败；保留上一次完整发布的数据。"
+  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞"
 }
