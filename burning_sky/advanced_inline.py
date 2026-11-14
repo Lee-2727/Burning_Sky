@@ -287,21 +287,36 @@ def _ref_inputs(image,w,h,auto_marks=None):
 
 
 def render_inline(runtime_engine=None):
+    """Render the satellite editor for the active single-result handoff.
+
+    The main Streamlit page calls this without ``runtime_engine``.  Supplying
+    a specific engine is optional; it must never gate initialization of the
+    per-result cache identity or configuration.
+    """
     global engine
     if runtime_engine is not None:
-        engine=runtime_engine
-        from burning_sky import advanced_bridge as _advanced_bridge
-        handoff = st.session_state.get('bs_adv_handoff')
-        if not handoff or handoff.get('model') not in MODELS:
-            st.warning('请从已完成的 EC/GFS 单次朝霞或晚霞结果启动卫星校准。')
-            return
-        config=dict(handoff)
+        engine = runtime_engine
+    handoff = st.session_state.get('bs_adv_handoff')
+    if not isinstance(handoff, dict) or handoff.get('model') not in MODELS:
+        st.warning('请从已完成的 EC/GFS 单次朝霞或晚霞结果启动卫星校准。')
+        return
+    if handoff.get('direction') not in ('morning', 'evening'):
+        st.warning('当前没有有效的单方向查询结果，请重新打开朝霞或晚霞的卫星校准。')
+        return
+    try:
+        config = dict(handoff)
         place=config['place'];lat=float(config['lat']);lon=float(config['lon'])
         elev=float(config['elev']);day=date.fromisoformat(config['date'])
         model=config['model'];direction=config['direction']
-        ident=_key(place,lat,lon,elev,day.isoformat(),model,direction)
-        st.markdown('#### 🛰️ 当前结果 · 卫星实况校准')
-        st.caption(f"{place} · {day} · {model} · {'朝霞' if direction=='morning' else '晚霞'}；使用本次基础结果及请求缓存")
+    except (KeyError, TypeError, ValueError) as exc:
+        st.error('当前单次结果交接参数不完整，请从对应结果重新进入卫星校准。')
+        return
+    ident=_key(place,lat,lon,elev,day.isoformat(),model,direction)
+    if st.session_state.get('bs_adv_inline_active') != ident:
+        st.warning('当前校准对象已变化，请从对应的单次结果重新进入。')
+        return
+    st.markdown('#### 🛰️ 当前结果 · 卫星实况校准')
+    st.caption(f"{place} · {day} · {model} · {'朝霞' if direction=='morning' else '晚霞'}；使用本次基础结果及请求缓存")
     base_key=ident+'_base'; corrected_key=ident+'_corrected'
     partial_key=ident+'_supplement_cache'
     progress_key=ident+'_progress'
