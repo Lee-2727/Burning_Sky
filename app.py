@@ -968,6 +968,7 @@ if run:
         # Fire-cloud query results are rendered below in the single-mode panel.
         # Do not activate the standalone rainbow panel as a side effect.
         import copy
+        st.session_state['bs_adv_inline_active'] = None
         st.session_state['fire_cloud_original_results'] = copy.deepcopy(runner.direction_results)
         st.session_state['fire_cloud_replay_values'] = dict(values)
         st.session_state['fire_cloud_replay_cache'] = dict(_web_case_cache if not use_case_cache else (st.session_state.get('case_bundle_cache') or {}))
@@ -1242,8 +1243,16 @@ if results:
                         if not _target:
                             st.error('本次方向尚无完整单次结果，无法直接校准。')
                         else:
+                            _incoming_id = _advanced_bridge.identity(_target)
+                            # Do not reuse a screenshot or landmark editor from another city,
+                            # model, date or sunrise/sunset result.
+                            if st.session_state.get('bs_adv_last_identity') != _incoming_id:
+                                for _stale_key in ('advanced_screenshot', 'adv_landmarks'):
+                                    st.session_state.pop(_stale_key, None)
+                            st.session_state['bs_adv_last_identity'] = _incoming_id
                             st.session_state['bs_adv_handoff']=_target
-                            st.switch_page('pages/1_Advanced_Analysis.py')
+                            st.session_state['bs_adv_inline_active']=_incoming_id
+                            st.rerun()
                 with _version_col:
                     if _sat_archive:
                         _versions=['原始预测','卫星修正']
@@ -1270,6 +1279,13 @@ if results:
                             ],hide_index=True,use_container_width=True)
                     else:
                         st.caption('暂无卫星修正版本；进入校准后可直接复用本次请求数据。')
+        # Inline satellite calibration is bound to exactly one completed direction.
+        # Render inside the single-result page rather than navigating to a duplicate query.
+        if _bridge_ident and st.session_state.get('bs_adv_inline_active') == _bridge_ident:
+            with st.container(border=True):
+                from burning_sky.advanced_inline import render_inline as _render_satellite_inline
+                _render_satellite_inline()
+
         # The shared engine already applies all probability and special-verdict
         # rules (including strict geometry gates). Keep its result authoritative.
         # Do NOT infer cloud-base/low-cloud thresholds from rounded summary text,

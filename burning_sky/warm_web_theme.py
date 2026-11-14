@@ -179,18 +179,53 @@ button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover{
   color: var(--bs-ink) !important;
 }
 
-/* Sidebar: soften the native pale/dark hairlines into transparent white washes. */
+/* Sidebar: soften the native pale/dark hairlines into transparent white washes.
+   All same-level navigation buttons share one color, weight and surface. */
 [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]{
   border-color: rgba(255,255,255,.10) !important;
   background: rgba(255,255,255,.07) !important;
+  color: var(--bs-ink) !important;
+  font-weight: 600 !important;
 }
 [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover{
   border-color: rgba(255,255,255,.18) !important;
+  background: rgba(255,255,255,.13) !important;
+  color: #fff !important;
+}
+/* Manual page_link navigation in the sidebar: match the unified light ink. */
+[data-testid="stSidebar"] [data-testid="stPageLink"],
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"],
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] span,
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"] p{
+  color: var(--bs-ink) !important;
+  font-weight: 600 !important;
+}
+[data-testid="stSidebar"] [data-testid="stPageLink-NavLink"]:hover{
+  color: #fff !important;
+}
+/* Auto-generated page nav links at the top of the sidebar: brighten from the
+   native dark grey to the same light ink as the rest of the sidebar. */
+[data-testid="stSidebar"] [data-testid="stSidebarNavLink"],
+[data-testid="stSidebar"] [data-testid="stSidebarNavLink"] span,
+[data-testid="stSidebar"] [data-testid="stSidebarNavLink"] p{
+  color: var(--bs-dim) !important;
+  font-weight: 500 !important;
+}
+[data-testid="stSidebar"] [data-testid="stSidebarNavLink"]:hover,
+[data-testid="stSidebar"] [data-testid="stSidebarNavLink"]:hover span{
+  color: var(--bs-ink) !important;
+}
+[data-testid="stSidebar"] [data-testid="stSidebarNavLink"][aria-current="page"]{
+  color: var(--bs-ink) !important;
+  font-weight: 600 !important;
 }
 [data-testid="stSidebar"] [data-testid="stBaseButton-headerNoPadding"]{
   border-color: rgba(255,255,255,.12) !important;
-  color: var(--bs-dim) !important;
+  color: var(--bs-ink) !important;
   background: transparent !important;
+}
+[data-testid="stSidebar"] [data-testid="stBaseButton-headerNoPadding"] svg{
+  color: var(--bs-ink) !important;
 }
 [data-testid="stSidebar"]{ border-right-color: rgba(255,255,255,.10) !important; }
 [data-testid="stSidebar"] hr{ border-color: rgba(255,255,255,.10) !important; }
@@ -275,11 +310,7 @@ button[data-baseweb="tab"][aria-selected="true"]{ color: var(--bs-accent) !impor
 /* Radio / segmented control selected pill */
 [data-baseweb="radio"] > div, [data-baseweb="checkbox"] > div{ background: transparent !important; }
 
-/* Existing navigation buttons keep their identity, restyled to the glass theme */
-.st-key-open_multi_day_overview button{
-  background: linear-gradient(115deg, var(--bs-eve), var(--bs-accent)) !important;
-  border-color: var(--bs-accent) !important; color: #1a120c !important;
-}
+/* Navigation buttons share the unified glass sidebar style above. */
 .st-key-open_manual_overview button{
   background: rgba(255,255,255,.10) !important;
   border-color: var(--bs-card-line) !important; color: var(--bs-ink) !important;
