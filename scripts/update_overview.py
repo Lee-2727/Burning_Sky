@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 # Set the environment BEFORE importing engine/api_rate_limit (profile is read at import).
 os.environ['BURNING_SKY_REQUEST_PROFILE'] = 'scheduled'
 import engine  # noqa: E402
+from burning_sky import api_rate_limit as _api_rate_limit
 
 TZ = ZoneInfo("Asia/Shanghai")
 CITY_CONFIG_FILE = ROOT / "overview_cities.txt"
@@ -25,6 +26,38 @@ CITY_CONFIG_FILE = ROOT / "overview_cities.txt"
 # model batch is published before the next model starts.
 REQUEST_INTERVAL_SECONDS = 20  # Additional spacing between individual direction tasks.
 MINUTE_429_RETRIES = 3  # 429 cooldown/resume is limited; do not retry hourly/data quotas.
+
+UPDATER_BUILD_ID = 'scheduled-v2.1.1-20261116-profile-check-push-rebase'
+
+def _check_scheduled_rate():
+    # Verify the HTTP limiter used by the imported engine, not just an env flag.
+    actual = _api_rate_limit._profile()
+    pacing = _api_rate_limit._POLICY.get(actual)
+    print(f'[BURNING SKY UPDATER] build={UPDATER_BUILD_ID} profile={actual} policy={pacing}', flush=True)
+    if actual != 'scheduled' or pacing != (12.0, 5):
+        raise RuntimeError('定时任务的真实HTTP档位不是 scheduled (12秒/次，5次/分钟)，拒绝以 interactive 高速模式运行')
+
+def _push_with_rebase(branch):
+    """Fast-forward remote updates on a non-fast-forward push; never force-push.
+
+    Rebase can conflict when multiple workflows touch the same status JSON.
+    In that case abort safely, report failure, and leave remote data untouched.
+    """
+    for attempt in range(1, 4):
+        pushed = subprocess.run(['git','push','origin',f'HEAD:{branch}'], cwd=ROOT, capture_output=True, text=True)
+        if pushed.returncode == 0:
+            print(f'[overview publish] pushed {branch} (attempt {attempt})', flush=True)
+            return
+        detail = (pushed.stderr or pushed.stdout or '')[-500:]
+        if not any(x in detail.lower() for x in ('fetch first', 'non-fast-forward', 'rejected')):
+            raise RuntimeError(f'git push failed: {detail}')
+        print(f'[overview publish] remote changed, fetch+rebase (attempt {attempt}/3)', flush=True)
+        subprocess.run(['git','fetch','origin',branch], cwd=ROOT, check=True)
+        rebased = subprocess.run(['git','rebase','FETCH_HEAD'], cwd=ROOT, capture_output=True, text=True)
+        if rebased.returncode:
+            subprocess.run(['git','rebase','--abort'], cwd=ROOT, capture_output=True)
+            raise RuntimeError('并发更新产生数据文件冲突；已中止rebase，保留远端数据。请在Actions工作流设置 concurrency 互斥。' + (rebased.stderr or '')[-400:])
+    raise RuntimeError('远端持续出现并发提交，三次重试后停止，未强制覆盖远端')
 
 def load_city_config():
     cities = []
@@ -209,7 +242,7 @@ def _publish_model_batch(model_label, status):
             subprocess.run(["git", "commit", "-m", f"chore: publish {model_label} overview batch"], cwd=ROOT, check=True)
         # Always try pushing HEAD, even when there are no newly staged files:
         # a previous push may have failed after its local commit succeeded.
-        subprocess.run(["git", "push", "origin", f"HEAD:{branch}"], cwd=ROOT, check=True)
+        _push_with_rebase(branch)
         print(f"Published status/results to {branch}: {model_label}", flush=True)
     except Exception as exc:
         print(f"WARNING: incremental publish failed for {model_label}: {exc}", flush=True)
@@ -244,7 +277,7 @@ def _publish_files(status, include_results=False):
         if changed:
             msg = "chore: publish completed " + status.get("direction_title", "") + " overview" if include_results else "chore: publish overview live status"
             subprocess.run(["git", "commit", "-m", msg], cwd=ROOT, check=True)
-        subprocess.run(["git", "push", "origin", f"HEAD:{branch}"], cwd=ROOT, check=True)
+        _push_with_rebase(branch)
         print(f"Published {'completed direction results' if include_results else 'live status'} to {branch}", flush=True)
     except Exception as exc:
         print(f"WARNING: publish failed: {exc}", flush=True)
@@ -258,6 +291,7 @@ def _scheduled_direction(now):
 
 
 def main():
+    _check_scheduled_rate()
     now = datetime.now(TZ)
     direction = "both"
     direction_title = "朝霞及晚霞"
@@ -343,7 +377,7 @@ def main():
         "task_progress": 0, "task_total": len(cities) * len(dates) * len(models) * 2,
         "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
     }
-    print("Updater version: split-direction-atomic-v1", flush=True)
+    print(f"Updater version: {UPDATER_BUILD_ID}", flush=True)
     print(f"Direction: {direction_title}; cities: {' → '.join(cities)}; models: 2; days: 5", flush=True)
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
     _publish_files(status, include_results=False)
