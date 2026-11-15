@@ -487,7 +487,7 @@ if st.session_state.get("show_multi_day_overview"):
             elif _state == "between_models":
                 st.info(f"⏳ 多模概览正在准备下一个模式。已完成 {_model_index}/{_model_total} 个模式：{', '.join(_completed_models)}。状态更新时间：{_update_status.get('updated_at', '未知')}。")
             elif _state == "completed":
-                st.success(f"✅ {_active_direction}本轮双模式三日数据已完整发布。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
+                st.success(f"✅ {_active_direction}本轮双模式数据已发布。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
             elif _state == "failed":
                 st.error(f"❌ {_active_direction}本轮更新失败（{_update_status.get('failure_count', 0)} 项）。已保留上一次完整发布的数据。原因：{_update_status.get('message', '请查看 GitHub Actions 日志')}。")
             else:
