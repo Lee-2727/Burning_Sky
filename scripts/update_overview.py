@@ -13,6 +13,9 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+# This GitHub Actions batch is NOT a human-triggered interactive query.
+# Set the environment BEFORE importing engine/api_rate_limit (profile is read at import).
+os.environ['BURNING_SKY_REQUEST_PROFILE'] = 'scheduled'
 import engine  # noqa: E402
 
 TZ = ZoneInfo("Asia/Shanghai")
@@ -20,7 +23,8 @@ CITY_CONFIG_FILE = ROOT / "overview_cities.txt"
 
 # Requests are processed conservatively within each model batch; each completed
 # model batch is published before the next model starts.
-REQUEST_INTERVAL_SECONDS = 20  # 恢复原定时更新任务间隔；不叠加逐请求5/min限速
+REQUEST_INTERVAL_SECONDS = 20  # Additional spacing between individual direction tasks.
+MINUTE_429_RETRIES = 3  # 429 cooldown/resume is limited; do not retry hourly/data quotas.
 
 def load_city_config():
     cities = []
@@ -53,6 +57,7 @@ if PLACE not in CITY_CONFIG:
     raise SystemExit(f"Unsupported city: {PLACE}; check overview_cities.txt")
 LAT, LON, ELEVATION_M = CITY_CONFIG[PLACE]
 OUTPUT = ROOT / "data" / f"overview_{PLACE}.json"
+CHECKPOINT = ROOT / "data" / f"overview_checkpoint_{PLACE}.json"
 HISTORY_DIR = ROOT / "data" / "overview_history" / PLACE
 
 class _Value:
@@ -221,12 +226,20 @@ def _publish_files(status, include_results=False):
         subprocess.run(["git", "config", "user.name", "github-actions[bot]"], cwd=ROOT, check=True)
         subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=ROOT, check=True)
         paths = [ROOT / "data" / "overview_status.json"]
+        if CHECKPOINT.is_file():
+            paths.append(CHECKPOINT)
         if include_results:
             paths += [ROOT / "data" / "overview.json"]
             paths += sorted((ROOT / "data").glob("overview_*.json"))
         existing = [str(x.relative_to(ROOT)) for x in paths if x.is_file()]
         if existing:
             subprocess.run(["git", "add", "-f", "--", *existing], cwd=ROOT, check=True)
+        # On successful completion remove the durable checkpoint from Git as well.
+        relative_checkpoint = str(CHECKPOINT.relative_to(ROOT))
+        if not CHECKPOINT.exists() and subprocess.run(
+                ['git', 'ls-files', '--error-unmatch', '--', relative_checkpoint],
+                cwd=ROOT, capture_output=True).returncode == 0:
+            subprocess.run(['git', 'add', '-u', '--', relative_checkpoint], cwd=ROOT, check=True)
         changed = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT).returncode != 0
         if changed:
             msg = "chore: publish completed " + status.get("direction_title", "") + " overview" if include_results else "chore: publish overview live status"
@@ -293,6 +306,32 @@ def main():
             "days": days_payload,
         }
 
+    # Preserve partial work on a failed or rate-limited run. A checkpoint may
+    # resume only for the same calendar-day batch, same city and same models.
+    checkpoint_completed = set()
+    try:
+        previous_checkpoint = json.loads(CHECKPOINT.read_text(encoding='utf-8'))
+        if (previous_checkpoint.get('batch_day') == now.date().isoformat()
+                and previous_checkpoint.get('place') == PLACE
+                and previous_checkpoint.get('model_labels') == [m['label'] for m in models]
+                and previous_checkpoint.get('dates') == [d.isoformat() for d in dates]):
+            recovered = previous_checkpoint.get('snapshot')
+            if isinstance(recovered, dict) and recovered.get('days'):
+                snapshots[PLACE] = recovered
+                checkpoint_completed = set(str(x) for x in previous_checkpoint.get('completed', []))
+                print(f'Resuming {len(checkpoint_completed)} successful tasks from checkpoint.', flush=True)
+    except (OSError, ValueError, TypeError, KeyError):
+        pass
+
+    def save_checkpoint():
+        _write_json_atomic(CHECKPOINT, {
+            'schema_version': 1, 'batch_day': now.date().isoformat(),
+            'place': PLACE, 'model_labels': [m['label'] for m in models],
+            'dates': [d.isoformat() for d in dates],
+            'completed': sorted(checkpoint_completed), 'snapshot': snapshots[PLACE],
+            'saved_at': datetime.now(TZ).isoformat(timespec='seconds'),
+        })
+
     status = {
         "schema_version": 2, "state": "running", "direction": direction,
         "direction_title": direction_title,
@@ -317,63 +356,113 @@ def main():
     limit_hit = False
     try:
         for model_index, model in enumerate(models, 1):
-            label = model["label"]
+            label = model['label']
             status.update(current_model=label, model_index=model_index,
-                          updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"))
-            _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+                          updated_at=datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S %Z'))
+            _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
             _publish_files(status, include_results=False)
             print(f"\n===== MODEL {model_index}/{len(models)}: {label} · {direction_title} =====", flush=True)
             for city_index, city in enumerate(cities, 1):
                 snapshot = snapshots[city]
                 for day_index, day in enumerate(dates):
-                    if task_index:
-                        time.sleep(REQUEST_INTERVAL_SECONDS)
-                    for direction in ("morning", "evening"):
-                        direction_title = "朝霞" if direction == "morning" else "晚霞"
-                        runner = _new_runner(city, day, label)
-                        engine.messagebox.last_error = None
-                        print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: starting", flush=True)
-                        try:
-                            runner._fetch_weather_task(direction)
-                        except Exception as exc:
-                            engine.messagebox.last_error = ("Forecast error", str(exc))
-                        result = runner.direction_results.get(direction)
-                        record = _record(result) if result else None
-                        error = engine.messagebox.last_error
-                        if error or not isinstance(record, dict) or any(not isinstance(record.get(k), (int, float)) for k in ("probability", "color_score", "burn_scale")):
-                            reason = str(error[1]) if error else "预测流程未返回有效概率结果"
-                            failures.append({"city": city, "date": day.isoformat(), "model": label, "error": reason[:1000]})
-                            if "Hourly API request limit exceeded" in reason or "429" in reason:
-                                limit_hit = True
-                            print(f"ERROR: {city} {day} {label} {direction_title}: {reason[:500]}", flush=True)
+                    for direction in ('morning', 'evening'):
+                        direction_title = '朝霞' if direction == 'morning' else '晚霞'
+                        task_key = '|'.join((city, day.isoformat(), label, direction))
+                        if task_key in checkpoint_completed:
+                            previous = snapshot['days'][day_index][direction].get(label)
+                            if isinstance(previous, dict) and all(isinstance(previous.get(k), (int,float))
+                                                      for k in ('probability','color_score','burn_scale')):
+                                task_index += 1
+                                print(f'[checkpoint] {task_key}: valid ({task_index}/{status["task_total"]})', flush=True)
+                                status.update(task_progress=task_index, city_progress=city_index)
+                                continue
+                            checkpoint_completed.discard(task_key)
+
+                        if task_index:
+                            time.sleep(REQUEST_INTERVAL_SECONDS)
+                        record = None
+                        error = None
+                        reason = ''
+                        for attempt in range(1, MINUTE_429_RETRIES + 2):
+                            runner = _new_runner(city, day, label)
+                            engine.messagebox.last_error = None
+                            print(f'[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: starting (attempt {attempt})', flush=True)
+                            try:
+                                runner._fetch_weather_task(direction)
+                            except Exception as exc:
+                                engine.messagebox.last_error = ('Forecast error', str(exc))
+                            result = runner.direction_results.get(direction)
+                            record = _record(result) if result else None
+                            error = engine.messagebox.last_error
+                            if (not error and isinstance(record, dict)
+                                    and all(isinstance(record.get(k), (int,float))
+                                            for k in ('probability','color_score','burn_scale'))):
+                                break
+                            reason = str(error[1]) if error else '预测流程未返回有效概率结果'
+                            minute_limited = ('Minutely API request limit exceeded' in reason
+                                              or ('HTTP 429' in reason and 'Minutely' in reason))
+                            if not minute_limited or attempt > MINUTE_429_RETRIES:
+                                break
+                            from burning_sky.api_rate_limit import cooldown_remaining
+                            delay = max(125, cooldown_remaining() + 25)
+                            print(f'[rate limited] Minute quota: wait {delay}s and retry current task '
+                                  f'({attempt}/{MINUTE_429_RETRIES}); completed results retained.', flush=True)
+                            save_checkpoint()
+                            status.update(state='cooldown', message=f'分钟限流，等待{delay}秒后重试当前任务',
+                                          updated_at=datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S %Z'))
+                            _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
+                            time.sleep(delay)
+                            status['state'] = 'running'
+
+                        valid = (not error and isinstance(record, dict)
+                                 and all(isinstance(record.get(k), (int,float))
+                                         for k in ('probability','color_score','burn_scale')))
+                        if valid:
+                            snapshot['days'][day_index][direction][label] = record
+                            checkpoint_completed.add(task_key)
+                            save_checkpoint()
                         else:
-                            snapshot["days"][day_index][direction][label] = record
+                            failures.append({'city': city, 'date': day.isoformat(), 'model': label,
+                                             'direction': direction, 'error': reason[:1000]})
+                            # For exhausted minute retries or any longer-term quota, stop this
+                            # batch, but checkpoint successes so a subsequent run can resume.
+                            if '429' in reason or 'limit exceeded' in reason.lower() or '限流' in reason:
+                                limit_hit = True
+                            print(f'ERROR: {city} {day} {label} {direction_title}: {reason[:500]}', flush=True)
                         task_index += 1
                         status.update(task_progress=task_index, city_progress=city_index,
-                                      updated_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
+                                      updated_at=datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S %Z'),
                                       failure_count=len(failures), last_error=(failures[-1] if failures else None))
-                        _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-                        print(f"[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: {'valid' if not error and record and all(isinstance(record.get(k),(int,float)) for k in ('probability','color_score','burn_scale')) else 'failed'} ({task_index}/{status['task_total']})", flush=True)
+                        _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
+                        print(f'[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: '
+                              f'{"valid" if valid else "failed"} ({task_index}/{status["task_total"]})', flush=True)
+                        if limit_hit:
+                            print('Quota still exhausted after bounded retry; checkpoint saved. '
+                                  'Stopping without discarding successful tasks.', flush=True)
+                            break
                     if limit_hit:
-                        print("Hourly API limit detected; stopping this batch early to avoid wasting further requests.", flush=True)
                         break
                 if limit_hit:
                     break
             if limit_hit:
                 break
-            status["completed_models"].append(label)
-            _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+            status['completed_models'].append(label)
+            save_checkpoint()
+            _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
             _publish_files(status, include_results=False)
     finally:
         engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
 
     if failures:
-        status.update(state="failed", failed_at=datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z"),
+        save_checkpoint()
+        status.update(state='rate_limited' if limit_hit else 'failed',
+                      failed_at=datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S %Z'),
                       failure_count=len(failures), failures=failures[:30],
-                      message=f"本轮{direction_title}有 {len(failures)} 项失败；保留上一次完整发布的数据。")
-        _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+                      message=f'本轮已有{len(checkpoint_completed)}/{status["task_total"]}项成功缓存；'
+                              '未完成任务下次同日运行可续跑，保留上次完整发布的数据。')
+        _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
         _publish_files(status, include_results=False)
-        raise SystemExit(f"{direction_title} batch failed ({len(failures)} failed tasks); old published data retained")
+        raise SystemExit(f'Overview batch incomplete ({len(failures)} failed tasks); checkpoint retained')
 
     completed_at = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
     for city, snapshot in snapshots.items():
@@ -387,6 +476,7 @@ def main():
     status.update(state="completed", completed_at=completed_at, updated_at=completed_at,
                   failure_count=0, message=f"{direction_title}双模式五日朝霞及晚霞数据已完整发布。")
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+    CHECKPOINT.unlink(missing_ok=True)
     _publish_files(status, include_results=True)
     print(f"Completed and atomically published {direction_title}: {len(cities)} cities × 2 models × 5 days × 2 directions", flush=True)
 

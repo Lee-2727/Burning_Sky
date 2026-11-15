@@ -20,7 +20,7 @@ _STATE = Path(os.environ.get('BURNING_SKY_RATE_STATE', '/tmp/burning_sky_open_me
 # All interactive and dashboard calls use global pacing at the HTTP boundary.
 # Manual overview stays on its more conservative existing budget.
 _PROFILE = os.environ.get('BURNING_SKY_REQUEST_PROFILE', 'interactive').lower()
-_POLICY = {'manual': (7.6, 8), 'interactive': (1.6, 35), 'scheduled': (1.6, 35),
+_POLICY = {'manual': (7.6, 8), 'interactive': (1.6, 35), 'scheduled': (12.0, 5),
            'satellite_advanced': (8.0, 7)}
 # Context-local profile prevents a Streamlit advanced page from slowing down other
 # visitors or other application pages imported in the same Python process.
