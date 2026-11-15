@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""预计算并保存指定城市未来三天朝霞/晚霞多模式概览。"""
+"""预计算并保存指定城市未来五天朝霞/晚霞双模式概览。"""
 from __future__ import annotations
 
 import json
@@ -248,7 +248,7 @@ def main():
     now = datetime.now(TZ)
     direction = "both"
     direction_title = "朝霞及晚霞"
-    dates = [now.date() + timedelta(days=i) for i in range(3)]
+    dates = [now.date() + timedelta(days=i) for i in range(5)]
     cities = list(CITY_CONFIG)
     models = [m for m in engine.WEATHER_MODEL_CATALOG if m["label"] in ("ECMWF IFS 0.25°", "GFS Global")]
     if len(models) != 2:
@@ -305,7 +305,7 @@ def main():
         "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
     }
     print("Updater version: split-direction-atomic-v1", flush=True)
-    print(f"Direction: {direction_title}; cities: {' → '.join(cities)}; models: 2; days: 3", flush=True)
+    print(f"Direction: {direction_title}; cities: {' → '.join(cities)}; models: 2; days: 5", flush=True)
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
     _publish_files(status, include_results=False)
 
@@ -385,10 +385,10 @@ def main():
                  "cities": {city: snapshots[city] for city in cities}}
     _write_json_atomic(ROOT / "data" / "overview.json", aggregate)
     status.update(state="completed", completed_at=completed_at, updated_at=completed_at,
-                  failure_count=0, message=f"{direction_title}双模式三日朝霞及晚霞数据已完整发布。")
+                  failure_count=0, message=f"{direction_title}双模式五日朝霞及晚霞数据已完整发布。")
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
     _publish_files(status, include_results=True)
-    print(f"Completed and atomically published {direction_title}: {len(cities)} cities × 2 models × 3 days × 2 directions", flush=True)
+    print(f"Completed and atomically published {direction_title}: {len(cities)} cities × 2 models × 5 days × 2 directions", flush=True)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Standalone 18-item manual overview, run by GitHub Actions, not Streamlit."""
+"""Standalone 12-item manual overview, run by GitHub Actions, not Streamlit."""
 import argparse
 import hashlib
 import json
@@ -27,7 +27,7 @@ def main():
     lat, lon, elev = float(a.lat), float(a.lon), float(a.elev)
     if not (-90<=lat<=90 and -180<=lon<=180 and -500<=elev<=9000): raise ValueError('coordinates out of range')
     start = date.fromisoformat(a.date)
-    models = ['ECMWF IFS 0.25°', 'GFS Global', 'ICON Global']
+    models = ['ECMWF IFS 0.25°', 'GFS Global']
     identity = {'place':a.place,'lat':round(lat,5),'lon':round(lon,5),'elev':round(elev,1),'date':start.isoformat(),'models':models}
     expected = hashlib.sha256(json.dumps(identity,sort_keys=True,ensure_ascii=False).encode()).hexdigest()[:24]
     if expected != a.request_id: raise ValueError('request_id does not match identity')
@@ -37,7 +37,7 @@ def main():
     def publish(state):
         payload={'identity':identity,'obtained_at':datetime.now(TZ).isoformat(timespec='seconds'),
                  'records':records,'errors':errors,'completed':len(records)+len(errors),
-                 'total':18,'state':state,'request_id':a.request_id}
+                 'total':12,'state':state,'request_id':a.request_id}
         tmp=output.with_suffix('.tmp')
         tmp.write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
         tmp.replace(output)
@@ -65,11 +65,11 @@ def main():
                     errors.append(f'{day} {model} {direction}: {reason}')
                     if '429' in reason or 'limit exceeded' in reason.lower() or '限流' in reason: limited=True
                 publish('running')
-                print(f'MANUAL_OVERVIEW_PROGRESS {len(records)+len(errors)}/18',flush=True)
+                print(f'MANUAL_OVERVIEW_PROGRESS {len(records)+len(errors)}/12',flush=True)
                 if limited: break
             if limited: break
         if limited: break
-    publish('completed' if len(records)==18 and not errors else 'partial')
+    publish('completed' if len(records)==12 and not errors else 'partial')
     print(f'OUTPUT {output} records={len(records)} errors={len(errors)}',flush=True)
 
 if __name__=='__main__': main()

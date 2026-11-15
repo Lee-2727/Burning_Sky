@@ -552,49 +552,32 @@ if st.session_state.get("show_multi_day_overview"):
         except Exception:
             _overview_source, _overview = None, None
         if not _overview or not _overview.get("days"):
-            st.info(f"尚无{_overview_city}已保存的概览数据。后台定时更新完成后，这里会显示包含今天的未来三日、三种天气模式的朝霞与晚霞结果。")
+            st.info(f"尚无{_overview_city}已保存的概览数据。后台完成后这里会展示未来五日EC/GFS朝霞与晚霞。")
         else:
-            st.caption(f"固定地点：{_overview_city}（{_overview.get('latitude', '—')}, {_overview.get('longitude', '—')}） · 预报范围：包含今天的未来三日 · 三模式 · 数据来源：{_overview_source} · 数据更新时间：{_overview.get('updated_at', '未知')}。")
-            _model_order = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global"]
-            _model_short = {"ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON", "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)"}
-            _direction_times = _overview.get("direction_updated_at", {})
-            for _direction, _direction_title in (("morning", "🌄 朝霞"), ("evening", "🌆 晚霞")):
-                _direction_update_time = _direction_times.get(_direction, "尚未更新")
-                st.subheader(f"{_direction_title}　·　更新时次：{_direction_update_time}")
-                _date_cols = st.columns(3)
-                for _col, _day in zip(_date_cols, _overview.get("days", [])):
-                    with _col:
-                        st.markdown(f"**{_day.get('date', '日期未知')}**")
-                        _records = _day.get(_direction, {})
-                        _rows = []
-                        for _model in _model_order:
-                            _v = _records.get(_model, {})
-                            _prob = _v.get("probability")
-                            _scale = _v.get("burn_scale")
-                            _rows.append({
-                                "模式": _model_short[_model],
-                                "常规概率": (f"{_prob:.0f}%" if isinstance(_prob, (int, float)) else "—"),
-                                "色彩分": (f"{_v['color_score']:.0f}" if isinstance(_v.get("color_score"), (int, float)) else "—"),
-                                "火烧云规模": (f"{_scale:.0f}%" if isinstance(_scale, (int, float)) else "—"),
-                            })
-                        _df = pd.DataFrame(_rows)
-                        def _fire_score_style(value):
-                            try:
-                                score = float(value)
-                            except (TypeError, ValueError):
-                                return ""
-                            if score < 20:
-                                color = "#D6B84C"  # 淡黄
-                            elif score < 40:
-                                color = "#C99A16"  # 金色
-                            elif score < 60:
-                                color = "#E47724"  # 橘色
-                            elif score < 80:
-                                color = "#D83A32"  # 红色
-                            else:
-                                color = "#A12A83"  # 紫红色
-                            return f"color: {color}; font-weight: 700;"
-                        st.dataframe(_df, use_container_width=True, hide_index=True)
+            from burning_sky.overview_visual import render_direction, MODELS
+            _all_days = list(_overview.get("days") or [])
+            _visible_days = _all_days[:5]
+            st.caption(f"地点：{_overview_city} · 未来五日（含今天） · EC/GFS · 数据来源：{_overview_source} · 更新：{_overview.get('updated_at', '未知')}")
+            if len(_visible_days) < 5:
+                st.info(f"目前已发布{len(_visible_days)}日数据；后台更新为五日后将自动补齐，其余日期不会伪造。")
+            for _direction, _name in (("morning", "朝霞"), ("evening", "晚霞")):
+                st.html(render_direction(_visible_days,_direction,_name)) if hasattr(st, "html") else st.markdown(render_direction(_visible_days,_direction,_name), unsafe_allow_html=True)
+            with st.expander("查看完整概览数据表格", expanded=False):
+                _direction_times = _overview.get("direction_updated_at", {})
+                for _direction, _name in (("morning", "朝霞"), ("evening", "晚霞")):
+                    st.markdown(f"**{_name} · 最近更新：{_direction_times.get(_direction, '未知')}**")
+                    _rows=[]
+                    for _day in _visible_days:
+                        for _model, _short in MODELS:
+                            _r=(_day.get(_direction) or {}).get(_model) or {}
+                            def _fmt(key, suffix):
+                                _v=_r.get(key)
+                                return f"{_v:.0f}{suffix}" if isinstance(_v,(int,float)) else '—'
+                            _rows.append({"日期":_day.get('date','—'), "模式":_short,
+                                          "常规概率":_fmt('probability','%'),
+                                          "色彩分":_fmt('color_score',''),
+                                          "火烧云规模":_fmt('burn_scale','%')})
+                    st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
     _render_multi_day_overview()
 
     st.stop()
@@ -603,7 +586,7 @@ if st.session_state.get("show_multi_day_overview"):
 # 手动查询多日概览：独立页面（入口在左侧栏“未来多日概览”按钮下方）。
 # 这里只提交 GitHub Actions 后台任务并读取已发布结果，不在网页里跑 18 次预测。
 # -----------------------------------------------------------------------------
-_MANUAL_MODEL_ORDER = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global"]
+_MANUAL_MODEL_ORDER = ["ECMWF IFS 0.25°", "GFS Global"]
 _MODEL_SHORT = {
     "ECMWF IFS 0.25°": "EC", "GFS Global": "GFS", "ICON Global": "ICON",
     "CMA GRAPES Global": "CMA", "ECMWF (AI)": "EC (AI)",
@@ -706,7 +689,7 @@ if st.session_state.get("show_manual_overview"):
             st.session_state["show_manual_overview"] = False
             st.session_state["show_multi_day_overview"] = True
             st.rerun()
-    st.caption("独立的 EC / GFS / ICON 三模式、三日、朝晚霞查询（共 18 项）。网页只提交后台任务和读取已发布结果，不在网页里联网计算。")
+    st.caption("独立的 EC / GFS 双模式、三日、朝晚霞查询（共 12 项）。网页只提交后台任务和读取已发布结果，不在网页里联网计算。")
     st.caption("想马上看某一天的单次结果时，直接点击左侧『查询朝霞』或『查询晚霞』，网页会自动切到查询结果界面。")
     import hashlib as _mh
     from pathlib import Path as _MP
@@ -749,7 +732,7 @@ if st.session_state.get("show_manual_overview"):
         with _cols[2]:
             _melev = st.number_input("海拔（m）", -500.0, 9000.0, _mdefault("海拔（m）",0.0), key="m_elev_"+str(_mplace))
         _mdate = st.date_input("起始日期（含当天连续三日）", value=_today, key="manual_overview_start")
-        _models = ["ECMWF IFS 0.25°", "GFS Global", "ICON Global"]
+        _models = ["ECMWF IFS 0.25°", "GFS Global"]
         _identity = {"place":_mplace, "lat":round(_mlat,5), "lon":round(_mlon,5),
                      "elev":round(_melev,1), "date":_mdate.isoformat(), "models":_models}
         _cache_id = _mh.sha256(json.dumps(_identity,sort_keys=True,ensure_ascii=False).encode()).hexdigest()[:24]
@@ -896,7 +879,7 @@ if st.session_state.get("show_manual_overview"):
         _state_labels = {"running":"后台计算中（结果会逐项补充）", "completed":"全部完成",
                          "partial":"部分完成（未完成项见失败详情）"}
         st.caption(f"来源：{_display_origin} · "
-                   f"进度 {_display.get('completed', 0)}/{_display.get('total', 18)} · "
+                   f"进度 {_display.get('completed', 0)}/{_display.get('total', 12)} · "
                    f"状态：{_state_labels.get(str(_display.get('state')), _display.get('state', '未知'))} · "
                    f"数据获得时间：{_display.get('obtained_at', '未知')}")
         st.caption("表格列与自动更新的多日概览一致：常规概率为未经实况校准的经验估计，火烧云规模为可着色中高云占比。")
