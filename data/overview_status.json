@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "state": "running",
+  "state": "failed",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
   "started_at": "2026-11-15 08:41:50 CST",
@@ -26,5 +26,21 @@
     "date": "2026-11-15",
     "model": "ECMWF IFS 0.25°",
     "error": "无法完成朝霞/晚霞预报：\n天气接口连接失败或超时（单次最多等待 20 秒）：<urlopen error _ssl.c:1001: The handshake operation timed out>"
-  }
+  },
+  "failed_at": "2026-11-15 08:55:08 CST",
+  "failures": [
+    {
+      "city": "合肥",
+      "date": "2026-11-15",
+      "model": "ECMWF IFS 0.25°",
+      "error": "无法完成朝霞/晚霞预报：\n天气接口连接失败或超时（单次最多等待 20 秒）：<urlopen error _ssl.c:1001: The handshake operation timed out>"
+    },
+    {
+      "city": "合肥",
+      "date": "2026-11-15",
+      "model": "ECMWF IFS 0.25°",
+      "error": "无法完成朝霞/晚霞预报：\n天气接口连接失败或超时（单次最多等待 20 秒）：<urlopen error _ssl.c:1001: The handshake operation timed out>"
+    }
+  ],
+  "message": "本轮晚霞有 2 项失败；保留上一次完整发布的数据。"
 }
