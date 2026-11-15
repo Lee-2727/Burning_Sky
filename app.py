@@ -561,7 +561,14 @@ if st.session_state.get("show_multi_day_overview"):
             if len(_visible_days) < 5:
                 st.info(f"目前已发布{len(_visible_days)}日数据；后台更新为五日后将自动补齐，其余日期不会伪造。")
             for _direction, _name in (("morning", "朝霞"), ("evening", "晚霞")):
-                st.html(render_direction(_visible_days,_direction,_name)) if hasattr(st, "html") else st.markdown(render_direction(_visible_days,_direction,_name), unsafe_allow_html=True)
+                # Do not use a bare conditional expression here. Streamlit's
+                # "magic" expression renderer can display the returned
+                # DeltaGenerator (including its class docstring) on the page.
+                _chart_html = render_direction(_visible_days, _direction, _name)
+                if hasattr(st, "html"):
+                    st.html(_chart_html)
+                else:
+                    st.markdown(_chart_html, unsafe_allow_html=True)
             with st.expander("查看完整概览数据表格", expanded=False):
                 _direction_times = _overview.get("direction_updated_at", {})
                 for _direction, _name in (("morning", "朝霞"), ("evening", "晚霞")):
