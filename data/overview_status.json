@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "state": "running",
+  "state": "failed",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
   "started_at": "2026-11-16 18:10:22 CST",
@@ -27,5 +27,16 @@
     "model": "GFS Global",
     "direction": "evening",
     "error": "预测流程未返回有效概率结果"
-  }
+  },
+  "failed_at": "2026-11-16 18:14:47 CST",
+  "failures": [
+    {
+      "city": "合肥",
+      "date": "2026-11-20",
+      "model": "GFS Global",
+      "direction": "evening",
+      "error": "预测流程未返回有效概率结果"
+    }
+  ],
+  "message": "本轮已有19/20项成功缓存；未完成任务下次同日运行可续跑，保留上次完整发布的数据。"
 }
