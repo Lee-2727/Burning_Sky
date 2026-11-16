@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "state": "running",
+  "state": "failed",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
   "started_at": "2026-11-16 13:23:54 CST",
@@ -27,5 +27,30 @@
     "model": "GFS Global",
     "direction": "evening",
     "error": "预测流程未返回有效概率结果"
-  }
+  },
+  "failed_at": "2026-11-16 13:53:31 CST",
+  "failures": [
+    {
+      "city": "合肥",
+      "date": "2026-11-16",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "error": "无法完成朝霞/晚霞预报：\n天气接口连接失败或超时（单次最多等待 20 秒）：<urlopen error _ssl.c:1001: The handshake operation timed out>"
+    },
+    {
+      "city": "合肥",
+      "date": "2026-11-20",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "error": "预测流程未返回有效概率结果"
+    },
+    {
+      "city": "合肥",
+      "date": "2026-11-20",
+      "model": "GFS Global",
+      "direction": "evening",
+      "error": "预测流程未返回有效概率结果"
+    }
+  ],
+  "message": "本轮已有17/20项成功缓存；未完成任务下次同日运行可续跑，保留上次完整发布的数据。"
 }
