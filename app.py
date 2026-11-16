@@ -523,7 +523,25 @@ if st.session_state.get("show_multi_day_overview"):
             _active_direction = _update_status.get("direction_title", "朝霞/晚霞")
             _task_progress = _update_status.get("task_progress", 0)
             _task_total = _update_status.get("task_total", 30)
-            if _state == "running":
+            # A completed Actions run can leave behind a stale `running` status
+            # if an older status write races with the final publication. Never
+            # advertise that a motionless 0/20 task is still calculating.
+            _status_stale = False
+            if _state in ("running", "between_models"):
+                try:
+                    from datetime import datetime as _status_dt
+                    from zoneinfo import ZoneInfo as _status_zone
+                    _raw_updated = str(_update_status.get("updated_at") or "").strip()
+                    _parsed = _status_dt.fromisoformat(_raw_updated.replace(" CST", "+08:00").replace(" ", "T", 1))
+                    if _parsed.tzinfo is None:
+                        _parsed = _parsed.replace(tzinfo=_status_zone("Asia/Shanghai"))
+                    _age = (_status_dt.now(_status_zone("Asia/Shanghai")) - _parsed).total_seconds()
+                    _status_stale = _age > (15 * 60 if int(_task_progress or 0) == 0 else 90 * 60)
+                except (ValueError, TypeError, OverflowError):
+                    pass
+            if _status_stale:
+                st.caption("后台进度状态已长时间未更新，可能是上次任务遗留；以下展示已发布的概览数据，未发起重新计算。")
+            elif _state == "running":
                 st.info(f"🔄 后台正在更新：{_active_direction} · 第 {_model_index}/{_model_total} 个模式 · {_current_model or '准备中'} · 总进度 {_task_progress}/{_task_total}。已完成模式：{', '.join(_completed_models) if _completed_models else '暂无'}。状态更新时间：{_update_status.get('updated_at', '未知')}。网页预报仍显示上一次完整发布的数据。")
             elif _state == "between_models":
                 st.info(f"⏳ 多模概览正在准备下一个模式。已完成 {_model_index}/{_model_total} 个模式：{', '.join(_completed_models)}。状态更新时间：{_update_status.get('updated_at', '未知')}。")
