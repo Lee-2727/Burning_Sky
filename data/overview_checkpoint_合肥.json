@@ -15,6 +15,7 @@
   ],
   "completed": [
     "合肥|2026-11-16|ECMWF IFS 0.25°|evening",
+    "合肥|2026-11-16|ECMWF IFS 0.25°|morning",
     "合肥|2026-11-16|GFS Global|evening",
     "合肥|2026-11-16|GFS Global|morning",
     "合肥|2026-11-17|ECMWF IFS 0.25°|evening",
@@ -30,6 +31,7 @@
     "合肥|2026-11-19|GFS Global|evening",
     "合肥|2026-11-19|GFS Global|morning",
     "合肥|2026-11-20|ECMWF IFS 0.25°|evening",
+    "合肥|2026-11-20|ECMWF IFS 0.25°|morning",
     "合肥|2026-11-20|GFS Global|morning"
   ],
   "snapshot": {
@@ -52,9 +54,9 @@
             "probability": 0.0,
             "color_score": 0.0,
             "burn_scale": 0.0,
-            "local_mid_cloud": 29.88888888888889,
-            "local_high_layer_cloud": 1.5555555555555556,
-            "local_high_cloud": 31.444444444444446,
+            "local_mid_cloud": 48.44444444444444,
+            "local_high_layer_cloud": 0.0,
+            "local_high_cloud": 48.44444444444444,
             "fire_score_no_color": 0.0,
             "burn_scale_label": "不烧",
             "event_time": "2026-11-16T06:39:54.177171"
@@ -253,14 +255,14 @@
         "date": "2026-11-20",
         "morning": {
           "ECMWF IFS 0.25°": {
-            "probability": 38.0,
+            "probability": 0.0,
             "color_score": 38.0,
-            "burn_scale": 19.06,
+            "burn_scale": 0.0,
             "local_mid_cloud": 0.0,
-            "local_high_layer_cloud": 25.555555555555557,
-            "local_high_cloud": 25.555555555555557,
-            "fire_score_no_color": 7.24,
-            "burn_scale_label": "小烧",
+            "local_high_layer_cloud": 63.888888888888886,
+            "local_high_cloud": 63.888888888888886,
+            "fire_score_no_color": 0.0,
+            "burn_scale_label": "不烧",
             "event_time": "2026-11-20T06:43:25.831621"
           },
           "GFS Global": {
@@ -302,5 +304,5 @@
       }
     ]
   },
-  "saved_at": "2026-11-16T13:53:31+08:00"
+  "saved_at": "2026-11-16T18:12:58+08:00"
 }
