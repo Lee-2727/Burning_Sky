@@ -156,7 +156,7 @@ with st.sidebar:
         st.session_state["show_manual_overview"] = True
         st.session_state["show_multi_day_overview"] = False
         st.rerun()
-    st.header("预报设置")
+    st.markdown("### 快速查询")
     place_query = st.text_input("地点名称（输入前几个字联想）", "合肥", key="place_query")
     # 地名联想优先读取 Burning Sky 根目录 Excel，兼容共享目录 Excel，不访问地理编码网络服务。
     import pandas as pd
@@ -190,33 +190,89 @@ with st.sidebar:
     _default_lon = float(_selected["经度"]) if _selected is not None and pd.notna(_selected.get("经度")) else 117.2214
     _default_elev = float(_selected["海拔（m）"]) if _selected is not None and pd.notna(_selected.get("海拔（m）")) else 0.0
     forecast_date = st.date_input("预报日期", value=date.today())
-    lat = st.number_input("纬度", min_value=-90.0, max_value=90.0, value=_default_lat, format="%.4f")
-    lon = st.number_input("经度", min_value=-180.0, max_value=180.0, value=_default_lon, format="%.4f")
-    elevation = st.number_input("海拔（m，Excel 为近似城市中心值，可手动修改）", min_value=-500.0, max_value=9000.0, value=_default_elev, step=10.0)
     model_options = [item["label"] for item in engine.WEATHER_MODEL_CATALOG]
     model_label = st.selectbox("天气预报模式", model_options, index=0)
-    st.caption("JMA MSM 已暂时停用；ECMWF (AI) 的部分云层分层由湿度场推算；CMA GRAPES 公共数据服务可能拥堵。接口不可用时会显示错误，不会静默切换模式。")
-    cloud_base_mode = st.selectbox("云底来源", ["自动剖面推算", "手动指定"])
-    st.caption("默认时区为 UTC+8。当前网页版本不自动识别任意地点的时区。")
-    st.divider()
-    aod_source = st.selectbox("AOD 数据源", ["CAMS", "CAMS（垂直分布）", "手动输入"], index=0, key="aod_source_selector",
-                              help="CAMS 垂直分布使用相同的 AOD 数值，结合气压层湿度估计光学衰减；不额外请求 NASA")
-    if aod_source == "CAMS（垂直分布）":
-        st.caption("实验模式：CAMS 总 AOD 不变，使用气压层湿度估计垂直消光分布；主要对比色彩分和云色时序。")
-    if aod_source == "手动输入":
-        st.caption("手动 AOD（550 nm）：直接修改数值后点击查询")
-        _manual_cols = st.columns(2)
-        with _manual_cols[0]:
-            st.number_input("朝霞 AOD", min_value=0.0, max_value=5.0, value=0.30, step=0.05, key="manual_morning_aod")
-        with _manual_cols[1]:
-            st.number_input("晚霞 AOD", min_value=0.0, max_value=5.0, value=0.30, step=0.05, key="manual_evening_aod")
-    st.subheader("朝霞参数")
-    morning_cloud_base = st.number_input("朝霞手动云底/回退值（km）", 0.1, 15.0, 2.0, 0.1)
-    morning_aod_text = str(st.session_state.get("manual_morning_aod",0.30)) if aod_source == "手动输入" else ""
-    st.subheader("晚霞参数")
-    evening_cloud_base = st.number_input("晚霞手动云底/回退值（km）", 0.1, 15.0, 2.0, 0.1)
-    evening_aod_text = str(st.session_state.get("manual_evening_aod",0.30)) if aod_source == "手动输入" else ""
-    st.divider()
+    st.caption("坐标、云底和大气参数已归入下方高级设置。")
+    with st.expander("📍 坐标与海拔 · 按需修改", expanded=False):
+        lat = st.number_input("纬度", min_value=-90.0, max_value=90.0, value=_default_lat, format="%.4f")
+        lon = st.number_input("经度", min_value=-180.0, max_value=180.0, value=_default_lon, format="%.4f")
+        elevation = st.number_input("海拔（m，Excel 为近似城市中心值，可手动修改）", min_value=-500.0, max_value=9000.0, value=_default_elev, step=10.0)
+    with st.expander("⚙️ 高级气象参数 · 云底 / AOD", expanded=False):
+        st.caption("JMA MSM 已暂时停用；ECMWF (AI) 的部分云层分层由湿度场推算；CMA GRAPES 公共数据服务可能拥堵。接口不可用时会显示错误，不会静默切换模式。")
+        cloud_base_mode = st.selectbox("云底来源", ["自动剖面推算", "手动指定"])
+        st.caption("默认时区为 UTC+8。当前网页版本不自动识别任意地点的时区。")
+        aod_source = st.selectbox("AOD 数据源", ["CAMS", "CAMS（垂直分布）", "手动输入"], index=0, key="aod_source_selector",
+                                  help="CAMS 垂直分布使用相同的 AOD 数值，结合气压层湿度估计光学衰减；不额外请求 NASA")
+        if aod_source == "CAMS（垂直分布）":
+            st.caption("实验模式：CAMS 总 AOD 不变，使用气压层湿度估计垂直消光分布；主要对比色彩分和云色时序。")
+        if aod_source == "手动输入":
+            st.caption("手动 AOD（550 nm）：直接修改数值后点击查询")
+            _manual_cols = st.columns(2)
+            with _manual_cols[0]:
+                st.number_input("朝霞 AOD", min_value=0.0, max_value=5.0, value=0.30, step=0.05, key="manual_morning_aod")
+            with _manual_cols[1]:
+                st.number_input("晚霞 AOD", min_value=0.0, max_value=5.0, value=0.30, step=0.05, key="manual_evening_aod")
+        st.subheader("朝霞参数")
+        morning_cloud_base = st.number_input("朝霞手动云底/回退值（km）", 0.1, 15.0, 2.0, 0.1)
+        morning_aod_text = str(st.session_state.get("manual_morning_aod",0.30)) if aod_source == "手动输入" else ""
+        st.subheader("晚霞参数")
+        evening_cloud_base = st.number_input("晚霞手动云底/回退值（km）", 0.1, 15.0, 2.0, 0.1)
+        evening_aod_text = str(st.session_state.get("manual_evening_aod",0.30)) if aod_source == "手动输入" else ""
+    st.markdown("#### 开始预测")
+    rainbow_enabled = st.checkbox('🌈 同时分析彩虹（需增加天气请求）', value=False, key='rainbow_with_fire')
+    st.caption('彩虹附加计算默认关闭；单独彩虹查询在下方折叠工具内。')
+    morning_col, evening_col = st.columns(2)
+    with morning_col:
+        run_morning = st.button("查询朝霞", use_container_width=True)
+    with evening_col:
+        run_evening = st.button("查询晚霞", use_container_width=True)
+    run_all = st.button("查询 / 更新朝霞与晚霞", type="primary", use_container_width=True)
+    with st.expander("🌈 独立彩虹工具", expanded=False):
+        rainbow_only_web = st.button("🌈 单独分析彩虹（不请求火烧云）",use_container_width=True)
+        rainbow_web_period = st.radio("彩虹时段",["晚霞","朝霞"],horizontal=True,key="rainbow_web_period")
+        st.caption('彩虹观察者：左侧查询地点（无需另填坐标）')
+        rainbow_observer_submit = st.button('计算查询地点的虹弧覆盖（复用彩虹数据）',use_container_width=True)
+    run = run_morning or run_evening or run_all
+    if run:
+        # A fire-cloud query replaces the standalone rainbow view. Keep the
+        # underlying rainbow computation cache, but not its old UI panel.
+        st.session_state.pop("rainbow_only_web_result", None)
+        st.session_state.pop("rainbow_web_meta", None)
+        st.session_state.pop("rainbow_observer_result", None)
+        st.session_state["show_multi_day_overview"] = False
+        # 在“手动查询多日概览”页面里点左侧“查询朝霞/查询晚霞”时，
+        # 立即退出概览页，让本次单次查询结果在本轮就渲染出来。
+        st.session_state["show_manual_overview"] = False
+    query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
+    with st.expander("📦 案例 ZIP 与离线缓存", expanded=False):
+        st.subheader("案例缓存")
+        case_upload = st.file_uploader("加载案例 ZIP（桌面端保存的案例文件夹压缩包）", type=["zip"], key="case_zip_upload")
+        if case_upload is not None:
+            try:
+                with zipfile.ZipFile(case_upload) as _zf:
+                    _names = set(_zf.namelist())
+                    _state_name = next((n for n in _names if n.endswith("analysis_state.json")), None)
+                    _cache_name = next((n for n in _names if n.endswith("request_cache.json")), None)
+                    if not _state_name or not _cache_name:
+                        st.session_state["case_bundle_state"] = None
+                        st.session_state["case_bundle_cache"] = None
+                        st.warning("该案例 ZIP 缺少 analysis_state.json 或 request_cache.json，不能用于缓存重算。")
+                    else:
+                        st.session_state["case_bundle_state"] = json.loads(_zf.read(_state_name).decode("utf-8"))
+                        st.session_state["case_bundle_cache"] = json.loads(_zf.read(_cache_name).decode("utf-8"))
+                        from burning_sky.case_manifest import check_zip_manifest
+                        _warnings = check_zip_manifest(_zf)
+                        if _warnings:
+                            st.warning("案例完整性提示：" + "；".join(_warnings[:4]))
+                        st.success(f"案例已加载：{st.session_state['case_bundle_state'].get('date')} · {st.session_state['case_bundle_state'].get('model_code')}。")
+            except Exception as _exc:
+                st.error(f"案例 ZIP 读取失败：{_exc}")
+        use_case_cache = st.checkbox("从案例读取数据（不请求天气 API）", value=False, key="use_case_cache")
+        _case_state = st.session_state.get("case_bundle_state")
+        if use_case_cache and not _case_state:
+            st.warning("请先上传并加载包含原始请求缓存的案例 ZIP。")
+
+    # 案例库保留独立折叠入口，避免 Streamlit 不允许的嵌套 expander。
     # Case-library archive is separate from the temporary Streamlit session.
     from burning_sky import case_library as _case_library
     with st.expander("📚 网页案例库：保存、下载、删除", expanded=False):
@@ -238,58 +294,6 @@ with st.sidebar:
                     _case_library.delete(_cid)
                     st.rerun()
 
-    st.subheader("案例缓存")
-    case_upload = st.file_uploader("加载案例 ZIP（桌面端保存的案例文件夹压缩包）", type=["zip"], key="case_zip_upload")
-    if case_upload is not None:
-        try:
-            with zipfile.ZipFile(case_upload) as _zf:
-                _names = set(_zf.namelist())
-                _state_name = next((n for n in _names if n.endswith("analysis_state.json")), None)
-                _cache_name = next((n for n in _names if n.endswith("request_cache.json")), None)
-                if not _state_name or not _cache_name:
-                    st.session_state["case_bundle_state"] = None
-                    st.session_state["case_bundle_cache"] = None
-                    st.warning("该案例 ZIP 缺少 analysis_state.json 或 request_cache.json，不能用于缓存重算。")
-                else:
-                    st.session_state["case_bundle_state"] = json.loads(_zf.read(_state_name).decode("utf-8"))
-                    st.session_state["case_bundle_cache"] = json.loads(_zf.read(_cache_name).decode("utf-8"))
-                    from burning_sky.case_manifest import check_zip_manifest
-                    _warnings = check_zip_manifest(_zf)
-                    if _warnings:
-                        st.warning("案例完整性提示：" + "；".join(_warnings[:4]))
-                    st.success(f"案例已加载：{st.session_state['case_bundle_state'].get('date')} · {st.session_state['case_bundle_state'].get('model_code')}。")
-        except Exception as _exc:
-            st.error(f"案例 ZIP 读取失败：{_exc}")
-    use_case_cache = st.checkbox("从案例读取数据（不请求天气 API）", value=False, key="use_case_cache")
-    _case_state = st.session_state.get("case_bundle_state")
-    if use_case_cache and not _case_state:
-        st.warning("请先上传并加载包含原始请求缓存的案例 ZIP。")
-
-    st.markdown('#### 查询内容')
-    rainbow_enabled = st.checkbox('🌈 同时分析彩虹（需增加天气请求）', value=False, key='rainbow_with_fire')
-    st.caption('默认关闭以保证单次查询速度；也可以只使用下方「单独分析彩虹」。')
-    morning_col, evening_col = st.columns(2)
-    with morning_col:
-        run_morning = st.button("查询朝霞", use_container_width=True)
-    with evening_col:
-        run_evening = st.button("查询晚霞", use_container_width=True)
-    run_all = st.button("查询 / 更新朝霞与晚霞", type="primary", use_container_width=True)
-    rainbow_only_web = st.button("🌈 单独分析彩虹（不请求火烧云）",use_container_width=True)
-    rainbow_web_period = st.radio("彩虹时段",["晚霞","朝霞"],horizontal=True,key="rainbow_web_period")
-    st.caption('彩虹观察者：左侧查询地点（无需另填坐标）')
-    rainbow_observer_submit = st.button('计算查询地点的虹弧覆盖（复用彩虹数据）',use_container_width=True)
-    run = run_morning or run_evening or run_all
-    if run:
-        # A fire-cloud query replaces the standalone rainbow view. Keep the
-        # underlying rainbow computation cache, but not its old UI panel.
-        st.session_state.pop("rainbow_only_web_result", None)
-        st.session_state.pop("rainbow_web_meta", None)
-        st.session_state.pop("rainbow_observer_result", None)
-        st.session_state["show_multi_day_overview"] = False
-        # 在“手动查询多日概览”页面里点左侧“查询朝霞/查询晚霞”时，
-        # 立即退出概览页，让本次单次查询结果在本轮就渲染出来。
-        st.session_state["show_manual_overview"] = False
-    query_direction = "morning" if run_morning else ("evening" if run_evening else "all")
 
 # AOD is controlled only from the sidebar; remove the duplicate in-body controls.
 
