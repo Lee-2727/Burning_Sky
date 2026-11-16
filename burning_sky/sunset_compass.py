@@ -141,7 +141,7 @@ def render(diag):
         d.text((500,375),'横向采样失败 / 数据不完整',font=_font(28),fill='#991b1b',anchor='mm')
         d.text((500,415),'南北晚霞可见角度：未知（不绘制预测多边形）',font=_font(19),fill='#991b1b',anchor='mm')
     d.ellipse((cx-8,cy-8,cx+8,cy+8),fill='#0f172a')
-    d.text((35,24),'Burning Sky | 八方位补全图',font=_font(29),fill='#0f172a')
+    d.text((35,24),'Burning Skies | 八方位补全图',font=_font(29),fill='#0f172a')
     d.text((35,67),f"太阳方位 {az:.1f}°  主线常规概率 {diag['main_probability']:.0f}%  主线云洞 {diag['gap_count']} 个",font=_font(21),fill='#334155')
     d.text((35,740),'黄虚线：太阳方位；彩色区域：基于当前结果的八方位补全显示（非中间角度独立严格验证）',font=_font(19),fill='#9a3412')
     d.text((35,776),'颜色已按方向作差异化增强；仍属于辅助方位图，不替代主算法概率与剖面验证。',font=_font(19),fill='#475569')

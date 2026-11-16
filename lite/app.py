@@ -30,7 +30,7 @@ from burning_sky.advanced_bridge import identity as advanced_identity, read as a
 from lite.overview_data import get_overview, china_today
 from lite.bar_cards import CSS as CHART_CSS, render as render_bars
 
-st.set_page_config(page_title='Burning Sky Lite', page_icon='🌅', layout='wide', initial_sidebar_state='collapsed')
+st.set_page_config(page_title='Burning Skies Lite', page_icon='🌅', layout='wide', initial_sidebar_state='collapsed')
 
 # Optional independent password; Lite does not read Pro credentials.
 try:
@@ -39,7 +39,7 @@ except (OSError,RuntimeError,KeyError):
     _lite_password = ''
 _lite_password = _lite_password or os.environ.get('LITE_APP_PASSWORD','')
 if _lite_password and not st.session_state.get('lite_authenticated'):
-    st.title('Burning Sky Lite')
+    st.title('Burning Skies Lite')
     entered=st.text_input('访问密码', type='password')
     if st.button('进入'):
         import hmac
@@ -152,7 +152,7 @@ def _calibration_id(state, engine_module):
     fingerprint=hashlib.sha256(json.dumps(baseline,ensure_ascii=False,sort_keys=True,default=str).encode()).hexdigest()[:16]
     return advanced_identity(config)+'_'+fingerprint
 
-render_hero('Burning Sky Lite','朝霞 · 晚霞')
+render_hero('Burning Skies Lite','朝霞 · 晚霞')
 nav=st.segmented_control('查看', ['未来五日','单次预测'],default='未来五日',key='lite_nav',label_visibility='collapsed')
 
 if nav=='未来五日':
