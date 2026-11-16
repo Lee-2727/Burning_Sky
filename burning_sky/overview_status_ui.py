@@ -70,13 +70,17 @@ def status_view(status, snapshot, now=None):
         task_progress, task_total = 0, 20
     updated = _date(status.get('updated_at'))
     elapsed = (now - updated.astimezone(CN)).total_seconds() if updated else None
-    # A complete, current five-day snapshot is authoritative for the ability
-    # to display results. A 0/20 heartbeat is not proof of ongoing work.
-    if completed and state in ('running', 'between_models') and task_progress == 0:
-        return ('success', f'✅ 已有完整的未来五日 EC/GFS 朝霞及晚霞数据（最近发布：{published_at}）。'
-                '后台进度文件仍停留在 0/20，无法据此确认任务仍在计算；不影响已发布结果。')
-    if completed and state == 'completed':
-        return ('success', f'✅ 未来五日 EC/GFS 朝霞及晚霞数据已发布（{published_at}）。')
+    # A verified full publication must not be presented as an unfinished batch
+    # simply because the non-authoritative heartbeat/checkpoint is newer.
+    # Old progress can belong to a subsequent run; do not describe it as proof
+    # that the displayed published data are incomplete.
+    if completed:
+        if state == 'completed':
+            return ('success', f'✅ 未来五日 EC/GFS 朝霞及晚霞数据已完整发布（{published_at}）。')
+        if state in ('running', 'between_models'):
+            return ('success', f'✅ 已有完整的未来五日 EC/GFS 朝霞及晚霞数据（最近发布：{published_at}）。'
+                    f'后台状态文件另记 {task_progress}/{task_total}，不能据此否定已发布的20项结果。')
+        return ('success', f'✅ 当前已有完整的未来五日 EC/GFS 朝霞及晚霞数据（{published_at}）。')
     if state in ('running', 'between_models'):
         if elapsed is None or elapsed < -60 or elapsed > (15*60 if task_progress == 0 else 90*60):
             if completed:
