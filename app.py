@@ -508,53 +508,10 @@ if st.session_state.get("show_multi_day_overview"):
     @st.fragment(run_every="30s")
     def _render_multi_day_overview():
         _data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-        # Background GitHub Actions status is published at model-batch boundaries.
-        _status_path = os.path.join(_data_dir, "overview_status.json")
-        try:
-            import json as _status_json
-            _update_status, _status_origin = _published_overview_json("overview_status.json")
-            if not isinstance(_update_status, dict):
-                raise FileNotFoundError("overview_status.json")
-            _state = _update_status.get("state", "unknown")
-            _completed_models = _update_status.get("completed_models", [])
-            _model_total = _update_status.get("model_total", 5)
-            _model_index = _update_status.get("model_index", 0)
-            _current_model = _update_status.get("current_model")
-            _active_direction = _update_status.get("direction_title", "朝霞/晚霞")
-            _task_progress = _update_status.get("task_progress", 0)
-            _task_total = _update_status.get("task_total", 30)
-            # A completed Actions run can leave behind a stale `running` status
-            # if an older status write races with the final publication. Never
-            # advertise that a motionless 0/20 task is still calculating.
-            _status_stale = False
-            if _state in ("running", "between_models"):
-                try:
-                    from datetime import datetime as _status_dt
-                    from zoneinfo import ZoneInfo as _status_zone
-                    _raw_updated = str(_update_status.get("updated_at") or "").strip()
-                    _parsed = _status_dt.fromisoformat(_raw_updated.replace(" CST", "+08:00").replace(" ", "T", 1))
-                    if _parsed.tzinfo is None:
-                        _parsed = _parsed.replace(tzinfo=_status_zone("Asia/Shanghai"))
-                    _age = (_status_dt.now(_status_zone("Asia/Shanghai")) - _parsed).total_seconds()
-                    _status_stale = _age > (15 * 60 if int(_task_progress or 0) == 0 else 90 * 60)
-                except (ValueError, TypeError, OverflowError):
-                    pass
-            if _status_stale:
-                st.caption("后台进度状态已长时间未更新，可能是上次任务遗留；以下展示已发布的概览数据，未发起重新计算。")
-            elif _state == "running":
-                st.info(f"🔄 后台正在更新：{_active_direction} · 第 {_model_index}/{_model_total} 个模式 · {_current_model or '准备中'} · 总进度 {_task_progress}/{_task_total}。已完成模式：{', '.join(_completed_models) if _completed_models else '暂无'}。状态更新时间：{_update_status.get('updated_at', '未知')}。网页预报仍显示上一次完整发布的数据。")
-            elif _state == "between_models":
-                st.info(f"⏳ 多模概览正在准备下一个模式。已完成 {_model_index}/{_model_total} 个模式：{', '.join(_completed_models)}。状态更新时间：{_update_status.get('updated_at', '未知')}。")
-            elif _state == "completed":
-                st.success(f"✅ {_active_direction}本轮双模式五日数据已完整发布。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
-            elif _state in ("failed", "partial", "rate_limited"):
-                _succeeded = _update_status.get("success_count")
-                _partial_info = (f"，已缓存 {_succeeded}/{_task_total} 项" if isinstance(_succeeded, int) else "")
-                st.warning(f"⚠️ {_active_direction}本轮尚未全部完成（失败 {_update_status.get('failure_count', 0)} 项{_partial_info}）。已完成的结果可从检查点直接查看，缺失项标记为暂无数据；不会触发新的计算。详情：{_update_status.get('message', '请查看 GitHub Actions 日志')}。")
-            else:
-                st.caption(f"多模概览后台状态：{_state} · 状态更新时间：{_update_status.get('updated_at', '未知')} · 下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
-        except Exception:
-            st.caption("后台更新状态尚未发布；等待 GitHub Actions 启动。计划时刻：北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞。")
+        # Load the published overview before deciding whether a status banner
+        # is trustworthy. A stale `running: 0/20` status must never hide a
+        # fully published five-day forecast.
+        _update_status, _status_origin = _published_overview_json("overview_status.json")
         _city_cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overview_cities.txt")
         _overview_cities = []
         try:
@@ -655,6 +612,11 @@ if st.session_state.get("show_multi_day_overview"):
                         st.info(f"已直接载入本轮检查点中的 {len(_completed)}/20 项预测；未完成的项目以空白表示。无需重新运行后台任务。")
         except Exception:
             _overview_source, _overview = None, None
+        # Readout is derived from the *same* merged city data used by the charts.
+        # `overview_status.json` is an advisory heartbeat, not a source of truth
+        # for the existence of already published forecasts.
+        from burning_sky.overview_status_ui import render_overview_status as _render_status_banner
+        _render_status_banner(st, _update_status, _overview, city=_overview_city)
         if not _overview or not _overview.get("days"):
             st.info(f"尚无{_overview_city}已保存的概览数据。后台完成后这里会展示未来五日EC/GFS朝霞与晚霞。")
         else:

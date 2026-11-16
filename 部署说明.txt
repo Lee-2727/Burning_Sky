@@ -1,0 +1,13 @@
+Burning Skies V2.1.6 — 多日概览状态栏修复（不重新计算）
+
+只将以下两个文件覆盖到 GitHub 仓库根目录对应位置：
+1. app.py
+2. burning_sky/overview_status_ui.py（新增文件）
+
+请勿删除或覆盖 data/、lite/、scripts/、.github/workflows/。
+修正只涉及 Pro 未来多日概览页面的状态展示，不会调用 Open-Meteo 或触发 Actions。
+如果 5天×2模式×朝晚霞 共20项数值都已存在，网页以已发布数据为准；
+即使状态文件仍是 running/0/20，也不会继续把旧的进度当成正在运算。
+当真正的新任务已有进度，且状态时间仍新鲜时，继续显示后台进度。
+
+此包基于用户上传 Burning_Sky-main_V2_1_6.zip 的 app.py 修改。
