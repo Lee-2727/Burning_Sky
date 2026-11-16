@@ -543,15 +543,24 @@ if st.session_state.get("show_multi_day_overview"):
                 return max([str(_snapshot.get("updated_at") or "")] +
                            [str(v or "") for v in _times.values()])
 
-            # Both files are published by the updater. If one is stale or only
-            # partially deployed, display whichever copy contains the newer result.
+            # A complete five-day publication outranks a newer partial artifact.
+            # "Latest timestamp" alone is unsafe: a 10/20 checkpoint can be newer
+            # than an already completed 20/20 publication.
+            from burning_sky.overview_snapshot_guard import count_valid as _count_valid, expected_dates as _expected_dates_fn, restore_missing_only as _restore_missing_only
+            from datetime import datetime as _overview_dt
+            from zoneinfo import ZoneInfo as _overview_tz
+            _current_dates = _expected_dates_fn(_overview_dt.now(_overview_tz('Asia/Shanghai')).date())
+            # Both files are published by the updater. Prefer complete data,
+            # then the newer result within the same completeness tier.
             _candidates = [(f"城市独立文件 · {_city_origin}", x) for x in (_city_snapshot,)
                            if isinstance(x, dict) and x.get("days")]
             _candidates += [(f"总览汇总文件 · {_aggregate_origin}", x) for x in (_aggregate_snapshot,)
                             if isinstance(x, dict) and x.get("days")]
-            _overview_source, _overview = (max(_candidates, key=lambda item: _snapshot_freshness(item[1]))
+            _overview_source, _overview = (max(_candidates, key=lambda item: (
+                                            _count_valid(item[1], _current_dates),
+                                            _snapshot_freshness(item[1])))
                                            if _candidates else (None, None))
-            if len(_candidates) > 1 and _overview is not None:
+            if len(_candidates) > 1 and _overview is not None and _count_valid(_overview, _current_dates) < 20:
                 import copy as _copy
                 _overview = _copy.deepcopy(_overview)
                 _merged_days = {d.get("date"): d for d in _overview.get("days", []) if isinstance(d, dict)}
@@ -563,53 +572,36 @@ if st.session_state.get("show_multi_day_overview"):
                             for _day in _candidate.get("days", []):
                                 _date = _day.get("date")
                                 if _date in _merged_days:
-                                    _merged_days[_date][_dir] = _copy.deepcopy(_day.get(_dir, {}))
+                                    _existing_group = _merged_days[_date].setdefault(_dir, {})
+                                    _incoming_group = _day.get(_dir, {})
+                                    if isinstance(_existing_group, dict) and isinstance(_incoming_group, dict):
+                                        for _model, _record in _incoming_group.items():
+                                            from burning_sky.overview_snapshot_guard import valid_record as _is_valid_row
+                                            if _is_valid_row(_record) and not _is_valid_row(_existing_group.get(_model)):
+                                                _existing_group[_model] = _copy.deepcopy(_record)
                             _direction_times[_dir] = _candidate_times[_dir]
                 _overview["direction_updated_at"] = _direction_times
                 _overview_source += "（按朝/晚霞独立合并）"
 
-            # Checkpoint is published even for a 19/20 batch. Read it as a display
-            # source: no Open-Meteo calls and no new GitHub Action. Never treat
-            # uncompleted tasks as valid old forecasts carried over in snapshot.
-            _cp, _cp_origin = _published_overview_json(f"overview_checkpoint_{_overview_city}.json")
-            if isinstance(_cp, dict) and _cp.get('place') == _overview_city:
-                from datetime import datetime as _dt_cls
-                from zoneinfo import ZoneInfo as _ZoneInfo
-                _today_cn = _dt_cls.now(_ZoneInfo('Asia/Shanghai')).date().isoformat()
-                _expected_dates = [(_dt_cls.fromisoformat(_today_cn).date() + __import__('datetime').timedelta(days=i)).isoformat() for i in range(5)]
-                _cp_days = _cp.get('dates')
-                _completed = set(_cp.get('completed') or [])
-                _candidate = _cp.get('snapshot')
-                _saved = str(_cp.get('saved_at') or '')
-                _published = str((_overview or {}).get('updated_at') or '')
-                def _parse_ts(t):
-                    try:
-                        return _dt_cls.fromisoformat(str(t).replace(' CST', '+08:00').replace(' ', 'T', 1))
-                    except (TypeError, ValueError):
-                        return None
-                _saved_dt, _published_dt = _parse_ts(_saved), _parse_ts(_published)
-                _fresh_cp = (_saved_dt is not None and
-                             (_published_dt is None or _saved_dt > _published_dt))
-                if (_cp.get('batch_day') == _today_cn and _cp_days == _expected_dates
-                        and isinstance(_candidate, dict) and _candidate.get('days')
-                        and _completed and _fresh_cp):
-                    import copy as _copy_cp
-                    _candidate = _copy_cp.deepcopy(_candidate)
-                    _model_names = _cp.get('model_labels') or ['ECMWF IFS 0.25°', 'GFS Global']
-                    for _day in _candidate.get('days', []):
-                        for _d in ('morning', 'evening'):
-                            _records = _day.get(_d)
-                            if not isinstance(_records, dict):
-                                continue
-                            for _model in _model_names:
-                                _key = '|'.join((_overview_city, str(_day.get('date')), _model, _d))
-                                if _key not in _completed:
-                                    _records.pop(_model, None)
-                    _candidate['updated_at'] = _saved
-                    _overview = _candidate
-                    _overview_source = f"本轮检查点（{len(_completed)}/20项） · {_cp_origin}"
-                    if len(_completed) < 20:
-                        st.info(f"已直接载入本轮检查点中的 {len(_completed)}/20 项预测；未完成的项目以空白表示。无需重新运行后台任务。")
+            # Published 20/20 is authoritative, even if a 10/20 checkpoint has
+            # a later saved_at. Checkpoints may ONLY fill missing published rows.
+            # They must never replace an existing valid EC/GFS result.
+            if _count_valid(_overview, _current_dates) < 20:
+                _cp, _cp_origin = _published_overview_json(f"overview_checkpoint_{_overview_city}.json")
+                if isinstance(_cp, dict) and _cp.get('place') == _overview_city:
+                    _today_cn = _current_dates[0]
+                    _cp_days = _cp.get('dates')
+                    _completed = set(_cp.get('completed') or [])
+                    _candidate = _cp.get('snapshot')
+                    if (_cp.get('batch_day') == _today_cn and _cp_days == _current_dates
+                            and isinstance(_candidate, dict) and _candidate.get('days') and _completed):
+                        if _overview is None:
+                            _overview = {'place': _overview_city, 'days': [], 'updated_at': '尚无完整发布'}
+                        _overview, _filled = _restore_missing_only(
+                            _overview, _candidate, _current_dates, _completed, _overview_city)
+                        if _filled:
+                            _overview_source = (_overview_source or '已发布概览') + f' · 检查点补齐{_filled}项'
+                            st.info(f'已从本轮检查点补齐 {_filled} 项缺失预测；已有正式发布结果未被覆盖。')
         except Exception:
             _overview_source, _overview = None, None
         # Readout is derived from the *same* merged city data used by the charts.
