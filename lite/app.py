@@ -67,12 +67,151 @@ import engine
 apply_warm_theme()
 st.markdown(CHART_CSS,unsafe_allow_html=True)
 st.markdown('''<style>
+/* ===== Burning Sky Lite · refined glass surface (independent of Pro theme) ===== */
 [data-testid="stSidebar"]{display:none}
-.bs-lite-lead{background:rgba(255,255,255,.82);border:1px solid rgba(255,255,255,.74);
-  border-radius:18px;padding:17px 22px;color:#293548;font-size:21px;font-weight:730;
-  backdrop-filter:blur(15px);margin:12px 0 20px}
-.bs-lite-version{color:#e4e9f8;font-size:13px;margin:8px 0}
-@media(max-width:550px){.bs-lite-lead{font-size:17px;padding:12px 15px}}
+
+:root{
+  --lite-ink:#F4F6FB; --lite-dim:rgba(244,246,251,.72); --lite-faint:rgba(244,246,251,.46);
+  --lite-line:rgba(255,255,255,.12); --lite-hairline:rgba(255,255,255,.08);
+  --lite-card:rgba(255,255,255,.07); --lite-card-strong:rgba(255,255,255,.10);
+}
+
+/* Page rhythm */
+[data-testid="stMainBlockContainer"]{padding-top:1.6rem;padding-bottom:3.5rem}
+.block-container{gap:.9rem}
+
+/* Typography: calm Apple-style hierarchy, no heavy display weights */
+h1,h2,h3,h4{letter-spacing:-.015em}
+h3{font-weight:660 !important;font-size:1.18rem !important}
+h4{font-weight:620 !important;font-size:1.02rem !important}
+.stMarkdown p, .stMarkdown li{color:var(--lite-dim) !important;font-weight:450}
+[data-testid="stCaptionContainer"], .stCaption{color:var(--lite-faint) !important;font-size:.78rem;letter-spacing:.01em}
+hr{border-color:var(--lite-hairline) !important;margin:1.4rem 0}
+
+/* Verdict lead card: frosted glass over the dusk sky, not an opaque white tile */
+.bs-lite-lead{
+  background:var(--lite-card-strong);
+  border:1px solid var(--lite-line);
+  border-radius:22px;
+  padding:18px 22px;
+  color:var(--lite-ink);
+  font-size:1.16rem;
+  font-weight:620;
+  letter-spacing:-.01em;
+  line-height:1.5;
+  backdrop-filter:blur(22px) saturate(150%);
+  -webkit-backdrop-filter:blur(22px) saturate(150%);
+  box-shadow:0 14px 34px rgba(8,10,20,.22);
+  margin:14px 0 20px;
+}
+.bs-lite-version{color:var(--lite-faint);font-size:12px;margin:8px 0}
+
+/* Hero caption: soften the heavy title weight against the photo */
+.bs-hero{border-radius:24px;border:1px solid var(--lite-line);box-shadow:0 18px 46px rgba(8,10,20,.30)}
+.bs-hero-cap .t{font-size:20px !important;font-weight:680 !important;letter-spacing:-.015em;text-shadow:0 2px 14px rgba(8,10,20,.45)}
+.bs-hero-cap .s{font-size:12.5px !important;color:var(--lite-dim) !important;text-shadow:0 1px 8px rgba(8,10,20,.4)}
+
+/* Metric cards: unified glass, airy padding, refined numerals */
+[data-testid="stMetric"]{
+  background:var(--lite-card);
+  border:1px solid var(--lite-line);
+  border-radius:18px;
+  padding:14px 16px;
+  backdrop-filter:blur(18px) saturate(150%);
+  -webkit-backdrop-filter:blur(18px) saturate(150%);
+  box-shadow:0 8px 22px rgba(8,10,20,.16);
+}
+[data-testid="stMetricLabel"]{color:var(--lite-faint) !important;font-size:.78rem;font-weight:500;letter-spacing:.02em}
+[data-testid="stMetricValue"]{color:var(--lite-ink) !important;font-weight:650 !important;font-size:1.62rem !important;letter-spacing:-.02em}
+
+/* Segmented navigation pill */
+.stButtonGroup, [data-testid="stSegmentedControl"]{border-radius:14px}
+.stButtonGroup button[role="tab"], .stButtonGroup button[role="radio"]{
+  background:rgba(255,255,255,.06) !important;
+  border:1px solid var(--lite-line) !important;
+  color:var(--lite-dim) !important;
+  border-radius:11px !important;
+  font-weight:550 !important;
+}
+.stButtonGroup button[aria-checked="true"]{
+  background:rgba(255,255,255,.15) !important;
+  border-color:var(--bs-accent) !important;
+  color:var(--lite-ink) !important;
+}
+
+/* Form controls: soft glass surfaces, hairline borders */
+[data-testid="stSelectbox"] > div, [data-testid="stDateInput"] > div,
+[data-testid="stTextInput"] input, [data-testid="stNumberInput"] input,
+[data-baseweb="select"] > div, [data-baseweb="datepicker"] > div{
+  background-color:rgba(255,255,255,.08) !important;
+  border-color:var(--lite-line) !important;
+  border-radius:12px !important;
+}
+[data-testid="stSelectbox"] > div:focus-within, [data-testid="stDateInput"] > div:focus-within,
+[data-testid="stTextInput"] input:focus, [data-testid="stNumberInput"] input:focus{
+  border-color:var(--bs-accent) !important;
+  box-shadow:0 0 0 3px rgba(255,255,255,.08) !important;
+}
+
+/* Buttons */
+.stButton > button, [data-testid="stFormSubmitButton"] > button, [data-testid="stBaseButton-secondary"]{
+  border-radius:13px !important;
+  border:1px solid var(--lite-line) !important;
+  background:rgba(255,255,255,.09) !important;
+  color:var(--lite-ink) !important;
+  font-weight:560 !important;
+  letter-spacing:.01em;
+  backdrop-filter:blur(12px);
+  transition:background .16s ease,border-color .16s ease,box-shadow .16s ease;
+}
+.stButton > button:hover, [data-testid="stFormSubmitButton"] > button:hover{
+  background:rgba(255,255,255,.15) !important;
+  border-color:var(--bs-accent) !important;
+}
+button[kind="primary"], [data-testid="stBaseButton-primary"]{
+  border-radius:14px !important;
+  font-weight:600 !important;
+  box-shadow:0 8px 22px rgba(8,10,20,.26);
+}
+
+/* File uploader drop zone */
+[data-testid="stFileUploader"] section{
+  background:var(--lite-card) !important;
+  border:1px dashed var(--lite-line) !important;
+  border-radius:16px !important;
+}
+[data-testid="stFileUploader"] section:hover{border-color:var(--bs-accent) !important}
+
+/* Expander / panels */
+[data-testid="stExpander"]{
+  background:var(--lite-card) !important;
+  border:1px solid var(--lite-line) !important;
+  border-radius:18px !important;
+  backdrop-filter:blur(20px) saturate(150%);
+  -webkit-backdrop-filter:blur(20px) saturate(150%);
+}
+[data-testid="stExpander"] details summary{font-weight:600;color:var(--lite-ink)}
+
+/* Data table */
+[data-testid="stDataFrame"], [data-testid="stTable"]{
+  border:1px solid var(--lite-line) !important;
+  border-radius:16px !important;
+  overflow:hidden;
+}
+
+/* Alerts */
+[data-testid="stAlert"], .stAlertContainer{
+  background:var(--lite-card) !important;
+  border:1px solid var(--lite-line) !important;
+  border-radius:15px !important;
+}
+
+@media(max-width:550px){
+  .bs-lite-lead{font-size:1rem;padding:14px 16px;border-radius:18px}
+  [data-testid="stMetric"]{padding:11px 12px}
+  [data-testid="stMetricValue"]{font-size:1.38rem !important}
+  .bs-hero-cap .t{font-size:17px !important}
+}
 </style>''',unsafe_allow_html=True)
 
 @st.cache_data(show_spinner=False)
