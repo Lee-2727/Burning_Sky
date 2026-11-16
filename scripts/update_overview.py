@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import traceback
 import sys
 import time
 import subprocess
@@ -25,9 +26,12 @@ CITY_CONFIG_FILE = ROOT / "overview_cities.txt"
 # Requests are processed conservatively within each model batch; each completed
 # model batch is published before the next model starts.
 REQUEST_INTERVAL_SECONDS = 20  # Additional spacing between individual direction tasks.
-MINUTE_429_RETRIES = 3  # 429 cooldown/resume is limited; do not retry hourly/data quotas.
+MAX_TASK_ATTEMPTS = 3  # Each unfinished date/model/direction is attempted at most 3 times per batch.
+RETRY_WAIT_SECONDS = 180  # Recoverable failures wait 3 minutes, then resume the same task.
+# When a quota remains exhausted, retain checkpoint and leave the task unfinished;
+# later scheduled runs will retry it without redoing completed tasks.
 
-UPDATER_BUILD_ID = 'scheduled-v2.1.1-20261116-profile-check-push-rebase'
+UPDATER_BUILD_ID = 'scheduled-v2.1.1-20261116-retry180-resume-v1'
 
 def _check_scheduled_rate():
     # Verify the HTTP limiter used by the imported engine, not just an env flag.
@@ -388,6 +392,7 @@ def main():
     failures = []
     task_index = 0
     limit_hit = False
+    attempts_diagnostics = {}
     try:
         for model_index, model in enumerate(models, 1):
             label = model['label']
@@ -417,36 +422,70 @@ def main():
                         record = None
                         error = None
                         reason = ''
-                        for attempt in range(1, MINUTE_429_RETRIES + 2):
+                        # Retry ONLY the unfinished task. Every successful task is
+                        # checkpointed and must never be recalculated in this batch.
+                        # Retrying transient invalid results is essential: some engine
+                        # branches produce no direction_results without raising.
+                        for attempt in range(1, MAX_TASK_ATTEMPTS + 1):
                             runner = _new_runner(city, day, label)
                             engine.messagebox.last_error = None
-                            print(f'[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: starting (attempt {attempt})', flush=True)
+                            print(f'[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: starting (attempt {attempt}/{MAX_TASK_ATTEMPTS})', flush=True)
+                            diagnostic_traceback = None
                             try:
-                                runner._fetch_weather_task(direction)
+                                runner._fetch_weather_task(direction, raise_errors=True,
+                                                           notify_success=False)
                             except Exception as exc:
+                                diagnostic_traceback = traceback.format_exc()
                                 engine.messagebox.last_error = ('Forecast error', str(exc))
                             result = runner.direction_results.get(direction)
                             record = _record(result) if result else None
                             error = engine.messagebox.last_error
-                            if (not error and isinstance(record, dict)
-                                    and all(isinstance(record.get(k), (int,float))
-                                            for k in ('probability','color_score','burn_scale'))):
+                            valid_attempt = (not error and isinstance(record, dict)
+                                             and all(isinstance(record.get(k), (int, float))
+                                                     for k in ('probability', 'color_score', 'burn_scale')))
+                            if not valid_attempt:
+                                inferred_diagnostic = ((result or {}).get('inferred') or {})
+                                print('[OVERVIEW DIAGNOSTIC] '
+                                      f'key={task_key} attempt={attempt}/{MAX_TASK_ATTEMPTS} '
+                                      f'result_present={isinstance(result, dict)} '
+                                      f'fields={list((result or {}).keys()) if isinstance(result, dict) else []} '
+                                      f'inferred_fields={sorted(inferred_diagnostic.keys())} '
+                                      f'raw_prob={inferred_diagnostic.get("regular_score")!r} '
+                                      f'raw_color={inferred_diagnostic.get("color_score")!r} '
+                                      f'raw_scale={inferred_diagnostic.get("burn_scale_index")!r} '
+                                      f'raw_tint={inferred_diagnostic.get("tintable_ratio")!r} '
+                                      f'verdict={inferred_diagnostic.get("verdict_override")!r} '
+                                      f'parsed={record!r} error={error!r}', flush=True)
+                                if diagnostic_traceback:
+                                    print('[OVERVIEW TRACEBACK]\n' + diagnostic_traceback, flush=True)
+                            if valid_attempt:
+                                if attempt > 1:
+                                    print(f'[recovered] {task_key}: successful on attempt {attempt}/{MAX_TASK_ATTEMPTS}', flush=True)
                                 break
-                            reason = str(error[1]) if error else '预测流程未返回有效概率结果'
-                            minute_limited = ('Minutely API request limit exceeded' in reason
-                                              or ('HTTP 429' in reason and 'Minutely' in reason))
-                            if not minute_limited or attempt > MINUTE_429_RETRIES:
+                            reason = (str(error[1]) if error else '预测流程返回指标不完整：' + ', '.join(
+                                f'{key}={record.get(key) if isinstance(record, dict) else None!r}'
+                                for key in ('probability', 'color_score', 'burn_scale')))
+                            attempts_diagnostics[task_key] = {'attempt': attempt, 'reason': reason[:500]}
+                            if attempt >= MAX_TASK_ATTEMPTS:
+                                print(f'[retry exhausted] {task_key}: {MAX_TASK_ATTEMPTS} attempts; '
+                                      'preserving checkpoint and continuing other unfinished tasks.', flush=True)
                                 break
+                            # Server Retry-After / shared-limit cooldown may exceed 3m.
+                            # Never retry sooner than the specified 180s baseline.
                             from burning_sky.api_rate_limit import cooldown_remaining
-                            delay = max(125, cooldown_remaining() + 25)
-                            print(f'[rate limited] Minute quota: wait {delay}s and retry current task '
-                                  f'({attempt}/{MINUTE_429_RETRIES}); completed results retained.', flush=True)
+                            delay = max(RETRY_WAIT_SECONDS, float(cooldown_remaining() or 0) + 25)
+                            print(f'[retry wait] {task_key}: {reason[:250]} '
+                                  f'— wait {delay:.0f}s, then retry ONLY this task '
+                                  f'({attempt + 1}/{MAX_TASK_ATTEMPTS}); successful checkpoint retained.', flush=True)
                             save_checkpoint()
-                            status.update(state='cooldown', message=f'分钟限流，等待{delay}秒后重试当前任务',
+                            status.update(state='cooldown',
+                                          message=f'第{attempt}次失败，等待{delay:.0f}秒后续跑 {task_key}',
+                                          retrying_task=task_key,
+                                          retry_attempt=attempt + 1,
                                           updated_at=datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S %Z'))
                             _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
                             time.sleep(delay)
-                            status['state'] = 'running'
+                            status.update(state='running', retrying_task=None, retry_attempt=None)
 
                         valid = (not error and isinstance(record, dict)
                                  and all(isinstance(record.get(k), (int,float))
@@ -458,8 +497,8 @@ def main():
                         else:
                             failures.append({'city': city, 'date': day.isoformat(), 'model': label,
                                              'direction': direction, 'error': reason[:1000]})
-                            # For exhausted minute retries or any longer-term quota, stop this
-                            # batch, but checkpoint successes so a subsequent run can resume.
+                            # Quota exhaustion is reported but must not erase earlier
+                            # results. A bounded retry prevents infinite API traffic.
                             if '429' in reason or 'limit exceeded' in reason.lower() or '限流' in reason:
                                 limit_hit = True
                             print(f'ERROR: {city} {day} {label} {direction_title}: {reason[:500]}', flush=True)
@@ -470,16 +509,8 @@ def main():
                         _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
                         print(f'[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: '
                               f'{"valid" if valid else "failed"} ({task_index}/{status["task_total"]})', flush=True)
-                        if limit_hit:
-                            print('Quota still exhausted after bounded retry; checkpoint saved. '
-                                  'Stopping without discarding successful tasks.', flush=True)
-                            break
-                    if limit_hit:
-                        break
-                if limit_hit:
-                    break
-            if limit_hit:
-                break
+                        # Continue to the next unfinished task after bounded retries;
+                        # a failing task never blocks the remaining 19 items.
             status['completed_models'].append(label)
             save_checkpoint()
             _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
@@ -488,15 +519,23 @@ def main():
         engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
 
     if failures:
+        # Publish the *checkpoint*, not a falsely "completed" daily snapshot.
+        # The web app overlays only validated task keys and leaves failures blank.
         save_checkpoint()
-        status.update(state='rate_limited' if limit_hit else 'failed',
+        status.update(state='rate_limited' if limit_hit else 'partial',
                       failed_at=datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S %Z'),
+                      success_count=len(checkpoint_completed),
                       failure_count=len(failures), failures=failures[:30],
-                      message=f'本轮已有{len(checkpoint_completed)}/{status["task_total"]}项成功缓存；'
-                              '未完成任务下次同日运行可续跑，保留上次完整发布的数据。')
+                      retry_diagnostics=attempts_diagnostics,
+                      message=f'本轮已有{len(checkpoint_completed)}/{status["task_total"]}项成功缓存并发布检查点；'
+                              '失败项目已分别等待180秒并有限重试，未完成项显示为空白；下次同日运行继续补齐。')
         _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
         _publish_files(status, include_results=False)
-        raise SystemExit(f'Overview batch incomplete ({len(failures)} failed tasks); checkpoint retained')
+        print(f'Overview checkpoint published: {len(checkpoint_completed)}/{status["task_total"]}; '
+              'published complete snapshot remains intact.', flush=True)
+        # A partially valid batch is not a complete forecast. Preserve the
+        # nonzero exit code for scheduled monitors and don't pretend success.
+        raise SystemExit(f'Overview batch partial ({len(failures)} failed tasks); checkpoint published')
 
     completed_at = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
     for city, snapshot in snapshots.items():

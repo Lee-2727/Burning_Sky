@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Offline five-day chart of published overview values, using only HTML/CSS.
-
-No SVG, JavaScript, HTTP requests, or forecast recomputation.  Some versions
-of Streamlit's st.html sanitize inline SVG and leave the chart body blank.
-"""
+"""Five-day probability/quality/scale visual; no weather calls."""
 from __future__ import annotations
-
 import html
 import math
 from datetime import date
@@ -24,7 +19,7 @@ def _num(value):
 
 
 def color_for_score(score):
-    """Continuous quality score palette (not actual cloud hue)."""
+    """Continuously interpolate between score anchors; never imply actual cloud hue."""
     anchors = ((0, (162, 169, 181)), (30, (193, 166, 164)),
                (50, (240, 181, 122)), (70, (237, 126, 116)),
                (90, (218, 84, 147)), (100, (157, 88, 201)))
@@ -33,132 +28,73 @@ def color_for_score(score):
     score = max(0.0, min(100.0, float(score)))
     for (a, ca), (b, cb) in zip(anchors, anchors[1:]):
         if score <= b:
-            t = (score-a)/(b-a)
-            rgb = tuple(round(ca[i]*(1-t)+cb[i]*t) for i in range(3))
+            t = (score - a) / (b - a)
+            rgb = tuple(round(ca[i] * (1-t) + cb[i] * t) for i in range(3))
             return '#%02x%02x%02x' % rgb
     return '#9d58c9'
 
 
-def _records_for(day, direction):
-    if not isinstance(day, dict):
-        return {}
-    records = day.get(direction) or {}
-    return records if isinstance(records, dict) else {}
-
-
 def render_direction(days, direction, title):
-    """Return Streamlit st.html-compatible markup (CSS divs, no SVG).
+    """HTML SVG panel: white translucent card, two bars for each of five dates.
 
-    The maximum of the scale axis is the tallest bar, with a minimum of 10%.
-    Each date displays two adjacent bars, EC then GFS. The bar's height maps
-    scale, translucent colored fill maps probability, and hue maps color score.
+    Column height=burn_scale; column opacity=probability; color=color_score.
+    Missing data have an outlined placeholder, never a fabricated value.
     """
     days = list(days or [])[:5]
-    all_scales = []
-    available = 0
+    vals = []
     for day in days:
-        records = _records_for(day, direction)
+        dat = day.get(direction, {}) if isinstance(day, dict) else {}
         for model, _ in MODELS:
-            item = records.get(model) or {}
-            if not isinstance(item, dict):
-                continue
-            scale = _num(item.get('burn_scale'))
-            prob = _num(item.get('probability'))
-            score = _num(item.get('color_score'))
-            if scale is not None and prob is not None and score is not None:
-                available += 1
-                all_scales.append(max(0.0, scale))
-    axis_top = max(10.0, max(all_scales, default=0.0))
-    all_zero = bool(available) and not any(x > 0 for x in all_scales)
-
-    # No SVG: st.html historically sanitized SVG out of otherwise valid cards.
-    gridlines = ''.join(
-        f'<div style="position:absolute;left:0;right:0;bottom:{pct}%;'
-        f'border-top:1px solid rgba(73,91,121,.16);pointer-events:none"></div>'
-        for pct in (0, 25, 50, 75, 100)
-    )
-    labels = ''.join(
-        f'<div style="position:absolute;left:0;right:2px;bottom:calc({pct}% - 8px);'
-        f'text-align:right;font-size:11px;color:#566477;white-space:nowrap">'
-        f'{axis_top*pct/100:.0f}%</div>'
-        for pct in (0, 25, 50, 75, 100)
-    )
-
-    columns = []
-    for idx in range(5):
-        day = days[idx] if idx < len(days) else {}
-        raw_date = str(day.get('date') or '') if isinstance(day, dict) else ''
+            record = dat.get(model) or {}
+            if isinstance(record, dict):
+                scale = _num(record.get('burn_scale'))
+                if scale is not None:
+                    vals.append(max(0.0,scale))
+    # smallest allowed axis is 10%; actual largest bar determines max otherwise.
+    axis_top = max(10.0, max(vals, default=0.0))
+    width, left, right, top, bottom = 810, 52, 18, 38, 224
+    chart_h = bottom - top
+    step = (width-left-right)/5
+    lines = []
+    for tick in (0, .25, .5, .75, 1):
+        y = bottom - chart_h*tick
+        lines.append(f'<line x1="{left}" y1="{y:.1f}" x2="{width-right}" y2="{y:.1f}" stroke="#64748b" stroke-opacity=".17"/>')
+        lines.append(f'<text x="{left-9}" y="{y+4:.1f}" font-size="12" fill="#435066" text-anchor="end">{axis_top*tick:.0f}%</text>')
+    for i in range(5):
+        day = days[i] if i<len(days) else {}
+        raw_date = str(day.get('date') or '') if isinstance(day,dict) else ''
         try:
             label = date.fromisoformat(raw_date).strftime('%m/%d')
         except ValueError:
             label = '—'
-        bars = []
-        records = _records_for(day, direction)
-        for model, short in MODELS:
-            item = records.get(model) or {}
-            if not isinstance(item, dict):
-                item = {}
-            scale = _num(item.get('burn_scale'))
-            probability = _num(item.get('probability'))
-            score = _num(item.get('color_score'))
-            if None in (scale, probability, score):
-                tip = html.escape(f'{label} {short} | 数据缺失', quote=True)
-                bars.append(
-                    f'<div title="{tip}" style="width:23%;max-width:24px;height:15px;'
-                    f'border:1px dashed #9ca9b9;border-radius:4px 4px 0 0;'
-                    f'background:rgba(100,116,139,.045);box-sizing:border-box"></div>'
-                )
+        x_base = left+step*(i+.5)
+        lines.append(f'<text x="{x_base:.1f}" y="{bottom+28}" font-size="13" fill="#334155" text-anchor="middle">{html.escape(label)}</text>')
+        dat=day.get(direction,{}) if isinstance(day,dict) else {}
+        for j,(model, short) in enumerate(MODELS):
+            item=dat.get(model) or {}
+            if not isinstance(item,dict): item={}
+            scale=_num(item.get('burn_scale'))
+            prob=_num(item.get('probability'))
+            score=_num(item.get('color_score'))
+            x=x_base + (-21 if j==0 else 5)
+            if scale is None or prob is None or score is None:
+                lines.append(f'<rect x="{x:.1f}" y="{bottom-14}" width="16" height="14" rx="3" fill="none" stroke="#a4acb9" stroke-dasharray="2,3"/>')
                 continue
-            scale = max(0.0, float(scale))
-            probability = max(0.0, min(100.0, float(probability)))
-            score = max(0.0, min(100.0, float(score)))
-            bar_height = min(100.0, scale / axis_top * 100.0)
-            # For valid zero-scale data, show an outline at the baseline,
-            # not a fictitious nonzero scale bar.
-            bar_height = max(1.2, bar_height) if scale > 0 else 0
-            color = color_for_score(score)
-            tip = html.escape(
-                f'{label} {short} | 常规概率 {probability:.0f}% | 色彩分 {score:.0f} | 火烧云规模 {scale:.1f}%',
-                quote=True
-            )
-            if scale == 0:
-                bars.append(
-                    f'<div title="{tip}" style="width:23%;max-width:24px;height:3px;'
-                    f'box-sizing:border-box;border-top:2px solid {color};opacity:.65"></div>'
-                )
-            else:
-                # Border remains visible at very low probability; interior fill
-                # faithfully maps the raw probability from 0 to 100 percent.
-                bars.append(
-                    f'<div title="{tip}" style="width:23%;max-width:24px;'
-                    f'height:{bar_height:.4f}%;background:{color};opacity:{probability/100:.4f};'
-                    f'border-radius:5px 5px 0 0;border:1px solid {color};'
-                    f'box-sizing:border-box;min-height:2px"></div>'
-                )
-        columns.append(
-            '<div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:stretch">'
-            '<div style="height:192px;display:flex;justify-content:center;align-items:flex-end;'
-            'gap:7px;position:relative;z-index:1">'+''.join(bars)+'</div>'
-            f'<div style="text-align:center;font-size:12px;color:#334155;margin-top:11px">{html.escape(label)}</div>'
-            '</div>'
-        )
-    if all_zero:
-        note = '本轮两模式火烧云规模均为0%，柱形位于基线；不是图表加载失败。'
-    elif not available:
-        note = '当前没有可用于绘图的完整指标；缺失数据以虚线标记。'
-    else:
-        note = '鼠标悬停可查看每根柱子的概率、色彩分和规模；缺失数据以虚线标记。'
-
-    return f'''<div style="background:rgba(255,255,255,.82);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.78);border-radius:22px;padding:17px 20px 14px;box-shadow:0 8px 30px rgba(23,26,54,.09);margin:10px 0 20px;color:#27344a;font-family:-apple-system,BlinkMacSystemFont,'Microsoft YaHei',sans-serif">
-      <div style="font-size:20px;font-weight:700;padding:2px 4px">{html.escape(title)}</div>
-      <div style="font-size:12px;color:#526079;padding:4px 4px 0">柱高=规模 · 透明度=概率 · 颜色=色彩分（并非真实云色）</div>
-      <div style="display:flex;width:100%;margin-top:18px;align-items:stretch;gap:10px">
-        <div style="width:42px;flex:none;position:relative;height:192px">{labels}</div>
-        <div style="min-width:0;flex:1;position:relative">
-          <div style="position:absolute;left:0;right:0;top:0;height:192px">{gridlines}</div>
-          <div style="position:relative;display:flex;gap:4px">{''.join(columns)}</div>
-        </div>
-      </div>
-      <div style="font-size:12px;color:#526079;text-align:center;margin-top:7px">各日期左侧 EC · 右侧 GFS</div>
-      <div style="font-size:11px;color:#64748b;padding:8px 4px 2px">{html.escape(note)}</div>
-    </div>'''
+            scale=max(0.0,scale)
+            prob=max(0.0,min(100.0,prob))
+            # completely transparent for 0%; retain outline for visibility/zero distinction
+            height=chart_h*min(1.0,scale/axis_top)
+            if scale>0: height=max(1.2,height)
+            y=bottom-height
+            color=color_for_score(score)
+            tooltip=html.escape(f'{label} {short} | 规模 {scale:.1f}% | 概率 {prob:.0f}% | 色彩分 {score:.0f}',quote=True)
+            lines.append(f'<g><title>{tooltip}</title><rect x="{x:.1f}" y="{y:.1f}" width="16" height="{height:.1f}" rx="3" fill="{color}" fill-opacity="{prob/100:.3f}" stroke="{color}" stroke-opacity=".55" stroke-width="1.3"/></g>')
+    legend='<text x="310" y="274" font-size="12" fill="#435066">每组左侧：EC　　右侧：GFS</text>'
+    desc = '柱高=规模 · 透明度=概率 · 颜色=色彩分（并非真实云色）'
+    svg = f'<svg viewBox="0 0 {width} 295" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{html.escape(title)}未来五日EC与GFS规模柱状图">'+''.join(lines)+legend+'</svg>'
+    return f"""<div style="background:rgba(255,255,255,.82);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.78);border-radius:22px;padding:15px 16px 10px;box-shadow:0 8px 30px rgba(23,26,54,.09);margin:10px 0 20px;color:#27344a;font-family:-apple-system,BlinkMacSystemFont,Microsoft YaHei,sans-serif">
+      <div style="font-size:19px;font-weight:700;padding:3px 8px">{html.escape(title)}</div>
+      <div style="font-size:12px;color:#526079;padding:3px 8px">{desc}</div>
+      <div style="width:100%;overflow-x:auto">{svg}</div>
+      <div style="font-size:11px;color:#64748b;padding:0 8px 6px">鼠标悬停可查看各项数值；缺失数据使用虚线标记</div>
+    </div>"""

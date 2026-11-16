@@ -487,9 +487,11 @@ if st.session_state.get("show_multi_day_overview"):
             elif _state == "between_models":
                 st.info(f"⏳ 多模概览正在准备下一个模式。已完成 {_model_index}/{_model_total} 个模式：{', '.join(_completed_models)}。状态更新时间：{_update_status.get('updated_at', '未知')}。")
             elif _state == "completed":
-                st.success(f"✅ {_active_direction}本轮双模式数据已发布。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
-            elif _state == "failed":
-                st.error(f"❌ {_active_direction}本轮更新失败（{_update_status.get('failure_count', 0)} 项）。已保留上一次完整发布的数据。原因：{_update_status.get('message', '请查看 GitHub Actions 日志')}。")
+                st.success(f"✅ {_active_direction}本轮双模式五日数据已完整发布。完成时间：{_update_status.get('completed_at', _update_status.get('updated_at', '未知'))}。下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
+            elif _state in ("failed", "partial", "rate_limited"):
+                _succeeded = _update_status.get("success_count")
+                _partial_info = (f"，已缓存 {_succeeded}/{_task_total} 项" if isinstance(_succeeded, int) else "")
+                st.warning(f"⚠️ {_active_direction}本轮尚未全部完成（失败 {_update_status.get('failure_count', 0)} 项{_partial_info}）。已完成的结果可从检查点直接查看，缺失项标记为暂无数据；不会触发新的计算。详情：{_update_status.get('message', '请查看 GitHub Actions 日志')}。")
             else:
                 st.caption(f"多模概览后台状态：{_state} · 状态更新时间：{_update_status.get('updated_at', '未知')} · 下次计划：{_update_status.get('next_update', '按定时任务执行')}。")
         except Exception:
@@ -549,6 +551,49 @@ if st.session_state.get("show_multi_day_overview"):
                             _direction_times[_dir] = _candidate_times[_dir]
                 _overview["direction_updated_at"] = _direction_times
                 _overview_source += "（按朝/晚霞独立合并）"
+
+            # Checkpoint is published even for a 19/20 batch. Read it as a display
+            # source: no Open-Meteo calls and no new GitHub Action. Never treat
+            # uncompleted tasks as valid old forecasts carried over in snapshot.
+            _cp, _cp_origin = _published_overview_json(f"overview_checkpoint_{_overview_city}.json")
+            if isinstance(_cp, dict) and _cp.get('place') == _overview_city:
+                from datetime import datetime as _dt_cls
+                from zoneinfo import ZoneInfo as _ZoneInfo
+                _today_cn = _dt_cls.now(_ZoneInfo('Asia/Shanghai')).date().isoformat()
+                _expected_dates = [(_dt_cls.fromisoformat(_today_cn).date() + __import__('datetime').timedelta(days=i)).isoformat() for i in range(5)]
+                _cp_days = _cp.get('dates')
+                _completed = set(_cp.get('completed') or [])
+                _candidate = _cp.get('snapshot')
+                _saved = str(_cp.get('saved_at') or '')
+                _published = str((_overview or {}).get('updated_at') or '')
+                def _parse_ts(t):
+                    try:
+                        return _dt_cls.fromisoformat(str(t).replace(' CST', '+08:00').replace(' ', 'T', 1))
+                    except (TypeError, ValueError):
+                        return None
+                _saved_dt, _published_dt = _parse_ts(_saved), _parse_ts(_published)
+                _fresh_cp = (_saved_dt is not None and
+                             (_published_dt is None or _saved_dt > _published_dt))
+                if (_cp.get('batch_day') == _today_cn and _cp_days == _expected_dates
+                        and isinstance(_candidate, dict) and _candidate.get('days')
+                        and _completed and _fresh_cp):
+                    import copy as _copy_cp
+                    _candidate = _copy_cp.deepcopy(_candidate)
+                    _model_names = _cp.get('model_labels') or ['ECMWF IFS 0.25°', 'GFS Global']
+                    for _day in _candidate.get('days', []):
+                        for _d in ('morning', 'evening'):
+                            _records = _day.get(_d)
+                            if not isinstance(_records, dict):
+                                continue
+                            for _model in _model_names:
+                                _key = '|'.join((_overview_city, str(_day.get('date')), _model, _d))
+                                if _key not in _completed:
+                                    _records.pop(_model, None)
+                    _candidate['updated_at'] = _saved
+                    _overview = _candidate
+                    _overview_source = f"本轮检查点（{len(_completed)}/20项） · {_cp_origin}"
+                    if len(_completed) < 20:
+                        st.info(f"已直接载入本轮检查点中的 {len(_completed)}/20 项预测；未完成的项目以空白表示。无需重新运行后台任务。")
         except Exception:
             _overview_source, _overview = None, None
         if not _overview or not _overview.get("days"):
