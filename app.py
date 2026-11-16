@@ -45,6 +45,14 @@ if not hasattr(engine, "WEATHER_MODEL_CATALOG"):
 
 st.set_page_config(page_title="Burning Sky", page_icon="🌇", layout="wide")
 
+# Load optional permanent case archive settings from Streamlit Secrets.
+# Credentials are never copied to the frontend or committed to Git.
+from burning_sky import case_library as _case_library
+try:
+    _case_library.configure_from_mapping(st.secrets)
+except (OSError, RuntimeError, KeyError):
+    pass
+
 # Community-hosted apps may have a public URL. Configure APP_PASSWORD in Streamlit
 # secrets or the environment to keep the interface restricted to the owner.
 APP_PASSWORD = ""
@@ -140,6 +148,14 @@ st.title("🌇 Burning Sky")
 from burning_sky.warm_web_theme import apply_warm_theme, render_theme_switcher, render_hero
 apply_warm_theme()
 render_theme_switcher()
+
+# Remote case writes require an authenticated Pro session or a separate
+# administrator password. A public Pro app must never expose deletion privileges.
+def _case_write_allowed():
+    return _case_library.authorized(
+        pro_authenticated=bool(APP_PASSWORD and st.session_state.get('authenticated')),
+        supplied=st.session_state.get('bs_case_admin_input', ''),
+    )
 
 with st.sidebar:
     st.markdown('### 导航')
@@ -256,10 +272,14 @@ with st.sidebar:
                     if not _state_name or not _cache_name:
                         st.session_state["case_bundle_state"] = None
                         st.session_state["case_bundle_cache"] = None
+                        st.session_state['case_bundle_satellite'] = {}
                         st.warning("该案例 ZIP 缺少 analysis_state.json 或 request_cache.json，不能用于缓存重算。")
                     else:
                         st.session_state["case_bundle_state"] = json.loads(_zf.read(_state_name).decode("utf-8"))
                         st.session_state["case_bundle_cache"] = json.loads(_zf.read(_cache_name).decode("utf-8"))
+                        _sat_name = next((n for n in _names if n.endswith('satellite_corrections.json')), None)
+                        st.session_state['case_bundle_satellite'] = (
+                            json.loads(_zf.read(_sat_name).decode('utf-8')) if _sat_name else {})
                         from burning_sky.case_manifest import check_zip_manifest
                         _warnings = check_zip_manifest(_zf)
                         if _warnings:
@@ -272,27 +292,44 @@ with st.sidebar:
         if use_case_cache and not _case_state:
             st.warning("请先上传并加载包含原始请求缓存的案例 ZIP。")
 
-    # 案例库保留独立折叠入口，避免 Streamlit 不允许的嵌套 expander。
-    # Case-library archive is separate from the temporary Streamlit session.
-    from burning_sky import case_library as _case_library
-    with st.expander("📚 网页案例库：保存、下载、删除", expanded=False):
-        if not os.environ.get("BURNING_SKY_CASE_LIBRARY_DIR") and not _case_library.github_enabled():
-            st.warning("当前案例库使用服务器本地目录；Streamlit Cloud 重新部署可能清空。永久存档请配置 BURNING_SKY_CASE_LIBRARY_DIR 为持久化挂载目录。")
-        for _record in _case_library.list_cases():
-            _cid = _record['id']
-            st.caption(f"{_record.get('created_at')} · {_record.get('place')} · {_record.get('date')} · {_record.get('model')} · {_record.get('note','')}")
-            _lc, _rc = st.columns([2, 1])
-            with _lc:
-                try:
-                    _raw = _case_library.read(_cid)
-                    st.download_button("下载已存案例ZIP", data=_raw, file_name=f"BurningSky_Archive_{_cid[:8]}.zip", mime="application/zip", key=f"case_dl_{_cid}")
-                except Exception as _read_err:
-                    st.error(f"案例读取失败：{_read_err}")
-            with _rc:
-                _confirm = st.checkbox("确认删除", key=f"case_confirm_{_cid}")
-                if st.button("删除案例", key=f"case_del_{_cid}", disabled=not _confirm):
-                    _case_library.delete(_cid)
-                    st.rerun()
+    # Permanent archive is optional; without GitHub credentials it is ephemeral.
+    with st.expander("📚 案例库 · 存档与恢复", expanded=False):
+        if _case_library.github_enabled():
+            st.caption('案例存储：GitHub 远端存档')
+            if not (APP_PASSWORD and st.session_state.get('authenticated')):
+                if _case_library.admin_password():
+                    st.text_input('案例库管理口令', type='password', key='bs_case_admin_input')
+                else:
+                    st.warning('案例库已连接，但当前网页未设置访问密码或管理口令。为保护永久案例，暂不开放浏览和写入。')
+        else:
+            st.warning('案例目前仅存储于服务器临时磁盘，重新部署可能丢失。请在 Streamlit Secrets 配置 GitHub 私有案例库。')
+        if _case_write_allowed():
+            try:
+                _case_records = _case_library.list_cases()
+            except Exception as _case_list_error:
+                st.error('远端案例读取失败：' + str(_case_list_error))
+                _case_records = []
+            for _record in _case_records:
+                _cid = _record['id']
+                st.caption(f"{_record.get('created_at')} · {_record.get('place')} · {_record.get('date')} · {_record.get('model')} · {_record.get('note','')}")
+                _lc, _rc = st.columns([2, 1])
+                with _lc:
+                    try:
+                        _raw = _case_library.read(_cid)
+                        st.download_button('下载已存案例ZIP', data=_raw,
+                            file_name=f'BurningSky_Archive_{_cid[:8]}.zip',
+                            mime='application/zip', key=f'case_dl_{_cid}')
+                    except Exception as _read_err:
+                        st.error(f'案例读取失败：{_read_err}')
+                with _rc:
+                    _confirm = st.checkbox('确认删除', key=f'case_confirm_{_cid}')
+                    if st.button('删除案例', key=f'case_del_{_cid}', disabled=not _confirm):
+                        try:
+                            _case_library.delete(_cid)
+                            st.success('案例已删除')
+                            st.rerun()
+                        except Exception as _del_error:
+                            st.error('删除失败：' + str(_del_error))
 
 
 # AOD is controlled only from the sidebar; remove the duplicate in-body controls.
@@ -983,7 +1020,9 @@ if run:
             if _missing_dirs: _why.append("案例缺少方向：" + "、".join("朝霞" if x == "morning" else "晚霞" for x in _missing_dirs))
             st.error("案例数据不匹配，已停止查询：" + "；".join(_why) + "。请加载正确案例或取消缓存勾选。")
             st.stop()
-        engine._CASE_REQUEST_CONTEXT = {"mode": "replay", "cache": st.session_state.get("case_bundle_cache") or {}}
+        _replay_cache = st.session_state.get('case_bundle_cache') or {}
+        _sat_replay = st.session_state.get('case_bundle_satellite') or {}
+        engine._CASE_REQUEST_CONTEXT = {"mode": "replay", "cache": _replay_cache}
     else:
         # A new online query captures newly requested data. Previously uploaded
         # case payloads are only for explicit offline replay, never online mode.
@@ -993,7 +1032,20 @@ if run:
         with st.spinner(f"{'正在读取案例缓存' if use_case_cache else '正在获取天气、云层剖面与 CAMS AOD'}，并计算{_direction_text}……"):
             # The shared engine now splits combined queries identically for
             # desktop and web, including merged rainbow results.
-            runner._fetch_weather_task(_query_dir)
+            if use_case_cache and _sat_replay:
+                # Satellite corrections are directional; a combined call cannot
+                # apply distinct confirmed edits to morning and evening together.
+                for _replay_dir in (('morning','evening') if _query_dir=='both' else (_query_dir,)):
+                    _revised = (_sat_replay.get(_replay_dir) or {}).get('edits') or []
+                    _ctx = {'mode':'replay', 'cache':_replay_cache}
+                    if _revised:
+                        _ctx.update({'cloud_overrides':_revised, 'satellite_recompute':True,
+                            'satellite_extra_distances':sorted({round(max(0., (float(e[0])+float(e[1]))/2 + delta),2)
+                                for e in _revised for delta in (-4,0,4)})[:60]})
+                    engine._CASE_REQUEST_CONTEXT = _ctx
+                    runner._fetch_weather_task(_replay_dir)
+            else:
+                runner._fetch_weather_task(_query_dir)
     finally:
         engine._CASE_REQUEST_CONTEXT = None
     if engine.messagebox.last_error:
@@ -1048,10 +1100,10 @@ if run:
             })
         st.download_button("保存当前查询案例 ZIP", data=_bundle.getvalue(), file_name=f"BurningSky_{forecast_date.isoformat()}_{place}_{_case_state_out['model_code']}.zip", mime="application/zip")
         _archive_note = st.text_input("案例备注（可选）", key="archive_note_current")
-        if st.button("保存到网页案例库", key="save_case_in_library"):
+        if st.button("保存到网页案例库", key="save_case_in_library", disabled=not _case_write_allowed()):
             try:
                 _entry = _case_library.save(_bundle.getvalue(), note=_archive_note)
-                st.success(f"已保存案例ID：{_entry['id'][:12]}；请在上方案例库下载或管理。")
+                st.success(("已永久保存至 GitHub" if _entry.get("storage") == "github" else "已保存于本地临时目录") + f" · 案例ID：{_entry['id'][:12]}")
             except Exception as _archive_exc:
                 st.error(f"案例存档失败：{_archive_exc}")
 
@@ -1189,6 +1241,10 @@ if results:
     _current_cache = st.session_state.get('fire_cloud_replay_cache') or {}
     _current_values = st.session_state.get('fire_cloud_replay_values') or {}
     if _current_cache and _current_values:
+        from burning_sky.pro_case_export import prepare_case as _prepare_pro_case
+        _archive_results, _archive_cache, _satellite_revisions, _satellite_photos = _prepare_pro_case(
+            results, st.session_state.get('fire_cloud_original_results') or results,
+            meta, _current_cache, engine.FireCloudApp._json_safe)
         _state_now = {
             'schema_version': 3, 'app_version': 'Burning Sky',
             'saved_at': __import__('datetime').datetime.now().astimezone().isoformat(),
@@ -1199,18 +1255,23 @@ if results:
                 'ecmwf_aifs025_single':'AIFS','cma_grapes_global':'CMA_GRAPES'}.get(
                 engine._weather_model_id_from_label(meta.get('model','')), 'EC'),
             'direction_results': engine.FireCloudApp._json_safe({k:{kk:vv for kk,vv in v.items() if kk!='raw_weather'}
-                for k,v in results.items()}),
+                for k,v in _archive_results.items()}),
             'last_report': st.session_state.get('fire_cloud_last_report',''),
         }
         _current_zip=io.BytesIO()
         with zipfile.ZipFile(_current_zip,'w',zipfile.ZIP_DEFLATED) as _zf:
             _zf.writestr('analysis_state.json',json.dumps(_state_now,ensure_ascii=False,indent=2))
-            _zf.writestr('request_cache.json',json.dumps(engine.FireCloudApp._json_safe(_current_cache),ensure_ascii=False))
+            _zf.writestr('request_cache.json',json.dumps(engine.FireCloudApp._json_safe(_archive_cache),ensure_ascii=False))
             _zf.writestr('weather_raw.json',json.dumps(engine.FireCloudApp._json_safe({k:{
                 'raw_weather':v.get('raw_weather',[]),'samples':v.get('samples',[]),
                 'profiles':v.get('profiles',[]),'raw_details':v.get('raw_details',[]),
                 'boundaries':v.get('boundaries'),'rainbow':v.get('rainbow'),
-                'parallel_2d':v.get('parallel_2d')} for k,v in results.items()}),ensure_ascii=False))
+                'parallel_2d':v.get('parallel_2d')} for k,v in _archive_results.items()}),ensure_ascii=False))
+            if _satellite_revisions:
+                _zf.writestr('satellite_corrections.json', json.dumps(
+                    engine.FireCloudApp._json_safe(_satellite_revisions), ensure_ascii=False))
+                for _sat_dir, _sat_photo in _satellite_photos.items():
+                    _zf.writestr(f'satellite_{_sat_dir}.jpg', _sat_photo)
             from burning_sky.case_manifest import write_manifest_zip
             from burning_sky.cloud_overrides import parse_overrides
             _manual_text=st.session_state.get('cloud_manual_override_text','')
@@ -1219,14 +1280,15 @@ if results:
             write_manifest_zip(_zf,_state_now,{
                 'request_inputs':_current_values,'manual_cloud_override_text':_manual_text,
                 'manual_cloud_override_rows':_manual_rows,
+                'satellite_calibration_directions':list(_satellite_revisions),
                 'primary_spherical_path_gate':True,'local_cloud_geometry':'continuous_face_strict'})
         st.download_button('保存完整当前案例 ZIP（含人工修正）',data=_current_zip.getvalue(),
             file_name=f"BurningSky_Repro_{meta.get('date','case')}_{_state_now['model_code']}.zip",
             mime='application/zip',key='download_complete_case')
-        if st.button('存档当前人工修正案例到网页库', key='archive_recalculated_case'):
+        if st.button('存档当前人工修正案例到网页库', key='archive_recalculated_case', disabled=not _case_write_allowed()):
             try:
                 _entry = _case_library.save(_current_zip.getvalue(), note='含人工修正')
-                st.success('已存档：' + _entry['id'][:12])
+                st.success(('已永久保存至 GitHub：' if _entry.get('storage') == 'github' else '临时本地存档：') + _entry['id'][:12])
             except Exception as _archive_exc:
                 st.error('存档失败：' + str(_archive_exc))
 
