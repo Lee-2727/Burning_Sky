@@ -16,14 +16,24 @@
   "completed": [
     "合肥|2026-11-16|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-16|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-16|GFS Global|evening",
+    "合肥|2026-11-16|GFS Global|morning",
     "合肥|2026-11-17|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-17|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-17|GFS Global|evening",
+    "合肥|2026-11-17|GFS Global|morning",
     "合肥|2026-11-18|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-18|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-18|GFS Global|evening",
+    "合肥|2026-11-18|GFS Global|morning",
     "合肥|2026-11-19|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-19|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-19|GFS Global|evening",
+    "合肥|2026-11-19|GFS Global|morning",
     "合肥|2026-11-20|ECMWF IFS 0.25°|evening",
-    "合肥|2026-11-20|ECMWF IFS 0.25°|morning"
+    "合肥|2026-11-20|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-20|GFS Global|evening",
+    "合肥|2026-11-20|GFS Global|morning"
   ],
   "snapshot": {
     "schema_version": 2,
@@ -56,9 +66,9 @@
             "probability": 10.0,
             "color_score": 0.0,
             "burn_scale": 0.0,
-            "local_mid_cloud": 0.5555555555555556,
-            "local_high_layer_cloud": 59.888888888888886,
-            "local_high_cloud": 60.44444444444444,
+            "local_mid_cloud": 0.0,
+            "local_high_layer_cloud": 72.44444444444444,
+            "local_high_cloud": 72.44444444444444,
             "fire_score_no_color": 0.0,
             "burn_scale_label": "不烧",
             "event_time": "2026-11-16T06:39:54.177171"
@@ -107,9 +117,9 @@
             "probability": 0.0,
             "color_score": 0.0,
             "burn_scale": 0.0,
-            "local_mid_cloud": 71.55555555555556,
-            "local_high_layer_cloud": 28.555555555555557,
-            "local_high_cloud": 100.0,
+            "local_mid_cloud": 91.55555555555556,
+            "local_high_layer_cloud": 3.888888888888889,
+            "local_high_cloud": 95.44444444444444,
             "fire_score_no_color": 0.0,
             "burn_scale_label": "不烧",
             "event_time": "2026-11-17T06:40:47.063135"
@@ -156,11 +166,11 @@
           },
           "GFS Global": {
             "probability": 0.0,
-            "color_score": 24.0,
+            "color_score": 0.0,
             "burn_scale": 0.0,
-            "local_mid_cloud": 0.5555555555555556,
-            "local_high_layer_cloud": 2.7777777777777777,
-            "local_high_cloud": 3.333333333333333,
+            "local_mid_cloud": 62.22222222222222,
+            "local_high_layer_cloud": 5.0,
+            "local_high_cloud": 67.22222222222223,
             "fire_score_no_color": 0.0,
             "burn_scale_label": "不烧",
             "event_time": "2026-11-18T06:41:39.989016"
@@ -180,13 +190,13 @@
           },
           "GFS Global": {
             "probability": 62.0,
-            "color_score": 50.0,
-            "burn_scale": 11.47,
-            "local_mid_cloud": 99.44444444444444,
-            "local_high_layer_cloud": 25.444444444444443,
+            "color_score": 58.0,
+            "burn_scale": 5.88,
+            "local_mid_cloud": 100.0,
+            "local_high_layer_cloud": 33.44444444444444,
             "local_high_cloud": 100.0,
-            "fire_score_no_color": 7.11,
-            "burn_scale_label": "小烧",
+            "fire_score_no_color": 3.65,
+            "burn_scale_label": "微烧",
             "event_time": "2026-11-18T17:10:21.074924"
           }
         }
@@ -230,14 +240,14 @@
             "event_time": "2026-11-19T17:09:54.609366"
           },
           "GFS Global": {
-            "probability": 80.0,
-            "color_score": 72.0,
-            "burn_scale": 17.72,
-            "local_mid_cloud": 64.77777777777777,
-            "local_high_layer_cloud": 0.0,
-            "local_high_cloud": 64.77777777777777,
-            "fire_score_no_color": 14.18,
-            "burn_scale_label": "小烧",
+            "probability": 69.0,
+            "color_score": 73.0,
+            "burn_scale": 43.08,
+            "local_mid_cloud": 100.0,
+            "local_high_layer_cloud": 65.11111111111111,
+            "local_high_cloud": 100.0,
+            "fire_score_no_color": 29.73,
+            "burn_scale_label": "中烧",
             "event_time": "2026-11-19T17:09:54.609366"
           }
         }
@@ -257,14 +267,14 @@
             "event_time": "2026-11-20T06:43:25.831621"
           },
           "GFS Global": {
-            "probability": 53.0,
-            "color_score": 64.0,
-            "burn_scale": 0.67,
-            "local_mid_cloud": 0.0,
-            "local_high_layer_cloud": 96.0,
-            "local_high_cloud": 96.0,
-            "fire_score_no_color": 0.36,
-            "burn_scale_label": "微烧",
+            "probability": 65.0,
+            "color_score": 55.0,
+            "burn_scale": 13.3,
+            "local_mid_cloud": 1.6666666666666667,
+            "local_high_layer_cloud": 100.0,
+            "local_high_cloud": 100.0,
+            "fire_score_no_color": 8.64,
+            "burn_scale_label": "小烧",
             "event_time": "2026-11-20T06:43:25.831621"
           }
         },
@@ -282,11 +292,11 @@
           },
           "GFS Global": {
             "probability": 0.0,
-            "color_score": 15.0,
+            "color_score": 16.0,
             "burn_scale": 0.0,
-            "local_mid_cloud": 0.0,
+            "local_mid_cloud": 0.5555555555555556,
             "local_high_layer_cloud": 0.0,
-            "local_high_cloud": 0.0,
+            "local_high_cloud": 0.5555555555555556,
             "fire_score_no_color": 0.0,
             "burn_scale_label": "不烧",
             "event_time": "2026-11-20T17:09:29.819191"
@@ -295,5 +305,5 @@
       }
     ]
   },
-  "saved_at": "2026-11-16T09:11:27+08:00"
+  "saved_at": "2026-11-16T09:23:03+08:00"
 }
