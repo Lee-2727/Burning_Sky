@@ -90,6 +90,9 @@ def _runner(place,lat,lon,elev,day,model):
     r.aod_manual_override=False;r._setting_aod_programmatically=False
     r.web_aod_value=None;r.web_aod_valid_time=None;r.aod_path_values=[]
     r.cloud_path_samples=[];r.cloud_path_result=None;r.fetch_in_progress=False
+    # One-direction screenshot calibration is a fire-cloud recalculation only.
+    # The optional rainbow path is unrelated and would add API requests.
+    r.skip_rainbow_for_overview=True
     r.after=lambda *a,**k:None
     for name in ('morning_summary','evening_summary','morning_score_label','evening_score_label',
                  'morning_upper_label','evening_upper_label','morning_color_score_label',
