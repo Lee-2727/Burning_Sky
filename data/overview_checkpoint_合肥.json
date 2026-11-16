@@ -16,14 +16,24 @@
   "completed": [
     "合肥|2026-11-17|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-17|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-17|GFS Global|evening",
+    "合肥|2026-11-17|GFS Global|morning",
     "合肥|2026-11-18|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-18|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-18|GFS Global|evening",
+    "合肥|2026-11-18|GFS Global|morning",
     "合肥|2026-11-19|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-19|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-19|GFS Global|evening",
+    "合肥|2026-11-19|GFS Global|morning",
     "合肥|2026-11-20|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-20|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-20|GFS Global|evening",
+    "合肥|2026-11-20|GFS Global|morning",
     "合肥|2026-11-21|ECMWF IFS 0.25°|evening",
-    "合肥|2026-11-21|ECMWF IFS 0.25°|morning"
+    "合肥|2026-11-21|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-21|GFS Global|evening",
+    "合肥|2026-11-21|GFS Global|morning"
   ],
   "snapshot": {
     "schema_version": 2,
@@ -56,9 +66,9 @@
             "probability": 0.0,
             "color_score": 0.0,
             "burn_scale": 0.0,
-            "local_mid_cloud": 72.88888888888889,
-            "local_high_layer_cloud": 0.0,
-            "local_high_cloud": 72.88888888888889,
+            "local_mid_cloud": 86.11111111111111,
+            "local_high_layer_cloud": 29.0,
+            "local_high_cloud": 100.0,
             "fire_score_no_color": 0.0,
             "burn_scale_label": "不烧",
             "event_time": "2026-11-17T06:40:47.063135"
@@ -81,7 +91,7 @@
             "color_score": 0.0,
             "burn_scale": 0.0,
             "local_mid_cloud": 100.0,
-            "local_high_layer_cloud": 85.66666666666667,
+            "local_high_layer_cloud": 100.0,
             "local_high_cloud": 100.0,
             "fire_score_no_color": 0.0,
             "burn_scale_label": "不烧",
@@ -107,8 +117,8 @@
             "probability": 0.0,
             "color_score": 0.0,
             "burn_scale": 0.0,
-            "local_mid_cloud": 99.77777777777777,
-            "local_high_layer_cloud": 16.666666666666668,
+            "local_mid_cloud": 100.0,
+            "local_high_layer_cloud": 75.33333333333333,
             "local_high_cloud": 100.0,
             "fire_score_no_color": 0.0,
             "burn_scale_label": "不烧",
@@ -128,13 +138,13 @@
             "event_time": "2026-11-18T17:10:21.074924"
           },
           "GFS Global": {
-            "probability": 46.0,
-            "color_score": 21.0,
-            "burn_scale": 23.39,
-            "local_mid_cloud": 0.5555555555555556,
-            "local_high_layer_cloud": 4.444444444444445,
-            "local_high_cloud": 5.0,
-            "fire_score_no_color": 10.76,
+            "probability": 61.0,
+            "color_score": 40.0,
+            "burn_scale": 17.67,
+            "local_mid_cloud": 3.3333333333333335,
+            "local_high_layer_cloud": 3.3333333333333335,
+            "local_high_cloud": 6.666666666666667,
+            "fire_score_no_color": 10.78,
             "burn_scale_label": "小烧",
             "event_time": "2026-11-18T17:10:21.074924"
           }
@@ -179,14 +189,14 @@
             "event_time": "2026-11-19T17:09:54.609366"
           },
           "GFS Global": {
-            "probability": 81.0,
-            "color_score": 73.0,
-            "burn_scale": 33.31,
-            "local_mid_cloud": 90.88888888888889,
-            "local_high_layer_cloud": 9.666666666666666,
-            "local_high_cloud": 100.0,
-            "fire_score_no_color": 26.98,
-            "burn_scale_label": "中烧",
+            "probability": 62.0,
+            "color_score": 67.0,
+            "burn_scale": 29.08,
+            "local_mid_cloud": 96.33333333333333,
+            "local_high_layer_cloud": 3.3333333333333335,
+            "local_high_cloud": 99.66666666666666,
+            "fire_score_no_color": 18.03,
+            "burn_scale_label": "小烧",
             "event_time": "2026-11-19T17:09:54.609366"
           }
         }
@@ -206,13 +216,13 @@
             "event_time": "2026-11-20T06:43:25.831621"
           },
           "GFS Global": {
-            "probability": 60.0,
-            "color_score": 54.0,
-            "burn_scale": 21.8,
-            "local_mid_cloud": 40.44444444444444,
+            "probability": 76.0,
+            "color_score": 64.0,
+            "burn_scale": 20.49,
+            "local_mid_cloud": 11.444444444444445,
             "local_high_layer_cloud": 100.0,
             "local_high_cloud": 100.0,
-            "fire_score_no_color": 13.08,
+            "fire_score_no_color": 15.57,
             "burn_scale_label": "小烧",
             "event_time": "2026-11-20T06:43:25.831621"
           }
@@ -231,11 +241,11 @@
           },
           "GFS Global": {
             "probability": 0.0,
-            "color_score": 18.0,
+            "color_score": 19.0,
             "burn_scale": 0.0,
-            "local_mid_cloud": 0.5555555555555556,
+            "local_mid_cloud": 0.0,
             "local_high_layer_cloud": 0.0,
-            "local_high_cloud": 0.5555555555555556,
+            "local_high_cloud": 0.0,
             "fire_score_no_color": 0.0,
             "burn_scale_label": "不烧",
             "event_time": "2026-11-20T17:09:29.819191"
@@ -281,19 +291,19 @@
             "event_time": "2026-11-21T17:09:06.737928"
           },
           "GFS Global": {
-            "probability": 0.0,
+            "probability": 58.0,
             "color_score": 15.0,
-            "burn_scale": 0.0,
+            "burn_scale": 17.98,
             "local_mid_cloud": 0.0,
-            "local_high_layer_cloud": 0.0,
-            "local_high_cloud": 0.0,
-            "fire_score_no_color": 0.0,
-            "burn_scale_label": "不烧",
+            "local_high_layer_cloud": 0.5555555555555556,
+            "local_high_cloud": 0.5555555555555556,
+            "fire_score_no_color": 10.43,
+            "burn_scale_label": "小烧",
             "event_time": "2026-11-21T17:09:06.737928"
           }
         }
       }
     ]
   },
-  "saved_at": "2026-11-17T04:12:52+08:00"
+  "saved_at": "2026-11-17T04:25:30+08:00"
 }
