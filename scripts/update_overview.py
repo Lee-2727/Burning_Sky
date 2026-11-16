@@ -8,6 +8,8 @@ import traceback
 import sys
 import time
 import subprocess
+import shutil
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -31,7 +33,7 @@ RETRY_WAIT_SECONDS = 180  # Recoverable failures wait 3 minutes, then resume the
 # When a quota remains exhausted, retain checkpoint and leave the task unfinished;
 # later scheduled runs will retry it without redoing completed tasks.
 
-UPDATER_BUILD_ID = 'scheduled-v2.1.1-20261116-retry180-resume-v1'
+UPDATER_BUILD_ID = 'v2.1.4-clean-worktree-publish-fresh-mode-20261116'
 
 def _check_scheduled_rate():
     # Verify the HTTP limiter used by the imported engine, not just an env flag.
@@ -41,27 +43,67 @@ def _check_scheduled_rate():
     if actual != 'scheduled' or pacing != (12.0, 5):
         raise RuntimeError('定时任务的真实HTTP档位不是 scheduled (12秒/次，5次/分钟)，拒绝以 interactive 高速模式运行')
 
-def _push_with_rebase(branch):
-    """Fast-forward remote updates on a non-fast-forward push; never force-push.
+def _publish_paths(branch, paths, message):
+    """Publish ONLY selected data paths from a clean detached Git worktree.
 
-    Rebase can conflict when multiple workflows touch the same status JSON.
-    In that case abort safely, report failure, and leave remote data untouched.
+    Never rebase the running checkout: Open-Meteo cache/status JSONs can be
+    modified by the engine at any point. A rejected push retries against a
+    newly fetched remote head. No force push or unrelated file staging.
     """
-    for attempt in range(1, 4):
-        pushed = subprocess.run(['git','push','origin',f'HEAD:{branch}'], cwd=ROOT, capture_output=True, text=True)
-        if pushed.returncode == 0:
-            print(f'[overview publish] pushed {branch} (attempt {attempt})', flush=True)
-            return
-        detail = (pushed.stderr or pushed.stdout or '')[-500:]
-        if not any(x in detail.lower() for x in ('fetch first', 'non-fast-forward', 'rejected')):
-            raise RuntimeError(f'git push failed: {detail}')
-        print(f'[overview publish] remote changed, fetch+rebase (attempt {attempt}/3)', flush=True)
-        subprocess.run(['git','fetch','origin',branch], cwd=ROOT, check=True)
-        rebased = subprocess.run(['git','rebase','FETCH_HEAD'], cwd=ROOT, capture_output=True, text=True)
-        if rebased.returncode:
-            subprocess.run(['git','rebase','--abort'], cwd=ROOT, capture_output=True)
-            raise RuntimeError('并发更新产生数据文件冲突；已中止rebase，保留远端数据。请在Actions工作流设置 concurrency 互斥。' + (rebased.stderr or '')[-400:])
-    raise RuntimeError('远端持续出现并发提交，三次重试后停止，未强制覆盖远端')
+    if os.environ.get('GITHUB_ACTIONS', '').lower() != 'true':
+        return False
+    unique = sorted({str(Path(p).relative_to(ROOT)) for p in paths})
+    subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], cwd=ROOT, check=True)
+    subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], cwd=ROOT, check=True)
+    for attempt in range(1, 6):
+        subprocess.run(['git', 'fetch', '--no-tags', 'origin', branch], cwd=ROOT, check=True,
+                       stdout=subprocess.DEVNULL)
+        with tempfile.TemporaryDirectory(prefix='burning_skies_publish_') as temp:
+            clean = Path(temp) / 'checkout'
+            subprocess.run(['git', 'worktree', 'add', '--detach', str(clean), 'FETCH_HEAD'],
+                           cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
+            try:
+                effective = []
+                for rel in unique:
+                    source = ROOT / rel
+                    target = clean / rel
+                    if source.is_file():
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(source, target)
+                        effective.append(rel)
+                    elif target.is_file():
+                        # A deleted checkpoint must be deleted remotely, too.
+                        target.unlink()
+                        effective.append(rel)
+                if not effective:
+                    print('[overview publish] nothing to stage', flush=True)
+                    return True
+                subprocess.run(['git', 'add', '-A', '-f', '--', *effective], cwd=clean, check=True)
+                changed = subprocess.run(['git', 'diff', '--cached', '--quiet'], cwd=clean).returncode != 0
+                if not changed:
+                    print(f'[overview publish] remote already matches {len(unique)} files', flush=True)
+                    return True
+                subprocess.run(['git', '-c', 'user.name=github-actions[bot]',
+                                '-c', 'user.email=41898282+github-actions[bot]@users.noreply.github.com',
+                                'commit', '-m', message], cwd=clean, check=True,
+                               stdout=subprocess.DEVNULL)
+                pushed = subprocess.run(['git', 'push', 'origin', f'HEAD:{branch}'],
+                                        cwd=clean, capture_output=True, text=True)
+                if pushed.returncode == 0:
+                    print(f'[overview publish] committed and pushed {branch} '
+                          f'from clean worktree (attempt {attempt}/5)', flush=True)
+                    return True
+                detail = (pushed.stderr or pushed.stdout or '')[-900:]
+                if not any(x in detail.lower() for x in ('fetch first', 'non-fast-forward', 'rejected')):
+                    raise RuntimeError(f'git push failed: {detail}')
+                print(f'[overview publish] concurrent remote update; refresh and retry '
+                      f'(attempt {attempt}/5)', flush=True)
+            finally:
+                subprocess.run(['git', 'worktree', 'remove', '--force', str(clean)],
+                               cwd=ROOT, check=False, capture_output=True)
+        time.sleep(min(attempt * 2, 8))
+    raise RuntimeError('5次远端并发提交冲突；结果仍保存在本次运行器，但尚未发布')
+
 
 def load_city_config():
     cities = []
@@ -217,76 +259,30 @@ def _write_json_atomic(path, payload):
     tmp.replace(path)
 
 
-def _publish_model_batch(model_label, status):
-    """Publish status/results safely; never fail on an absent optional history folder."""
-    if os.environ.get("GITHUB_ACTIONS", "").lower() != "true":
-        return
-    branch = os.environ.get("GITHUB_REF_NAME", "main")
-    try:
-        subprocess.run(["git", "config", "user.name", "github-actions[bot]"], cwd=ROOT, check=True)
-        subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=ROOT, check=True)
-
-        # Build an explicit list of paths that actually exist. The previous
-        # implementation always staged data/overview_history/, which is not
-        # present in a clean checkout and made `git add` fail before status
-        # could ever be pushed. Also avoid shell-style wildcard arguments to
-        # subprocess; expand city snapshots in Python instead.
-        data_dir = ROOT / "data"
-        publish_paths = [data_dir / "overview.json", data_dir / "overview_status.json"]
-        publish_paths.extend(sorted(data_dir.glob("overview_*.json")))
-        history_dir = data_dir / "overview_history"
-        if history_dir.is_dir():
-            publish_paths.extend(p for p in history_dir.rglob("*") if p.is_file())
-        existing = [str(p.relative_to(ROOT)) for p in publish_paths if p.is_file()]
-        if existing:
-            subprocess.run(["git", "add", "-f", "--", *existing], cwd=ROOT, check=True)
-
-        changed = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT).returncode != 0
-        if changed:
-            subprocess.run(["git", "commit", "-m", f"chore: publish {model_label} overview batch"], cwd=ROOT, check=True)
-        # Always try pushing HEAD, even when there are no newly staged files:
-        # a previous push may have failed after its local commit succeeded.
-        _push_with_rebase(branch)
-        print(f"Published status/results to {branch}: {model_label}", flush=True)
-    except Exception as exc:
-        print(f"WARNING: incremental publish failed for {model_label}: {exc}", flush=True)
-        status["publish_error"] = str(exc)[:800]
-        _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-
-
 def _publish_files(status, include_results=False):
-    """Publish live status alone, or atomically publish a completed direction batch."""
-    if os.environ.get("GITHUB_ACTIONS", "").lower() != "true":
-        return
-    branch = os.environ.get("GITHUB_REF_NAME", "main")
+    """Publish status/checkpoint and optionally complete overview data.
+
+    Failed publication is never silently reported as published. The caller
+    can keep calculating and retry at completion, or fail clearly at the end.
+    """
+    if os.environ.get('GITHUB_ACTIONS', '').lower() != 'true':
+        return True
+    branch = os.environ.get('GITHUB_REF_NAME', 'main')
+    paths = [ROOT / 'data' / 'overview_status.json', CHECKPOINT]
+    if include_results:
+        paths.extend([ROOT / 'data' / 'overview.json', OUTPUT])
     try:
-        subprocess.run(["git", "config", "user.name", "github-actions[bot]"], cwd=ROOT, check=True)
-        subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=ROOT, check=True)
-        paths = [ROOT / "data" / "overview_status.json"]
-        if CHECKPOINT.is_file():
-            paths.append(CHECKPOINT)
-        if include_results:
-            paths += [ROOT / "data" / "overview.json"]
-            paths += sorted((ROOT / "data").glob("overview_*.json"))
-        existing = [str(x.relative_to(ROOT)) for x in paths if x.is_file()]
-        if existing:
-            subprocess.run(["git", "add", "-f", "--", *existing], cwd=ROOT, check=True)
-        # On successful completion remove the durable checkpoint from Git as well.
-        relative_checkpoint = str(CHECKPOINT.relative_to(ROOT))
-        if not CHECKPOINT.exists() and subprocess.run(
-                ['git', 'ls-files', '--error-unmatch', '--', relative_checkpoint],
-                cwd=ROOT, capture_output=True).returncode == 0:
-            subprocess.run(['git', 'add', '-u', '--', relative_checkpoint], cwd=ROOT, check=True)
-        changed = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT).returncode != 0
-        if changed:
-            msg = "chore: publish completed " + status.get("direction_title", "") + " overview" if include_results else "chore: publish overview live status"
-            subprocess.run(["git", "commit", "-m", msg], cwd=ROOT, check=True)
-        _push_with_rebase(branch)
-        print(f"Published {'completed direction results' if include_results else 'live status'} to {branch}", flush=True)
+        success = _publish_paths(branch, paths,
+                                 'chore: publish complete five-day overview' if include_results
+                                 else 'chore: publish overview checkpoint and status')
+        status.pop('publish_error', None)
+        print(f"Published {'complete results' if include_results else 'live status'} to {branch}", flush=True)
+        return success
     except Exception as exc:
-        print(f"WARNING: publish failed: {exc}", flush=True)
-        status["publish_error"] = str(exc)[:800]
-        _write_json_atomic(ROOT / "data" / "overview_status.json", status)
+        print(f'WARNING: overview publish failed: {exc}', flush=True)
+        status['publish_error'] = str(exc)[:800]
+        _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
+        return False
 
 
 def _scheduled_direction(now):
@@ -347,9 +343,14 @@ def main():
     # Preserve partial work on a failed or rate-limited run. A checkpoint may
     # resume only for the same calendar-day batch, same city and same models.
     checkpoint_completed = set()
+    run_mode = os.environ.get('BURNING_SKY_OVERVIEW_RUN_MODE', 'resume').strip().lower()
+    if run_mode not in ('resume', 'fresh'):
+        raise ValueError('BURNING_SKY_OVERVIEW_RUN_MODE must be resume or fresh')
+    print(f'[overview run mode] {run_mode}; fresh recomputes the current five-day window, '
+          'resume skips validated checkpoint items', flush=True)
     try:
         previous_checkpoint = json.loads(CHECKPOINT.read_text(encoding='utf-8'))
-        if (previous_checkpoint.get('batch_day') == now.date().isoformat()
+        if (run_mode == 'resume' and previous_checkpoint.get('batch_day') == now.date().isoformat()
                 and previous_checkpoint.get('place') == PLACE
                 and previous_checkpoint.get('model_labels') == [m['label'] for m in models]
                 and previous_checkpoint.get('dates') == [d.isoformat() for d in dates]):
@@ -550,7 +551,11 @@ def main():
                   failure_count=0, message=f"{direction_title}双模式五日朝霞及晚霞数据已完整发布。")
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
     CHECKPOINT.unlink(missing_ok=True)
-    _publish_files(status, include_results=True)
+    published = _publish_files(status, include_results=True)
+    if not published:
+        # Keep the complete data in the runner and fail honestly; do not claim
+        # that an external GitHub commit succeeded when it did not.
+        raise SystemExit('20/20 computed, but GitHub publish failed; see publish_error log')
     print(f"Completed and atomically published {direction_title}: {len(cities)} cities × 2 models × 5 days × 2 directions", flush=True)
 
 
