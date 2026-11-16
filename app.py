@@ -43,7 +43,7 @@ _ENGINE_SPEC.loader.exec_module(engine)
 if not hasattr(engine, "WEATHER_MODEL_CATALOG"):
     raise ImportError(f"加载的引擎文件缺少 WEATHER_MODEL_CATALOG：{_ENGINE_PATH}")
 
-st.set_page_config(page_title="Burning Sky", page_icon="🌇", layout="wide")
+st.set_page_config(page_title="Burning Skies", page_icon="🌇", layout="wide")
 
 # Load optional permanent case archive settings from Streamlit Secrets.
 # Credentials are never copied to the frontend or committed to Git.
@@ -64,7 +64,7 @@ APP_PASSWORD = APP_PASSWORD or os.environ.get("APP_PASSWORD", "")
 
 if APP_PASSWORD:
     if st.session_state.get("authenticated") is not True:
-        st.title("🌇 Burning Sky")
+        st.title("🌇 Burning Skies")
         password = st.text_input("访问密码", type="password")
         if st.button("进入", type="primary"):
             if password == APP_PASSWORD:
@@ -144,7 +144,7 @@ class WebForecastEngine(engine.FireCloudApp):
 
 from burning_sky.web_color_curve import draw_dynamic_color_curve as _draw_dynamic_color_curve
 
-st.title("🌇 Burning Sky")
+st.title("🌇 Burning Skies")
 from burning_sky.warm_web_theme import apply_warm_theme, render_theme_switcher, render_hero
 apply_warm_theme()
 render_theme_switcher()
