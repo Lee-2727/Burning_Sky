@@ -173,9 +173,18 @@ def render_compass_figure(result):
     fig=Figure(figsize=(7.8,7.4),dpi=115,facecolor='#5B3768')
     ax=fig.add_subplot(111,projection='polar',facecolor='#663873')
     ax.set_theta_zero_location('N');ax.set_theta_direction(-1)
-    ax.set_ylim(0,110)
+    # Auto-fit the visual radius so a real 8-15 point difference does not
+    # disappear at the centre of a permanently 0-110 chart. The displayed
+    # numeric scores stay absolute 0-100 candidate indices.
+    finite=values[np.isfinite(values)]
+    peak=float(np.max(finite)) if finite.size else 0.
+    radial_cap=(max(20.,min(110.,10.*math.ceil(1.4*peak/10.)))
+                if result.get('method')=='projected_target_clouds_from_solar_rays_v2'
+                else 110.)
+    ax.set_ylim(0,radial_cap)
     ax.set_thetagrids(range(0,360,45),labels=['北','东北','东','东南','南','西南','西','西北'])
-    ax.set_rticks([25,50,75,100]);ax.set_yticklabels([])
+    ax.set_rticks([radial_cap*.25,radial_cap*.5,radial_cap*.75,radial_cap])
+    ax.set_yticklabels([])
     ax.grid(color='#C7A2D0',alpha=.33,linewidth=.8)
     ax.spines['polar'].set_color('#BA91BD')
     ax.tick_params(colors='#E8D6EC',labelsize=11,pad=8)
@@ -192,21 +201,28 @@ def render_compass_figure(result):
     good=np.isfinite(values)
     ax.scatter(theta[good],values[good],c='#FFD45A',edgecolors='#FFEFB8',s=30,zorder=6)
     for index in np.where(good)[0]:
-        ax.text(theta[index],min(109,values[index]+9),f'{values[index]:.0f}',
+        ax.text(theta[index],min(radial_cap*.96,values[index]+max(3.,radial_cap*.1)),f'{values[index]:.0f}',
                 ha='center',va='center',fontsize=9,color='#FFF1C4',zorder=7)
     for index in np.where(~good)[0]:
-        ax.text(theta[index],97,'缺测',fontsize=8,color='#E3BEDB',ha='center',va='center')
+        ax.text(theta[index],radial_cap*.88,'缺测',fontsize=8,color='#E3BEDB',ha='center',va='center')
+    # White outline identifies the direction of an existing *strictly*
+    # verified original-axis target ray. Nearby 2-D projected targets are
+    # still candidates, even within the same 45-degree sector.
+    for index, sector in enumerate(sectors):
+        if int(sector.get('strict_original_ray_seeds') or 0)>0 and good[index]:
+            ax.scatter([theta[index]],[values[index]],s=140,facecolors='none',
+                       edgecolors='#FFFFFF',linewidth=1.7,zorder=8)
     sun=result.get('sun_azimuth_deg')
     if sun is not None and math.isfinite(float(sun)):
         bearing=math.radians(float(sun))
-        ax.plot([bearing,bearing],[0,103],color='#FFD23F',linewidth=1.6,
+        ax.plot([bearing,bearing],[0,radial_cap*.93],color='#FFD23F',linewidth=1.6,
                 linestyle=(0,(4,3)),zorder=4)
-        ax.scatter([bearing],[103],s=125,facecolors='none',edgecolors='#FFD23F',linewidth=1.8,zorder=8)
-        ax.text(bearing,108,'日',color='#FFD23F',ha='center',va='center',fontsize=11,fontweight='bold')
+        ax.scatter([bearing],[radial_cap*.93],s=125,facecolors='none',edgecolors='#FFD23F',linewidth=1.8,zorder=8)
+        ax.text(bearing,radial_cap*.985,'日',color='#FFD23F',ha='center',va='center',fontsize=11,fontweight='bold')
     title='朝霞' if result['direction']=='morning' else '晚霞'
-    fig.text(.07,.956,f'{title} · OM 八方位候选优势',color='#FFEBF3',fontsize=15,weight='bold')
-    fig.text(.07,.915,str(result.get('model'))+' | '+str(result.get('valid')),color='#E8CFE9',fontsize=9)
-    fig.text(.07,.032,'金线=八方位相对优势；虚线=该时刻太阳方位；缺测并非零；二维候选、非严格通光概率。',color='#F1DDF0',fontsize=9)
+    fig.text(.07,.956,f'{title} · OM 受光目标八方位',color='#FFEBF3',fontsize=15,weight='bold')
+    fig.text(.07,.915,str(result.get('model'))+' | '+str(result.get('valid'))+f' | 雷达刻度 0–{radial_cap:g}',color='#E8CFE9',fontsize=9)
+    fig.text(.07,.032,'金线=受光云方向候选；白圈=原始严格光路所在方向；虚线=太阳；反烧待单独三维验证。',color='#F1DDF0',fontsize=9)
     fig.subplots_adjust(left=.12,right=.88,top=.87,bottom=.10)
     return fig
 

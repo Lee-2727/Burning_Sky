@@ -119,6 +119,8 @@ def _matching_cached_national(model_id, event_utc, expected_run=None):
             continue
         data=payload.get('data') or {}
         info=data.get('spatial_source') or {}
+        if info.get('time_mosaic'):
+            continue  # Three-zone nationwide composite is NOT one event-time cloud field
         valid=_utc(info.get('valid_time'))
         run=_utc(info.get('reference_time'))
         requested_run=_utc(expected_run)
@@ -150,10 +152,23 @@ def _fetch_regional_compass_cloud(model_id, event_utc, lat, lon, expected_run=No
         source,bounds=_region_bounds(lat,lon)), '已按需读取一次区域 OM 空间云场（可能包含多次分块传输）'
 
 
+def _compass_brief(candidate):
+    sectors=[s for s in (candidate.get('sectors') or [])
+             if isinstance(s.get('relative_score'),(int,float))]
+    if not sectors:
+        return '八方位的上游云场覆盖不足，暂无可比较方向；缺测不等于0。'
+    strongest=max(sectors,key=lambda s:float(s['relative_score']))
+    suffix=('已取得原始严格光路的时间/高度参考。' if candidate.get('strict_source_rays')
+            else '原始严格光路尚无有效种子；当前仅显示 OM 几何候选。')
+    return (f"当前最高：{strongest['name']} · {strongest.get('view_type','候选')}"
+            f"（相对指数 {strongest['relative_score']:.1f}，非发生概率）。"+suffix)
+
+
 def render_web_panel(st, engine, result, meta, direction_key, replay_only=False):
     """Display OM-based 8-sector candidate advantage, never the old 20-batch sampler."""
     from datetime import datetime
-    from desktop.spatial_area_analysis import compass_candidate, render_compass_figure
+    from desktop.spatial_area_analysis import render_compass_figure
+    from .compass_illuminated_sectors import compass_from_verified_rays
     origin = result.get('origin')
     event = result.get('event_dt')
     model_label = str(meta.get('model') or '')
@@ -171,27 +186,37 @@ def render_web_panel(st, engine, result, meta, direction_key, replay_only=False)
     observed_runs={str(row['spatial_horizontal_run']) for row in result.get('profiles',[])
                    if isinstance(row,dict) and row.get('spatial_horizontal_run')}
     expected_run=next(iter(observed_runs)) if len(observed_runs)==1 else None
-    cache_key='om_compass_'+str((model_id,day,name,lat,lon,event_utc.isoformat(),expected_run))
+    traces=(result.get('inferred') or {}).get('verified_primary_ray_traces') or []
+    # Include ray evidence in the result key: do not display a radar created
+    # from another version of the single-direction strict verification.
+    ray_signature=tuple((r.get('minute_offset'), r.get('target_height_km'),r.get('target_face_km'))
+                        for r in traces if isinstance(r,dict))
+    cache_key='om_compass_projected_v2_'+str((model_id,day,name,lat,lon,event_utc.isoformat(),expected_run,ray_signature))
     state=st.session_state.get(cache_key)
-    st.caption('八方位改为 OM 水平云场相对候选优势，不再使用旧的约 20 批坐标 API 采样。'
-               '这是二维区域参考图，不代表八个方位都已完成严格三维太阳光路验证。')
+    st.caption('八方位依据校准后的有效太阳光路时间/高度与 OM 云场，把可能受光的目标云按观测方位分配；'
+               '正烧、侧烧与反烧使用同一处理方式。新增离轴目标仍属于待验证的二维候选，不改变正式评分。')
     if state:
         fig=render_compass_figure(state['candidate'])
         st.pyplot(fig,use_container_width=True)
+        st.caption(_compass_brief(state['candidate']))
         st.caption('云图来源：'+state['source']+'；OM run: '+str(state['candidate'].get('run'))+
                    '；valid: '+str(state['candidate'].get('valid')))
     elif replay_only:
         st.caption('离线案例回放未含区域 OM 栅格；不自动访问网络。')
-    if st.button('生成 / 刷新 OM 八方位候选优势（不请求旧20批点位API）',
+    if st.button('生成 / 刷新受光云八方位（不请求旧20批点位API）',
                  key=cache_key+'_run',disabled=bool(replay_only)):
         try:
             with st.spinner('正在复用或按需读取区域 OM 云场；一次网格读取可能包含多次 HTTP 分块……'):
                 data,source=_fetch_regional_compass_cloud(model_id,event_utc,lat,lon,expected_run=expected_run)
-                c=compass_candidate(data,lat,lon,direction=direction_key)
+                c=compass_from_verified_rays(data,lat,lon,event, direction_key,
+                                             verified_rays=traces)
             st.session_state[cache_key]={'candidate':c,'source':source}
             fig=render_compass_figure(c)
             st.pyplot(fig,use_container_width=True)
-            st.success('已完成：8 方位 OM 候选优势。'+source)
+            st.caption(_compass_brief(c))
+            st.success('已完成：OM 受光目标云方位分布。'+source)
         except Exception as exc:
             st.error('OM 八方位生成失败，未改动单次预报：'+str(exc)[:350])
-    st.caption('缺测方位不排行；分辨率受原生网格限制。为保证物理准确性，此图不会回写正式概率或色彩评分。')
+    st.caption('金线长度=模型中可能受光目标云的方向性指数（非发生概率）；太阳方位虚线不是观察方向。'
+               '反太阳侧凸起仅代表反烧候选，须逐目标验证气压层与能见度后方可称为严格受光。'
+               '缺测不可视为0，本图不回写正式概率或色彩分。')

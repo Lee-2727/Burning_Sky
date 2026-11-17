@@ -734,24 +734,40 @@ class DesktopSpatialApp(SpatialDesktopMixin, FireCloudApp):
         raise ValueError('没有完整有效的全国云场快照。')
 
     def show_cloud_compass(self,direction='evening'):
+        """Reuse same-event OM raster and strict-ray seeds; never resample weather."""
         try:
-            from desktop.spatial_area_analysis import compass_candidate,render_compass_figure
+            from desktop.spatial_area_analysis import render_compass_figure
+            from burning_sky.compass_illuminated_sectors import compass_from_verified_rays
+            from burning_sky.compass360_web import _event_utc
+            from burning_sky.spatial_ray_fusion import _utc
             data=self._latest_national_snapshot()
-            # Prefer the most recent available actual queried observer; never assume Hefei.
-            origin=None
-            for direction,row in (getattr(self,'direction_results',{}) or {}).items():
-                loc=row.get('origin')
-                if isinstance(loc,(list,tuple)) and len(loc)>=2:
-                    origin=(float(loc[0]),float(loc[1]));break
-                if isinstance(loc,dict) and {'lat','lon'}<=set(loc):
-                    origin=(float(loc['lat']),float(loc['lon']));break
-            if origin is None:
-                messagebox.showinfo('八方位分析','请先完成一次单次查询，取得观测点实际经纬度。')
-                return
-            result=compass_candidate(data,*origin,direction=direction)
+            rows=getattr(self,'direction_results',{}) or {}
+            row=rows.get(direction) or {}
+            origin=row.get('origin')
+            if not (isinstance(origin,(list,tuple)) and len(origin)>=2):
+                raise ValueError('请先完成当前方向的单次查询，以取得对应的观测点和严格光路。')
+            event=row.get('event_dt')
+            if event is None:
+                raise ValueError('当前单次结果缺少事件时间，不能与OM有效时次核对。')
+            from datetime import datetime
+            if isinstance(event,str): event=datetime.fromisoformat(event)
+            info=data.get('spatial_source') or {}
+            valid=_utc(info.get('valid_time'))
+            if (valid is None or
+                abs((valid-_event_utc(event)).total_seconds())>5400 or
+                info.get('time_mosaic')):
+                raise ValueError('本地全国云场不属于当前朝/晚霞的有效时次；请读取同一时刻的OM快照。')
+            runs={str(p['spatial_horizontal_run']) for p in row.get('profiles',[])
+                  if isinstance(p,dict) and p.get('spatial_horizontal_run')}
+            if len(runs)==1 and _utc(next(iter(runs)))!=_utc(info.get('reference_time')):
+                raise ValueError('OM云场起报与当前严格光路使用的空间云场不一致，拒绝混用。')
+            result=compass_from_verified_rays(
+                data,float(origin[0]),float(origin[1]),event,direction,
+                verified_rays=(row.get('inferred') or {}).get('verified_primary_ray_traces') or [])
             fig=render_compass_figure(result)
-            self._open_figure_window('八方位云场候选优势',fig,note=result['note'])
-        except Exception as exc:messagebox.showerror('八方位分析失败',str(exc))
+            self._open_figure_window('八方位 · 受光目标云与反烧候选',fig,note=result['note'])
+        except Exception as exc:
+            messagebox.showerror('八方位分析失败',str(exc))
 
     def show_national_candidate(self,direction):
         try:
