@@ -958,7 +958,7 @@ class FireCloudApp(tk.Tk):
         ttk.Button(evening_actions, text="八方位补全图", command=lambda: self.show_2d_illumination("evening")).pack(side="left", padx=(5, 0))
         ttk.Button(evening_actions, text="卫星图修正", command=lambda: self.open_satellite_calibration("evening")).pack(side="left", padx=(5, 0))
         ttk.Button(evening_actions, text="显示晚霞各采样点具体云况", command=lambda: self.show_direction_details("evening")).pack(side="right")
-        ttk.Label(right, text="采样范围根据各点推算的有效云底动态扩展；单次最远限制 1000 km，严格光路按极限云距的 1.3 倍验证。具体云况默认收起，点击上方按钮查看。", style="Sub.TLabel", wraplength=620).pack(anchor="w", pady=(2, 0))
+        ttk.Label(right, text="本地霞云距只限定染色目标；严格太阳光路默认独立检查上游700km，必要时更远。未覆盖或未达到云顶上方的射线不视为已证实受光。具体云况默认收起。", style="Sub.TLabel", wraplength=620).pack(anchor="w", pady=(2, 0))
 
         bottom = ttk.Frame(outer)
         bottom.pack(fill="x", pady=(10, 0))
@@ -1611,15 +1611,9 @@ class FireCloudApp(tk.Tk):
                     extra_distances = [d for d in range(250, 601, 50) if d not in set(distances)]
                     if extra_distances:
                         extra_coords = [destination_point(data["lat"], data["lon"], azimuth, d) for d in extra_distances]
-                        extra_groups = []
-                        for center_lat, center_lon in extra_coords:
-                            group = [(center_lat, center_lon)]
-                            for off in (-40.0, -25.0, -12.0, 12.0, 25.0, 40.0):
-                                bearing = (azimuth + (90.0 if off > 0 else -90.0)) % 360
-                                group.append(destination_point(center_lat, center_lon, bearing, abs(off)))
-                            group.append(destination_point(center_lat, center_lon, azimuth, 12.0))
-                            group.append(destination_point(center_lat, center_lon, (azimuth + 180.0) % 360, 12.0))
-                            extra_groups.append(group)
+                        # Remote clear-gap diagnostics need centerline cloud fields;
+                        # do not request nine broad-area points at every distant km.
+                        extra_groups = [[coord] for coord in extra_coords]
                         extra_query_coords = [pt for group in extra_groups for pt in group]
                         self._set_main_progress(base_progress + 36, f"{direction_name}：初始范围未识别云洞，扩展扫描至600 km……")
                         extra_locations = self._fetch_weather_locations(extra_query_coords, model_id)
@@ -1759,12 +1753,12 @@ class FireCloudApp(tk.Tk):
                 local_reach = local_geometry.get("reach_km") if local_geometry else None
                 if not isinstance(local_reach, (int, float)):
                     local_reach = max_reach if max_reach > 0 else None
-                # Final reach is known only after pressure-level reconstruction and AOD.
-                # The initial 200-km coarse estimate can be shorter than this reach:
-                # always complete the required 1.3x corridor BEFORE strict tracing.
+                # Local geometric reach decides WHAT targets can tint, not HOW FAR
+                # solar light must be checked. Always request a 700-km source
+                # corridor (longer if physical reach demands it), regardless of AOD.
                 # Recompute after each extension; do not claim completion for missing data.
                 for _extension_round in range(3):
-                    _required_end = 1.3 * float(local_reach or 0.0)
+                    _required_end = max(700.0, 1.3 * float(local_reach or 0.0))
                     _actual_end = max((float(p.get('distance_km', 0)) for p in profiles if p.get('levels')), default=0.0)
                     if _required_end <= _actual_end + 0.01:
                         break
@@ -1777,29 +1771,31 @@ class FireCloudApp(tk.Tk):
                         break
                     _extra_coords = [destination_point(data['lat'], data['lon'], azimuth, d)
                                      for d in _missing_distances]
-                    _extra_groups = []
-                    for _clat, _clon in _extra_coords:
-                        _group = [(_clat, _clon)]
-                        for _off in (-40.0, -25.0, -12.0, 12.0, 25.0, 40.0):
-                            _bearing = (azimuth + (90.0 if _off > 0 else -90.0)) % 360
-                            _group.append(destination_point(_clat, _clon, _bearing, abs(_off)))
-                        _group.append(destination_point(_clat, _clon, azimuth, 12.0))
-                        _group.append(destination_point(_clat, _clon, (azimuth + 180.0) % 360, 12.0))
-                        _extra_groups.append(_group)
+                    # Existing 600-km gap scan already fetched some distant
+                    # weather centers. Request only unobserved centers, while
+                    # obtaining pressure profiles at ALL required distances.
+                    _sampled_weather_distances = {int(float(x.get('distance_km',-1))) for x in samples}
+                    _weather_distances = [d for d in _missing_distances if d not in _sampled_weather_distances]
+                    _weather_coords = [destination_point(data['lat'], data['lon'], azimuth, d)
+                                       for d in _weather_distances]
+                    _extra_groups = [[coord] for coord in _weather_coords]
                     self._set_main_progress(base_progress + 44,
                         f'{direction_name}：补齐严格光路上游剖面至 {_new_end} km……')
                     try:
-                        _extra_weather = self._fetch_weather_locations(
-                            [pt for group in _extra_groups for pt in group], model_id)
+                        _extra_weather = (self._fetch_weather_locations(_weather_coords, model_id)
+                                          if _weather_coords else [])
+                        # Extended profiles start at 250+ km: the first point
+                        # is NOT the user's observation site. Do not inject the
+                        # user's elevation into that remote cloud-height datum.
                         _extra_profile_result = self._fetch_cloud_base_profiles(
                             _extra_coords, _missing_distances, event_utc, model_id,
-                            local_ground_elevation_m=data.get('elevation_m'))
+                            local_ground_elevation_m=None)
                         _extra_profiles = _extra_profile_result['samples']
                         # Weather cloud fields are needed for the ray-trace target mask,
                         # not just pressure levels; build exactly the same 9-point mean.
                         for _dist, _coord, _group, _chunk in zip(
-                                _missing_distances, _extra_coords, _extra_groups,
-                                [_extra_weather[i:i+9] for i in range(0, len(_extra_weather), 9)]):
+                                _weather_distances, _weather_coords, _extra_groups,
+                                [[loc] for loc in _extra_weather]):
                             _records = []
                             for _index, (_subcoord, _loc) in enumerate(zip(_group, _chunk)):
                                 _hourly = _loc.get('hourly', {})
@@ -1847,7 +1843,7 @@ class FireCloudApp(tk.Tk):
                                 'cross_track_offsets_km':[r['cross_track_offset_km'] for r in _records if r.get('cross_track_offset_km') is not None],
                                 'cross_track_low_ge70_count':sum(v>=70 for v in _cross),
                                 'cross_track_low_ge70_fraction':sum(v>=70 for v in _cross)/len(_cross) if _cross else None,
-                                'area_radius_km':15,'area_sample_count':len(_records)}
+                                'area_radius_km':(15 if len(_records)>1 else 0),'area_sample_count':len(_records)}
                             samples.append(_sample)
                             raw_details.append({'distance_km':_dist,'center':_coord,
                                                 'records':_records,'mean':_sample})
@@ -1892,7 +1888,7 @@ class FireCloudApp(tk.Tk):
                 _ray_debug = None
                 _adaptive = {'status':'unresolved_data','verified_minutes':[], 'verified_ray_traces':[]}
                 _profile_end = max((float(p.get('distance_km',0)) for p in profiles if p.get('levels')),default=0.)
-                _source_check_km = 1.3 * float(local_reach or 0)
+                _source_check_km = max(700.0, 1.3 * float(local_reach or 0))
                 if True:  # TRACE_PRIMARY: quick screen is diagnostic only; never bypass ray tracing
                     try:
                         from burning_sky.spherical_raytrace import scan_window as _spherical_scan, render_schematic_map as _render_spherical_map, equivalent_gaps as _equivalent_gaps
@@ -1928,7 +1924,8 @@ class FireCloudApp(tk.Tk):
                         _adaptive = adaptive_equivalent_gaps(profiles, event_dt, data['utc_offset'],
                             data['lat'], data['lon'], direction_key, float(local_reach or 0),
                             extension_factor=1.3,
-                            target_limit_km=boundaries.get('fire_cloud_range_km'))
+                            target_limit_km=boundaries.get('fire_cloud_range_km'),
+                            source_scan_km=_source_check_km)
                         _ray_debug['adaptive_equivalent'] = _adaptive
                         # Adaptive candidate targets are not cloud holes. Never promote them to clear_gaps.
                         # A ray must be traced from a LOCAL target, with upstream evidence beyond
@@ -1937,6 +1934,7 @@ class FireCloudApp(tk.Tk):
                         inferred['adaptive_target_candidates'] = _adaptive.get('gaps', [])
                         inferred['verified_primary_ray_traces'] = _adaptive.get('verified_ray_traces', [])
                         inferred['strict_primary_path_diagnostic'] = {
+                            'method_version':'UPSTREAM_RAY_700_V1',
                             'status':_adaptive.get('status'),
                             'verified_minutes':_adaptive.get('verified_minutes',[]),
                             'required_profile_km':_adaptive.get('required_profile_km'),
@@ -1945,8 +1943,9 @@ class FireCloudApp(tk.Tk):
                             'note':_adaptive.get('note')}
 
                         _profile_end = max((float(p.get('distance_km', 0)) for p in profiles), default=0.0)
-                        _source_check_km = 1.3 * float(local_reach or 0)
+                        _source_check_km = max(700.0, 1.3 * float(local_reach or 0))
                         inferred['upstream_source_check'] = {
+                            'method_version':'UPSTREAM_RAY_700_V1',
                             'required_km': round(_source_check_km, 2),
                             'available_km': round(_profile_end, 2),
                             'status': 'insufficient_cached_profile' if _profile_end < _source_check_km else 'no_verified_local_source',
@@ -1960,8 +1959,8 @@ class FireCloudApp(tk.Tk):
                             boundaries['gap_status'] = 'target_ray_verified'
                             inferred['upstream_source_check']['status']='verified_local_target_corridor'
                             inferred['upstream_source_check']['note'] = (
-                                '已在1.3倍极限距离内按真实球面高度逐云块验证目标云向阳面连续光路；'
-                                '采样边界以远的大气仍未验证。')
+                                '已逐分钟验证目标云至太阳方向上游采样末端的球面光路；'
+                                '末端射线高于云层上界且持续上升。')
                         elif _equiv:
                             search_stage = "spherical_raytrace_clear"
                             _gap = max(_equiv, key=lambda g: g["size_km"])
@@ -2071,7 +2070,7 @@ class FireCloudApp(tk.Tk):
                     gap_text = gap_ranges if all_gaps else '未形成可判读的晴空间隔'
                 if all_gaps and search_stage in ('spherical_raytrace_no_clear_path','spherical_raytrace_unresolved','spherical_raytrace_error'):
                     inferred.setdefault('score_notes', []).append('存在晴空间隔，但球面光路未证实本地目标云层受光；两项独立判定。')
-                cap_note = "必要上游剖面数据可能不完整，请查看严格验证状态。" if max((float(p.get('distance_km',0)) for p in profiles if p.get('levels')),default=0) + 0.01 < 1.3 * float(local_reach or 0) else ""
+                cap_note = "必要上游剖面数据可能不完整，请查看严格验证状态。" if max((float(p.get('distance_km',0)) for p in profiles if p.get('levels')),default=0) + 0.01 < _source_check_km else ""
                 # Debug30: Desktop rainbow diagnostics in console and per-case file.
                 # No additional weather API calls; records existing intermediate results.
                 try:
@@ -2211,7 +2210,7 @@ class FireCloudApp(tk.Tk):
                 # They are NOT sufficient on their own: require positive strict
                 # local-face ray geometry at a matching time as well.
                 # A sampled clear gap alone does not certify a sun-to-target ray.
-                # Only the adaptive 1.3x full-corridor target verifier may open
+                # Only the full upstream solar-source verifier may open
                 # the area/timeline gate; this avoids promoting a convenient
                 # local face proxy into an independently verified light path.
                 _observed_gap_verified = False
@@ -2306,7 +2305,7 @@ class FireCloudApp(tk.Tk):
                         else 'none'),
                     'observed_gap_count': len(boundaries.get('observed_clear_gaps') or []),
                     'raytrace_stage': search_stage}
-                # V2.0.9: Once the required 1.3x upstream coverage is present,
+                # Only when the entire solar-source check is complete,
                 # absence of any VERIFIED local illumination is a conservative
                 # operational zero (not a claim of physical impossibility).
                 # Do not classify missing profiles or raytrace exceptions as zero.
@@ -2324,7 +2323,7 @@ class FireCloudApp(tk.Tk):
                 if _complete_no_local_path:
                     inferred['operational_no_local_path'] = True
                     inferred['regular_score'] = inferred['score'] = 0
-                    inferred['verdict'] = '1.3倍极限云距内未证实本地有效光路（保守判定0%）'
+                    inferred['verdict'] = '完整太阳上游光路未证实受光（保守判定0%）'
                     inferred.setdefault('score_notes', []).append(
                         '验证覆盖充分但未找到本地有效光路：常规概率、染色占比和规模统一按0%输出。')
                 else:
@@ -2362,7 +2361,7 @@ class FireCloudApp(tk.Tk):
                 # Do not turn unresolved/error ray tracing into a fabricated zero.
                 _scale_zero_reason = None
                 if _complete_no_local_path:
-                    _scale_zero_reason = '1.3倍极限云距内未证实本地有效光路（保守零值）'
+                    _scale_zero_reason = '完整太阳上游光路未证实本地有效光路（保守零值）'
                 elif tintable_ratio is None and local_cover < 5.0:
                     _scale_zero_reason = '本地潜在霞云距内中高云不足5%'
                 elif tintable_ratio is None and search_stage == 'spherical_raytrace_no_clear_path':
@@ -4275,7 +4274,7 @@ class FireCloudApp(tk.Tk):
                                        xmap(face)+3,ymap(h0)+3,fill='#6926a6',outline='white')
             if visible_verified:
                 canvas.create_text(left+plot_w/2, top+30,
-                    text='紫色实线：1.3×上游采样范围内严格球面验证光路',
+                    text='紫色实线：700km上游+云顶净空已通过的光路',
                     fill='#6926a6',font=('Microsoft YaHei UI',10))
 
             if not runs and not visible_candidates and not visible_verified:
