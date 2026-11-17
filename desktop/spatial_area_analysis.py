@@ -101,10 +101,11 @@ def compass_candidate(data,lat,lon,*,direction='evening',target_distances=(45,95
                      'candidate_targets':len(points), 'coverage':round(float(np.mean([p['coverage'] for p in points])),3) if points else 0.})
     return {'sectors':bins,'model':field.source.get('domain'),'run':field.source.get('reference_time'),
             'valid':field.source.get('valid_time'),'direction':direction,
+            'sun_azimuth_deg':_solar_at_valid(field,lat,lon)[1],
             'note':'纯二维云场相对候选指数，不是发生概率或完整太阳光路。缺测扇区不排行。'}
 
 
-def national_candidate(data,*,direction='evening',stride=1,max_cells=10000):
+def national_candidate(data,*,direction='evening',stride=1,max_cells=10000,longitude_bounds=None,latitude_bounds=None):
     field=CloudField(data)
     lat,lon=field.lat,field.lon
     ny,nx=lat.shape
@@ -112,6 +113,10 @@ def national_candidate(data,*,direction='evening',stride=1,max_cells=10000):
     stride=max(int(stride),math.ceil(math.sqrt(ny*nx/max_cells)))
     chosen=np.zeros(lat.shape,dtype=bool);chosen[::stride,::stride]=True
     chosen&=field.mask
+    if longitude_bounds is not None:
+        chosen &= (lon>=longitude_bounds[0]) & (lon<longitude_bounds[1])
+    if latitude_bounds is not None:
+        chosen &= (lat>=latitude_bounds[0]) & (lat<=latitude_bounds[1])
     cells=np.argwhere(chosen)
     score=np.full(lat.shape,np.nan,dtype=float)
     classes=np.zeros(lat.shape,dtype=np.uint8)
@@ -153,21 +158,56 @@ def national_candidate(data,*,direction='evening',stride=1,max_cells=10000):
 
 
 def render_compass_figure(result):
+    """Eight-direction RADAR: same polar visual language as the established UI.
+
+    Only measured directions have filled sectors. Missing data is not a zero
+    score: the polygon intentionally breaks across absent directions.
+    """
     from matplotlib.figure import Figure
+    import numpy as np
     _setup_chinese_fonts()
-    fig=Figure(figsize=(9,5.5),dpi=110,facecolor='#f9fafb');ax=fig.add_subplot(111)
     sectors=result['sectors']
-    vals=[r['relative_score'] if r['relative_score'] is not None else 0 for r in sectors]
-    colors=['#ECA179' if r['relative_score'] is not None else '#DEE1E6' for r in sectors]
-    bars=ax.bar([x['name'] for x in sectors],vals,color=colors,edgecolor='none')
-    for i,row in enumerate(sectors):
-        if row['relative_score'] is None: ax.text(i,4,'缺测',ha='center',fontsize=9,color='#6b7280')
-        else: ax.text(i,row['relative_score']+1,str(row['relative_score']),ha='center',fontsize=9)
-    ax.set_ylim(0,110);ax.set_ylabel('云场相对候选指数（非概率）')
-    ax.set_title('八方位云场候选优势 · '+('朝霞' if result['direction']=='morning' else '晚霞')+'\n'+str(result['model'])+' | '+str(result['valid']),loc='left')
-    ax.grid(axis='y',alpha=.2);ax.set_axisbelow(True)
-    fig.text(.09,.025,result['note'],color='#64748b',fontsize=9)
-    fig.subplots_adjust(left=.09,right=.97,bottom=.16,top=.79)
+    if len(sectors)!=8:raise ValueError('八方位雷达图需要恰好八个方向')
+    theta=np.radians([float(s['bearing']) for s in sectors])
+    values=np.array([float(s['relative_score']) if s['relative_score'] is not None else np.nan for s in sectors])
+    fig=Figure(figsize=(7.8,7.4),dpi=115,facecolor='#5B3768')
+    ax=fig.add_subplot(111,projection='polar',facecolor='#663873')
+    ax.set_theta_zero_location('N');ax.set_theta_direction(-1)
+    ax.set_ylim(0,110)
+    ax.set_thetagrids(range(0,360,45),labels=['北','东北','东','东南','南','西南','西','西北'])
+    ax.set_rticks([25,50,75,100]);ax.set_yticklabels([])
+    ax.grid(color='#C7A2D0',alpha=.33,linewidth=.8)
+    ax.spines['polar'].set_color('#BA91BD')
+    ax.tick_params(colors='#E8D6EC',labelsize=11,pad=8)
+    # Each adjacent verified *candidate* pair forms one filled wedge. Never
+    # bridge missing sectors with a fabricated zero or an implied observation.
+    for i in range(8):
+        j=(i+1)%8
+        if np.isfinite(values[i]) and np.isfinite(values[j]):
+            arc=[theta[i],theta[j] if j else theta[0]+2*np.pi]
+            ax.fill([arc[0],arc[0],arc[1],arc[1]],
+                    [0,values[i],values[j],0],color='#F08D91',alpha=.30,linewidth=0)
+    ax.plot(np.r_[theta,theta[0]+2*np.pi],np.r_[values,values[0]],
+            color='#FFD45A',linewidth=2.4,zorder=5)
+    good=np.isfinite(values)
+    ax.scatter(theta[good],values[good],c='#FFD45A',edgecolors='#FFEFB8',s=30,zorder=6)
+    for index in np.where(good)[0]:
+        ax.text(theta[index],min(109,values[index]+9),f'{values[index]:.0f}',
+                ha='center',va='center',fontsize=9,color='#FFF1C4',zorder=7)
+    for index in np.where(~good)[0]:
+        ax.text(theta[index],97,'缺测',fontsize=8,color='#E3BEDB',ha='center',va='center')
+    sun=result.get('sun_azimuth_deg')
+    if sun is not None and math.isfinite(float(sun)):
+        bearing=math.radians(float(sun))
+        ax.plot([bearing,bearing],[0,103],color='#FFD23F',linewidth=1.6,
+                linestyle=(0,(4,3)),zorder=4)
+        ax.scatter([bearing],[103],s=125,facecolors='none',edgecolors='#FFD23F',linewidth=1.8,zorder=8)
+        ax.text(bearing,108,'日',color='#FFD23F',ha='center',va='center',fontsize=11,fontweight='bold')
+    title='朝霞' if result['direction']=='morning' else '晚霞'
+    fig.text(.07,.956,f'{title} · OM 八方位候选优势',color='#FFEBF3',fontsize=15,weight='bold')
+    fig.text(.07,.915,str(result.get('model'))+' | '+str(result.get('valid')),color='#E8CFE9',fontsize=9)
+    fig.text(.07,.032,'金线=八方位相对优势；虚线=该时刻太阳方位；缺测并非零；二维候选、非严格通光概率。',color='#F1DDF0',fontsize=9)
+    fig.subplots_adjust(left=.12,right=.88,top=.87,bottom=.10)
     return fig
 
 
