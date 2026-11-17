@@ -105,56 +105,165 @@ def compass_candidate(data,lat,lon,*,direction='evening',target_distances=(45,95
             'note':'纯二维云场相对候选指数，不是发生概率或完整太阳光路。缺测扇区不排行。'}
 
 
+
+
+def trace_coarse_spherical_ray(field, latitude, longitude, sun_altitude_deg,
+                               sun_bearing_deg, target_height_km, *,
+                               upstream_km=700, step_km=35):
+    """No-I/O regional *screen*, not a 3-D optical-clearance certificate.
+
+    Follow a straight solar ray over a spherical Earth, sampling preloaded OM
+    horizontal low/mid/high clouds at the *ray's actual height*. Unlike an
+    average over the full 700-km ground track, a dense distant cloud belt in
+    the intersected altitude band can reject the candidate. The vertical
+    bands are deliberately approximate; never label the result strict/verified.
+    """
+    if (not math.isfinite(float(sun_altitude_deg)) or
+        not math.isfinite(float(target_height_km)) or target_height_km<=0):
+        return {'support':None,'coverage':0.,'reason':'invalid_geometry',
+                'exited_cloud_layer':False,'max_intersected_cover':None}
+    distances=np.arange(float(step_km),float(upstream_km)+0.1,float(step_km),dtype=float)
+    r=6371.0+float(target_height_km)
+    a=math.radians(float(sun_altitude_deg))
+    # Exact radial separation of a straight ray from a spherical surface.
+    height=np.sqrt(r*r+distances*distances+2*r*distances*math.sin(a))-6371.0
+    earth=np.where(height<=0)[0]
+    # Check the exact closest approach too: a narrow Earth intersection
+    # could otherwise be missed between coarse sample distances.
+    closest=-r*math.sin(a)
+    tangent_blocked=(0.<=closest<=float(upstream_km) and r*math.cos(a)<=6371.)
+    if earth.size or tangent_blocked:
+        return {'support':0.,'coverage':1.,'reason':'earth_blocked',
+                'exited_cloud_layer':False,'max_intersected_cover':None}
+    # Once the ray climbs above this *conservative cloud-top proxy*, and is
+    # ascending, later layers from the same proxy cannot intersect it.
+    ascending=distances + r*math.sin(a) > 0
+    exit_idx=np.where((height>=17.)&ascending)[0]
+    exited=bool(exit_idx.size)
+    if exited:
+        end=int(exit_idx[0])+1
+        distances=distances[:end];height=height[:end]
+    positions=[_destination(latitude,longitude,float(sun_bearing_deg),float(d)) for d in distances]
+    points=field.lookup(np.array([v[0] for v in positions]),np.array([v[1] for v in positions]))
+    good=np.isfinite(points).all(axis=1)
+    coverage=float(good.mean()) if len(good) else 0.
+    # A hole in the *data* is not a hole in the clouds. If coverage is poor,
+    # decline to paint a positive candidate. A single missing cell among ~20
+    # is treated conservatively as a possible opaque crossing.
+    if coverage<0.90:
+        return {'support':None,'coverage':round(coverage,3),'reason':'upstream_missing',
+                'exited_cloud_layer':exited,'max_intersected_cover':None}
+    cloud=np.clip(points/100.,0.,1.)
+    def overlap(z,lower,upper,margin=0.75):
+        return np.maximum(0.,np.minimum(1.,np.minimum((z-(lower-margin))/margin,
+                          ((upper+margin)-z)/margin)))
+    # Fixed physical-height *proxies* only: OM's 2-D cloud-cover product does
+    # not reveal the true cloud base/top within its low/mid/high categories.
+    bands=np.stack((overlap(height,0.,3.1),overlap(height,2.6,8.5),
+                    overlap(height,6.0,16.0)),axis=1)
+    intercepted=np.max(np.where(good[:,None],cloud*bands,1.),axis=1)
+    # A long, dense cloud belt matters much more than one isolated coarse
+    # pixel. Adjacent pixels are correlated: do NOT multiply independent
+    # (1-cloud_cover) probabilities along the entire track.
+    def strongest_belt(samples,width):
+        n=min(len(samples),width)
+        return float(np.max(np.convolve(samples,np.ones(n)/n,mode='valid'))) if n else 1.
+    peak3=strongest_belt(intercepted,3)
+    peak5=strongest_belt(intercepted,5)
+    mean=float(np.mean(intercepted))
+    obstruction=min(1.,0.55*peak3+0.25*peak5+0.20*mean)
+    support=(1.-obstruction)**2 * coverage**3
+    # Reaching 700 km below the plausible cloud-top envelope does not prove
+    # the upstream ray is clear beyond it; discount rather than invent a pass.
+    if not exited:support*=0.60
+    return {'support':round(float(np.clip(support,0.,1.)),4),
+            'coverage':round(coverage,3),
+            'reason':'screened_to_cloud_top' if exited else 'screened_700km_unverified_beyond',
+            'exited_cloud_layer':exited,
+            'max_intersected_cover':round(100.*float(np.max(intercepted)),1),
+            'strongest_3cell_belt':round(100.*peak3,1)}
+
+
+def _national_local_sun_ok(altitude,direction):
+    # User's fixed window: evening only AFTER sunset, morning only BEFORE
+    # sunrise. -0.833 degrees is the same apparent-horizon threshold used by
+    # web_national_map._local_event. Solar altitude is evaluated per cell.
+    return -9.0 <= float(altitude) <= -0.833
+
+
 def national_candidate(data,*,direction='evening',stride=1,max_cells=10000,longitude_bounds=None,latitude_bounds=None):
+    """Regional dawn/dusk *candidate* heat map, using cached OM only.
+
+    Screen candidate middle/high targets at two approximate altitudes against
+    the coarse 3-layer solar-ray corridor. 0.25-degree cloud-cover cannot
+    certify beam clearance or calibrated event probability. No new HTTP calls.
+    """
+    if direction not in ('morning','evening'):raise ValueError('direction must be morning/evening')
     field=CloudField(data)
     lat,lon=field.lat,field.lon
     ny,nx=lat.shape
-    # Bound computation when a high-res model or wider snapshot is used.
     stride=max(int(stride),math.ceil(math.sqrt(ny*nx/max_cells)))
     chosen=np.zeros(lat.shape,dtype=bool);chosen[::stride,::stride]=True
     chosen&=field.mask
     if longitude_bounds is not None:
-        chosen &= (lon>=longitude_bounds[0]) & (lon<longitude_bounds[1])
+        chosen &= (lon>=longitude_bounds[0])&(lon<longitude_bounds[1])
     if latitude_bounds is not None:
-        chosen &= (lat>=latitude_bounds[0]) & (lat<=latitude_bounds[1])
+        chosen &= (lat>=latitude_bounds[0])&(lat<=latitude_bounds[1])
     cells=np.argwhere(chosen)
     score=np.full(lat.shape,np.nan,dtype=float)
     classes=np.zeros(lat.shape,dtype=np.uint8)
     coverage=np.full(lat.shape,np.nan,dtype=float)
-    in_window=0;verified_coverage=0
+    in_window=0;checked=0;earth_blocked=0;unknown=0
     for y,x in cells:
         la,lo=float(lat[y,x]),float(lon[y,x])
         alt,az=_solar_at_valid(field,la,lo)
-        if not (-9<=alt<=6) or (direction=='morning' and az>=180) or (direction=='evening' and az<180):
-            continue
+        if not _national_local_sun_ok(alt,direction):continue
         in_window+=1
-        cloud=float(max(field.mid[y,x],field.high[y,x])/100.)
-        if cloud<0.10:continue
-        ray=trace_horizontal_support(field,la,lo,az)
-        coverage[y,x]=ray['coverage']
-        if ray['coverage']<0.70:continue
-        verified_coverage+=1
-        low=field.low[y,x]/100.
-        score[y,x]=round(100*cloud*ray['support']*(1-0.55*low),2)
-        # These *are independent heuristic labels*, not mutually exclusive physics.
-        # A: cloud boundary based on nearby high+middle cloud contrast.
+        mid=float(np.clip(field.mid[y,x]/100.,0.,1.))
+        high=float(np.clip(field.high[y,x]/100.,0.,1.))
+        total=1.-(1.-mid)*(1.-high)
+        if total<0.10:continue
+        # These are representative target-layer heights, not measured bases.
+        # Both must trace the *actual* curved-Earth solar-ray altitude, rather
+        # than mixing all clouds at all heights in a single 700-km mean.
+        rays=[]
+        for amount,height in ((mid,5.5),(high,9.0)):
+            if amount>=0.07:
+                rays.append((amount,trace_coarse_spherical_ray(field,la,lo,alt,az,height)))
+        if not rays:continue
+        coverage[y,x]=min(r['coverage'] for _,r in rays)
+        available=sum(w for w,r in rays if r['support'] is not None)
+        required=sum(w for w,_ in rays)
+        if required<=0 or available/required<0.8:
+            unknown+=1
+            continue
+        support=sum(w*(r['support'] or 0.) for w,r in rays if r['support'] is not None)/required
+        if all(r['reason']=='earth_blocked' for _,r in rays):earth_blocked+=1
+        checked+=1
+        low=float(np.clip(field.low[y,x]/100.,0.,1.))
+        # Not a new Burning Sky score. This ONLY scales regional relative
+        # potential with evidence of a plausible illuminated cloud corridor.
+        # Later civil twilight becomes dimmer, and impossible Earth-blocked
+        # rays receive zero, not red patches.
+        twilight=max(0.,min(1.,(alt+9.)/5.5)) if alt < -3.5 else 1.
+        score[y,x]=round(float(np.clip(100.*total*support*(1.-0.55*low)*twilight,0.,100.)),2)
         cy=max(0,y-2);dy=min(ny,y+3);cx=max(0,x-2);dx=min(nx,x+3)
         hood=np.maximum(field.mid[cy:dy,cx:dx],field.high[cy:dy,cx:dx])
         if np.isfinite(hood).any() and float(np.nanmax(hood)-np.nanmin(hood))>=35:
             classes[y,x]|=1
-        # B: broad possible upstream opening; the entire 700km path was tested
-        # as sampled *horizontal averages*, not verified solar transmittance.
-        if (ray['coverage']>=0.999 and ray['upstream_cover'] is not None
-            and ray['upstream_cover']<=45 and ray['max_upstream_cover']<=60):
+        # Only classify broad candidate openings when both target-layer rays
+        # have enough data and the coarse *height-aware* obstruction is low.
+        if support>=0.55 and coverage[y,x]>=0.95:
             classes[y,x]|=2
-        # C: local low-cloud break with target middle/high cloud present.
         low_hood=field.low[cy:dy,cx:dx]
         if np.isfinite(low_hood).any() and 100*low+25<=float(np.nanmean(low_hood)):
             classes[y,x]|=4
     return {'score':score,'classes':classes,'coverage':coverage,'latitude':lat,'longitude':lon,
-            'source':field.source,'in_twilight_cells':in_window,'evaluated_cells':verified_coverage,
+            'source':field.source,'in_twilight_cells':in_window,'evaluated_cells':checked,
+            'earth_blocked_cells':earth_blocked,'unknown_ray_cells':unknown,
             'direction':direction,'stride':stride,
-            'note':'单一 OM 有效时次、二维粗网格候选区域，不是全国各地当日实际日出/落预报；空白含时差与缺测。'}
+            'ray_method':'coarse_spherical_height_bands_v1',
+            'note':'仅日出前/日落后；复用 OM 网格进行 700 km 分层球面粗筛；不是全国各地当日实际精细预报；不确定光路不算晴空；相对指数非实测概率。'}
 
 
 def render_compass_figure(result):
