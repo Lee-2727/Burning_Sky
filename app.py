@@ -1371,7 +1371,7 @@ if results:
             color_score = inferred.get("color_score", "—")
             c1.metric("常规概率", f"{regular_score}%")
             c2.metric("上限概率", f"{upper_score}%")
-            c3.metric("色彩评分", f"{color_score}/100")
+            c3.metric("色彩评分", f"{color_score}/100" if isinstance(color_score,(int,float)) else "暂不可估")
             with st.expander('概率、色彩和规模分级说明', expanded=False):
                 st.caption('概率：低于45% 小概率；45%–75% 有概率；高于75% 高概率。属于经验估计。')
                 st.caption('色彩：低于30 平平无奇；30–不足50 普通；50–不足70 绚烂；70–不足90 史诗；90–100 世纪。')
@@ -1397,7 +1397,8 @@ if results:
             # Full one-line interpretation under the short verdict.
             if not special_verdict:
                 _scale_value = f'{burn_index:.1f}%' if isinstance(burn_index,(int,float)) else '暂不可估'
-                st.markdown(f'预计{regular_label}{color_class}的{burn_text}；常规概率 {regular_score}%，色彩分 {color_score}，火烧云规模 {_scale_value}。')
+                _color_line=(str(color_score) if isinstance(color_score,(int,float)) else '暂不可估')
+                st.markdown(f'预计{regular_label}{color_class}的{burn_text}；常规概率 {regular_score}%，色彩分 {_color_line}，火烧云规模 {_scale_value}。')
             # The detailed original summary follows the short verdict.
             if result.get('summary'):
                 for _line in _web_summary_lines(result['summary']):

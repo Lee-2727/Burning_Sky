@@ -1921,11 +1921,58 @@ class FireCloudApp(tk.Tk):
                         _clear_windows = _ray_debug.get("candidate_clear_windows") or []
                         _statuses = [r.get("status") for r in _ray_debug.get("results", [])]
                         from burning_sky.sky_six import adaptive_equivalent_gaps
+                        # Auto-resample where the actual minute solar bearing
+                        # leaves the event-axis corridor. This must query NEW
+                        # pressure levels; extrapolating the old line would
+                        # recreate the bug reported by the user.
+                        from burning_sky.sky_six import (plan_off_axis_rays,
+                            materialize_off_axis_rays)
+                        _off_axis_profiles = {}
+                        _off_axis_diag = {'state':'no_missing_rays','new_locations':0,
+                                          'measured_rays':0,'failed_batches':[]}
+                        try:
+                            _required = max(700.,1.3*float(local_reach or 0))
+                            _plan = plan_off_axis_rays(profiles,event_dt,data['utc_offset'],
+                                data['lat'],data['lon'],direction_key,float(local_reach or 0),
+                                boundaries.get('fire_cloud_range_km'),source_scan_km=_required)
+                            _extra_pts = _plan['coordinates']
+                            _off_axis_diag.update({'state':'supplement_requested' if _extra_pts else 'original_axis_covers',
+                                'new_locations':len(_extra_pts),'planned_rays':len(_plan['rays'])})
+                            if _extra_pts:
+                                _new_profiles = []
+                                # 20 positions/request keeps pressure-level URLs modest.
+                                # request_json uses its existing URL cache. On API 429,
+                                # stop requesting more and leave missing beams unknown.
+                                for _i in range(0,len(_extra_pts),20):
+                                    _batch=_extra_pts[_i:_i+20]
+                                    self._set_main_progress(base_progress+45,
+                                        f'{direction_name}：补采真实太阳方位剖面 {_i+len(_batch)}/{len(_extra_pts)} 点……')
+                                    try:
+                                        _sub=self._fetch_cloud_base_profiles(_batch,
+                                            list(range(len(_batch))),event_utc,model_id,
+                                            local_ground_elevation_m=None)['samples']
+                                        if len(_sub)!=len(_batch):
+                                            raise ValueError('补采样返回的点数不匹配')
+                                        _new_profiles.extend(_sub)
+                                    except Exception as _rs_exc:
+                                        _off_axis_diag['failed_batches'].append({
+                                            'start':_i,'size':len(_batch),'error':str(_rs_exc)})
+                                        _new_profiles.extend([{'levels':[]} for _ in _batch])
+                                        if '429' in str(_rs_exc) or 'limit' in str(_rs_exc).lower():
+                                            _new_profiles.extend([{'levels':[]} for _ in _extra_pts[_i+len(_batch):]])
+                                            break
+                                _off_axis_profiles=materialize_off_axis_rays(_plan,_new_profiles)
+                                _off_axis_diag['measured_rays']=sum(bool(x) for x in _off_axis_profiles.values())
+                                _off_axis_diag['state']='fetched' if not _off_axis_diag['failed_batches'] else 'partial_unverified'
+                        except Exception as _plan_exc:
+                            _off_axis_diag={'state':'resampling_failed','error':str(_plan_exc)}
+                        inferred['off_axis_resampling']=_off_axis_diag
                         _adaptive = adaptive_equivalent_gaps(profiles, event_dt, data['utc_offset'],
                             data['lat'], data['lon'], direction_key, float(local_reach or 0),
                             extension_factor=1.3,
                             target_limit_km=boundaries.get('fire_cloud_range_km'),
-                            source_scan_km=_source_check_km)
+                            source_scan_km=_source_check_km,
+                            off_axis_ray_profiles=_off_axis_profiles)
                         _ray_debug['adaptive_equivalent'] = _adaptive
                         # Adaptive candidate targets are not cloud holes. Never promote them to clear_gaps.
                         # A ray must be traced from a LOCAL target, with upstream evidence beyond
@@ -1934,18 +1981,20 @@ class FireCloudApp(tk.Tk):
                         inferred['adaptive_target_candidates'] = _adaptive.get('gaps', [])
                         inferred['verified_primary_ray_traces'] = _adaptive.get('verified_ray_traces', [])
                         inferred['strict_primary_path_diagnostic'] = {
-                            'method_version':'UPSTREAM_RAY_700_V1',
+                            'method_version':'UPSTREAM_RAY_700_AUTO_RESAMPLE_V2',
                             'status':_adaptive.get('status'),
                             'verified_minutes':_adaptive.get('verified_minutes',[]),
                             'required_profile_km':_adaptive.get('required_profile_km'),
                             'available_profile_km':_adaptive.get('available_profile_km'),
                             'target_limit_km':_adaptive.get('target_limit_km'),
+                            'off_axis_rays_measured':_adaptive.get('off_axis_rays_measured'),
+                            'off_axis_rays_missing':_adaptive.get('off_axis_rays_missing'),
                             'note':_adaptive.get('note')}
 
                         _profile_end = max((float(p.get('distance_km', 0)) for p in profiles), default=0.0)
                         _source_check_km = max(700.0, 1.3 * float(local_reach or 0))
                         inferred['upstream_source_check'] = {
-                            'method_version':'UPSTREAM_RAY_700_V1',
+                            'method_version':'UPSTREAM_RAY_700_AUTO_RESAMPLE_V2',
                             'required_km': round(_source_check_km, 2),
                             'available_km': round(_profile_end, 2),
                             'status': 'insufficient_cached_profile' if _profile_end < _source_check_km else 'no_verified_local_source',
@@ -2426,10 +2475,21 @@ class FireCloudApp(tk.Tk):
                     inferred['color_score_note'] = '有效受光峰值时刻的太阳高度角与原有大气色彩条件（经验估算）'
                     inferred['peak_illumination_time'] = _peak_dt.isoformat()
                     inferred['peak_illumination_solar_altitude'] = round(_peak_solar_alt,3)
+                # A color score needs an actual validated illuminated cloud
+                # resource, not only a high raw cloud score. Never show a
+                # seemingly precise 62/100 beside 'tintable: unknown'.
+                if tintable_ratio is None:
+                    inferred['color_score']=None
+                    inferred['color_score_label']='严格受光尚未验证'
+                    inferred['color_score_note']='上游太阳光路或采样不完整；禁止确定性色彩评分'
+                inferred['aod_color_quality_factor']=aod_color_quality_factor(effective_aod)
+                _color_display = (f"{inferred['color_score']}/100" if
+                                  isinstance(inferred.get('color_score'),(int,float))
+                                  else '暂不可估')
                 summary = (
                     f"{model_time_text}\n"
                     f"{direction_name} · {data['place']} · {data['date'].isoformat()}　{event_dt.strftime('%H:%M')} / 方位 {azimuth:.0f}°\n"
-                    f"{model_label}　|　色彩评分 {inferred.get('color_score', '—')}/100　|　云量 总 {self._fmt_pct(inferred['total'])} · 低 {self._fmt_pct(inferred['low'])} · 中 {self._fmt_pct(inferred['mid'])} · 高 {self._fmt_pct(inferred['high'])} · 可染色云占比 {tintable_text}\n"
+                    f"{model_label}　|　色彩评分 {_color_display}　|　云量 总 {self._fmt_pct(inferred['total'])} · 低 {self._fmt_pct(inferred['low'])} · 中 {self._fmt_pct(inferred['mid'])} · 高 {self._fmt_pct(inferred['high'])} · 可染色云占比 {tintable_text}\n"
                     f"潜在霞云距 {fire_range_text}　|　极限云距 {cloud_edge_text}　|　{gap_display_label} {gap_text}\n"
                     f"云底 {base_short}（{base_source_short}）　|　AOD {aod_short}"
                     f"{special_summary_line}"
@@ -2439,7 +2499,7 @@ class FireCloudApp(tk.Tk):
                     f"{direction_name}详细采样报告", f"地点：{data['place']}；日期：{data['date']}；模式：{model_label}；事件时刻：{event_dt}；方位角：{azimuth:.2f}°",
                     f"火烧云发生概率估计：{inferred['regular_score']}%（经验估计，尚未经历史样本校准）",
                     f"有利情景上限：{inferred['upper_score']}%（表示条件理想时的潜在机会，不代表实际发生概率）",
-                    f"色彩表现评分：{inferred.get('color_score', '—')}/100（{inferred.get('color_score_label', '待估')}；{inferred.get('color_score_note', '经验指数')}）",
+                    f"色彩表现评分：{_color_display}（{inferred.get('color_score_label', '待估')}；{inferred.get('color_score_note', '经验指数')}）",
                     f"可染色云占比：{tintable_text}。仅统计潜在霞云距内的中高云，并取朝霞日出前/晚霞日落后同一分钟的最大受光比例；云洞通道仍为近似修正，不是卫星实测值。",
                     model_time_text,
                     f"潜在霞云距（本地连续中高云末端）：{fire_range_text}；极限云距（几何上限）：{cloud_edge_text}；{gap_display_label}：{gap_text}",
@@ -2560,8 +2620,8 @@ class FireCloudApp(tk.Tk):
                     inferred["peak_cloud_color_rule"] = "动态曲线峰值时刻的综合受光色（所有有效距离段加权；色相为示意估算）"
                     inferred["color_name"] = inferred["peak_cloud_color_rule"]
                 # Refresh summary after integrated color / probability / tint changes.
-                summary = summary.replace('色彩评分 '+str(int(_base_color_score) if '_base_color_score' in locals() else inferred.get('color_score'))+'/100',
-                                          '色彩评分 '+str(inferred.get('color_score'))+'/100')
+                # The summary was already composed from the finalized score.
+                # Do not turn an unknown score into a literal 'None/100'.
                 results[direction_key] = {"summary": summary, "details": "\n".join(detail_lines), "inferred": inferred,
                                           "samples": samples, "raw_details": raw_details, "raw_profiles": raw_profiles_before_reconstruction, "profiles": profiles, "geometry": geometry,
                                           "distances": distances, "max_reach": max_reach, "aod": effective_aod, "aod_source": aod_source, "aod_vertical_diagnostic": _vertical_aod,
