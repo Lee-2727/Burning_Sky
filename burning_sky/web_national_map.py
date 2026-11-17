@@ -93,7 +93,9 @@ def _combine_regions(zones,direction):
                                   longitude_bounds=(region['lon_min'],region['lon_max']),latitude_bounds=(17.5,54.5))
         score[zone_mask]=result['score'][zone_mask]
         evaluated.append({'name':region['name'],'in_twilight_cells':result['in_twilight_cells'],
-                          'evaluated_cells':result['evaluated_cells'],'stride':result['stride']})
+                          'evaluated_cells':result['evaluated_cells'],'stride':result['stride'],
+                          'earth_blocked_cells':result.get('earth_blocked_cells',0),
+                          'unknown_ray_cells':result.get('unknown_ray_cells',0)})
     source=first.get('spatial_source') or {}
     merged={'samples':[],'grid_view':{'latitude':lat.tolist(),'longitude':lon.tolist(),
              'layers':{k:v.tolist() for k,v in output.items()},'shape':list(lat.shape)},
@@ -134,11 +136,11 @@ def fetch_and_store(model,day,direction='evening'):
                       'valid_time':resolved['valid_time'],
                       'delta_minutes':round(resolved['delta_seconds']/60,1),'data':grid})
     merged,score, stats=_combine_regions(zones,direction)
-    payload={'schema_version':2,'model':model,'day':day.isoformat(),'direction':direction,
+    payload={'schema_version':2,'algorithm_version':2,'model':model,'day':day.isoformat(),'direction':direction,
              'generated_at':datetime.now(timezone.utc).isoformat(),
              'data':merged,'score':score.tolist(), 'region_stats':stats,
              'zones':[{k:v for k,v in z.items() if k!='data'} for z in zones],
-             'note':'东/中/西三个日出或日落参考有效时次；每格按各自太阳位置筛选；红色为非统计校准的相对候选潜力。'}
+             'note':'东中西分时 OM；各网格仅日出前/日落后，逐高云目标进行700 km球面高度分层粗筛；仅为相对候选潜力。'}
     dest=_path(model,day,direction);dest.parent.mkdir(parents=True,exist_ok=True)
     tmp=dest.with_suffix('.tmp')
     tmp.write_text(json.dumps(_json_clean(payload),ensure_ascii=False,separators=(',',':'),allow_nan=False),encoding='utf-8')
@@ -150,7 +152,7 @@ def load_cached(model,day,direction='evening'):
     path=_path(model,day,direction)
     if not path.is_file():return None
     raw=json.loads(path.read_text(encoding='utf-8'))
-    return raw if raw.get('schema_version')==2 and raw.get('direction')==direction else None
+    return raw if raw.get('schema_version')==2 and raw.get('algorithm_version')==2 and raw.get('direction')==direction else None
 
 
 def _render_potential_map(payload):
@@ -206,7 +208,7 @@ def _render_potential_map(payload):
     ax.set(xlim=(73,136),ylim=(17.5,54.5),xlabel='经度 °E',ylabel='纬度 °N')
     ax.set_aspect('equal');ax.grid(alpha=.13)
     ax.set_title(f'{name} · 东中西分时全国相对潜力 | {payload["day"]}\n{payload["model"]}  ·  三分区日出日落云场合成',loc='left',fontsize=11)
-    fig.text(.085,.023,'红色越浓表示相对候选潜力越高；缺测与未验证不代表 0%；平滑仅供显示，不代表真实精细概率。',fontsize=9)
+    fig.text(.085,.023,'红色为分层球面粗筛后的相对潜力（非发生概率）；缺测不代表 0%；平滑仅用于视觉呈现。',fontsize=9)
     fig.subplots_adjust(left=.07,right=.98,top=.86,bottom=.11)
     return fig
 
@@ -288,5 +290,5 @@ def render_national_map_page(st):
         plt.close(fig)
     except Exception as exc:st.error('地图绘制失败：'+str(exc))
     stats=payload.get('region_stats') or []
-    st.caption(' | '.join(f'{r["name"]}候选格点 {r["evaluated_cells"]} / 晨昏采样 {r["in_twilight_cells"]}' for r in stats))
-    st.caption('红色为二维云场的相对候选指数，不是经历史观测校准的发生概率；未读取边缘上游云场时不可认定完整受光。')
+    st.caption(' | '.join(f'{r["name"]}粗筛 {r["evaluated_cells"]} / 晨昏 {r["in_twilight_cells"]} / 不确定 {r.get("unknown_ray_cells",0)}' for r in stats))
+    st.caption('红色为 OM 二维云场 + 700 km 球面分层粗筛的相对候选指数，并非统计概率或完整三维验证；缺少上游数据时不当作晴空。')
