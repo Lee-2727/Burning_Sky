@@ -71,6 +71,5 @@ box-shadow:0 14px 34px rgba(8,10,20,.22);backdrop-filter:blur(22px) saturate(150
 .bs-lite-daylabel{height:25px;line-height:25px;color:rgba(244,246,251,.72);font-size:12px;white-space:nowrap}
 .bs-lite-legend{text-align:center;color:rgba(244,246,251,.46);font-size:11px;margin-top:16px;letter-spacing:.02em}
 @media(max-width:520px){.bs-lite-card{padding:16px 12px 14px;border-radius:18px}.bs-lite-pair{gap:3px;padding:0 2px}.bs-lite-bar{width:min(22px,40%)}.bs-lite-ticks{width:34px;font-size:10px}.bs-lite-daylabel{font-size:10px}}
+.bs-lite-bar.missing{height:19px;width:23px;font-size:12px;display:flex;align-items:center;justify-content:center;color:rgba(244,246,251,.5);background:transparent;opacity:1}
 </style>'''
-
-CSS += "\n.bs-lite-bar.missing{height:19px;width:23px;font-size:12px;display:flex;align-items:center;justify-content:center;color:rgba(244,246,251,.5);background:transparent;opacity:1}\n"
