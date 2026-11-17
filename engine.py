@@ -2112,10 +2112,20 @@ class FireCloudApp(tk.Tk):
                                                                   format_verified_corridors)
                     _corridor_summary = summarize_verified_corridors(_adaptive)
                     inferred['verified_equivalent_corridor'] = _corridor_summary
-                    gap_display_label = '严格光路等效无遮挡通道'
+                    gap_display_label = '严格验证光路的距离投影（非实际云洞宽度）'
                     gap_text = format_verified_corridors(_corridor_summary)
+                    _om_gate = inferred.get('strict_primary_path_diagnostic') or {}
+                    _cal = inferred.get('spatial_calibration') or {}
+                    if _om_gate.get('horizontal_evaluated_nodes',0)>0:
+                        gap_text += ('；OM 已进行 %d 次光路节点复核，发现 %d 次水平/垂直冲突（冲突=未验证）' %
+                                     (_om_gate['horizontal_evaluated_nodes'],
+                                      _om_gate.get('horizontal_conflict_count',0)))
+                    elif _cal.get('status') == 'applied':
+                        gap_text += '；注意：采样云量已由 OM 校准，但该方向没有完成独立 OM 光路节点复核'
+                    elif not bool(_manual_overrides):
+                        gap_text += '；本次未确认 OM 校准覆盖，不能称为云场已验证通道'
                     if all_gaps:
-                        gap_text += '；另有云量快筛晴空间隔：' + gap_ranges
+                        gap_text += '；另有云量快筛间隔（使用已校准采样云量，非严格通道）：' + gap_ranges
                 elif all_gaps:
                     gap_display_label = '晴空间隔（仅云量识别）'
                     gap_text = gap_ranges

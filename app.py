@@ -250,15 +250,11 @@ with st.sidebar:
     st.markdown("#### 开始预测")
     rainbow_enabled = st.checkbox('🌈 同时分析彩虹（需增加天气请求）', value=False, key='rainbow_with_fire')
     st.caption('彩虹附加计算默认关闭；单独彩虹查询在下方折叠工具内。')
-    with st.expander('🛰️ Open-Meteo 空间云场（实验入口）', expanded=False):
-        spatial_experiment = st.checkbox(
-            'EC/GFS 使用 OM 水平云场校准（失败回退原 API）',
-            value=True, key='pro_spatial_experiment')
-        st.caption('使用二维云场校准现有云量和球面光路；评分公式不变。不同起报时次仍须核实；数据不足时回退。')
-        if spatial_experiment and model_label not in ('ECMWF IFS 0.25°','GFS Global'):
-            st.warning('该模型暂不支持空间气压层，使用原坐标 API。')
-        if spatial_experiment and model_label == 'GFS Global':
-            st.warning('GFS Global API 与空间 ncep_gfs025 的原生分辨率可能不同；仅作试验，不用于不同模型间定量比较。')
+    # EC/GFS spatial calibration is part of the standard forecast pipeline.
+    # No user-facing experimental switch: failures fall back to the original API,
+    # and the per-batch provenance remains visible in the result diagnostics.
+    if model_label in ('ECMWF IFS 0.25°', 'GFS Global'):
+        st.caption('EC/GFS 自动使用 OM 空间云场校准；数据不足自动回退原 API，实际来源见结果诊断。')
     morning_col, evening_col = st.columns(2)
     with morning_col:
         run_morning = st.button("查询朝霞", use_container_width=True)
@@ -997,7 +993,7 @@ if run:
         "elevation": f"{elevation:.0f}",
         "weather_model": model_label,
         "rainbow_enabled": bool(st.session_state.get("rainbow_with_fire", False)),
-        "spatial_experiment": bool(st.session_state.get("pro_spatial_experiment", True)) and not use_case_cache,
+        "spatial_experiment": not use_case_cache,
         "cloud_base_mode": cloud_base_mode,
         "aod_source": aod_source,
         "morning_cloud_base_km": f"{morning_cloud_base:.2f}",
@@ -1507,6 +1503,16 @@ if results:
             else:
                 st.caption("当前气压层资料不足，暂无法识别云属。")
             st.markdown("**" + _web_gap_text(result) + "**")
+            _ray_gate = ((result.get('inferred') or {}).get('strict_primary_path_diagnostic') or {})
+            _spatial_info = ((result.get('inferred') or {}).get('spatial_calibration') or {})
+            if _spatial_info.get('status') == 'applied':
+                st.caption('已校准分层云量采样点；以下“快筛云洞”是云量间隔，'
+                           '“等效无遮挡通道”是太阳光路投影，两者并非同一个物理量。')
+            if _ray_gate:
+                st.caption(f"球面光路复核：{_ray_gate.get('status','未知')}；"
+                           f"OM 节点复核 {_ray_gate.get('horizontal_evaluated_nodes',0)} 次；"
+                           f"水平/垂直冲突 {_ray_gate.get('horizontal_conflict_count',0)} 次。"
+                           "冲突代表未验证，不代表已经确定遮挡。")
             # Primary evidence comes first; neither graph makes optional API calls.
             st.markdown('#### 云色时序 · 受光面积与颜色变化')
             st.image(_draw_dynamic_color_curve(points, curve.get("peak"), key), use_container_width=True)
