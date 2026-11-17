@@ -127,7 +127,44 @@ class WebForecastEngine(engine.FireCloudApp):
         self.morning_aod_status_var = _Var("")
         self.evening_aod_status_var = _Var("")
         self.skip_rainbow_single_var = _BoolVar(not values.get("rainbow_enabled", False))
+        self.spatial_experiment = bool(values.get("spatial_experiment", False))
+        self.spatial_fetch_log = []
         self._error = None
+    def _fetch_cloud_base_profiles(self, coords, distances, sunset_utc, model_id,
+                                   local_ground_elevation_m=None):
+        """Pro-only opt-in spatial pressure source, strict full-batch fallback.
+
+        Desktop code and background overview intentionally remain unchanged
+        until an actual OM run/time/pressure-field comparison is verified.
+        """
+        fallback = lambda: super(WebForecastEngine, self)._fetch_cloud_base_profiles(
+            coords, distances, sunset_utc, model_id,
+            local_ground_elevation_m=local_ground_elevation_m)
+        if not self.spatial_experiment:
+            return fallback()
+        try:
+            from burning_sky.spatial_om import fetch_pressure_profiles, SpatialUnavailable
+            from burning_sky.cloud_vertical import analyze_vertical_layers
+            result = fetch_pressure_profiles(
+                coords, distances, sunset_utc, model_id,
+                estimate_cloud_base=engine.estimate_cloud_base_from_profile,
+                analyze_vertical_layers=analyze_vertical_layers,
+                local_ground_elevation_m=local_ground_elevation_m)
+            info = result.get('spatial_source') or {}
+            self.spatial_fetch_log.append({
+                'status':'spatial_used', 'distance_count':len(coords),
+                'model':model_id, 'run':info.get('reference_time'),
+                'valid':info.get('valid_time'), 'levels':info.get('pressure_levels'),
+                'cells':info.get('cells_read'),
+                'gfs_resolution_caution':info.get('experimental_gfs_domain_mismatch',False)})
+            return result
+        except Exception as exc:
+            # Do not convert missing OM pressure data into clear sky, or mask an
+            # API failure. The original weather API is still the source of truth.
+            self.spatial_fetch_log.append({
+                'status':'point_api_fallback','distance_count':len(coords),
+                'model':model_id,'reason':f'{type(exc).__name__}: {str(exc)[:210]}'})
+            return fallback()
     def after(self, delay_ms, callback=None, *args):
         """Tk compatibility: Streamlit renders results after computation, not via Tk callbacks."""
         return None
@@ -237,6 +274,17 @@ with st.sidebar:
     st.markdown("#### 开始预测")
     rainbow_enabled = st.checkbox('🌈 同时分析彩虹（需增加天气请求）', value=False, key='rainbow_with_fire')
     st.caption('彩虹附加计算默认关闭；单独彩虹查询在下方折叠工具内。')
+    with st.expander('🛰️ Open-Meteo 空间云场（实验入口）', expanded=False):
+        spatial_experiment = st.checkbox(
+            '优先尝试 .om 空间气压层，失败自动回退坐标 API',
+            value=False, key='pro_spatial_experiment')
+        st.caption('仅作用于本次联网单次预测的气压层取样；不改变算法公式。'
+                   '需要额外安装 requirements-spatial.txt。'
+                   '尚未完成真实云端数据联调，默认关闭。')
+        if spatial_experiment and model_label not in ('ECMWF IFS 0.25°','GFS Global'):
+            st.warning('该模型暂不支持空间气压层，使用原坐标 API。')
+        if spatial_experiment and model_label == 'GFS Global':
+            st.warning('GFS Global API 与空间 ncep_gfs025 的原生分辨率可能不同；仅作试验，不用于不同模型间定量比较。')
     morning_col, evening_col = st.columns(2)
     with morning_col:
         run_morning = st.button("查询朝霞", use_container_width=True)
@@ -968,6 +1016,7 @@ if run:
         "elevation": f"{elevation:.0f}",
         "weather_model": model_label,
         "rainbow_enabled": bool(st.session_state.get("rainbow_with_fire", False)),
+        "spatial_experiment": bool(st.session_state.get("pro_spatial_experiment", False)) and not use_case_cache,
         "cloud_base_mode": cloud_base_mode,
         "aod_source": aod_source,
         "morning_cloud_base_km": f"{morning_cloud_base:.2f}",
@@ -1020,6 +1069,13 @@ if run:
                 runner._fetch_weather_task(_query_dir)
     finally:
         engine._CASE_REQUEST_CONTEXT = None
+    if runner.spatial_fetch_log:
+        with st.expander('空间网格数据源诊断 · 本次查询', expanded=False):
+            _ok = sum(x.get('status')=='spatial_used' for x in runner.spatial_fetch_log)
+            _all = len(runner.spatial_fetch_log)
+            st.caption(f'.om 空间气压层已采用 {_ok}/{_all} 批；其余批次回退原坐标 API。'
+                       '没有成功读取的空间数据绝不会被当成晴空。')
+            st.json(runner.spatial_fetch_log)
     if engine.messagebox.last_error:
         st.error(f"{engine.messagebox.last_error[0]}：{engine.messagebox.last_error[1]}")
     elif not runner.direction_results:

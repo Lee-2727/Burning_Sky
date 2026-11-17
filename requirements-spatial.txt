@@ -1,0 +1,6 @@
+-r requirements.txt
+# Optional spatial cloud model reader; choose only for Pro spatial experiment.
+# The main requirements.txt remains untouched to protect Lite/desktop deployment.
+omfiles[fsspec,grids]>=1.2,<2
+fsspec>=2024.0
+aiohttp>=3.9
