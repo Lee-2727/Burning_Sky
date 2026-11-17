@@ -325,7 +325,7 @@ def materialize_off_axis_rays(plan, extra_profiles):
 def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction,
                              reach_km, min_width_km=15.0, extension_factor=1.3,
                              target_limit_km=None, source_scan_km=None,
-                             off_axis_ray_profiles=None):
+                             off_axis_ray_profiles=None, use_horizontal_fusion=True):
     """Strict *sampled-corridor* spherical validation for illuminated cloud faces.
 
     The local cloud-target reach and the upstream solar-source verification
@@ -389,6 +389,15 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
     uncovered_minutes=set(); coverage_debug=[]
     source_boundary_unresolved_minutes=set()
     off_axis_used=set(); off_axis_missing=set()
+    horizontal_conflict_minutes=set()
+    horizontal_conflict_count=0
+    horizontal_target_conflict_count=0
+    horizontal_evaluated_nodes=0
+    horizontal_scanned_rays=0
+    horizontal_conflict_examples=[]
+    from .spatial_ray_fusion import (check_horizontal_ray_consistency,
+                                     check_horizontal_target_support)
+    target_pressure_by_distance = {round(float(p['distance_km']),5):p for p in valid}
     # Conservative atmospheric clearance condition beyond the last sampled point.
     # This is NOT a fixed sky-clear gap; it only certifies that the ray is above
     # the cloud-bearing model atmosphere and rising when sampling stops.
@@ -431,6 +440,10 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
             else:
                 upstream=[c for c in cells if
                           float(c['end_km'])>face+1e-7 and float(c['start_km'])<required]
+            # Attach the horizontal OM samples at the ACTUAL beam nodes.
+            # This is a conflict screen, not an opaque 3-D raster cloud model.
+            horizontal_ray_profiles = ((ray if not coverage['covered'] else valid)
+                                       if use_horizontal_fusion else [])
             # Intersections are tested at real positions along this solar ray,
             # not at fixed sunrise-axis positions if the ray diverges.
             bands=analyze_target_face(target,upstream,alt,
@@ -458,6 +471,36 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                     hs=[_ray_height_km(h,alt,d) for d in (u,v,q)]
                     return min(hs)<=float(cell['top_km']) and max(hs)>=float(cell['bottom_km'])
                 if any(intersects(c) for c in upstream):continue
+                # Confirm that the target cloud implied by the pressure sample
+                # is not contradicted by horizontal OM near that SAME target.
+                source_sample = target_pressure_by_distance.get(
+                    round(float(target.get('sample_distance_km',0)),5))
+                support = (check_horizontal_target_support(source_sample, h)
+                           if use_horizontal_fusion else {'checked':False,'unresolved':False})
+                if support['unresolved']:
+                    horizontal_conflict_minutes.add(minute)
+                    horizontal_target_conflict_count += 1
+                    if len(horizontal_conflict_examples)<12:
+                        horizontal_conflict_examples.append({
+                            'distance_km':round(float(target.get('sample_distance_km',0)),1),
+                            'ray_height_km':round(h,2),
+                            'max_horizontal_cover_pct':round(support['max_horizontal_cover_pct'],1),
+                            'reason':'pressure-cloud-target / horizontal-near-clear'})
+                    continue
+                horizontal = check_horizontal_ray_consistency(
+                    horizontal_ray_profiles, face, h, alt, required)
+                horizontal_evaluated_nodes += horizontal['evaluated_nodes']
+                if horizontal['horizontal_nodes']:
+                    horizontal_scanned_rays += 1
+                if horizontal['unresolved']:
+                    # A cloudy horizontal model pixel with no corresponding
+                    # pressure-layer obstruction is an uncertainty, NOT a
+                    # scientifically established opaque cloud or clear ray.
+                    horizontal_conflict_minutes.add(minute)
+                    horizontal_conflict_count += 1
+                    if len(horizontal_conflict_examples)<12:
+                        horizontal_conflict_examples.extend(horizontal['conflicts'][:2])
+                    continue
                 width=high-low
                 weight=width*float(target.get('cloud_cover',0))*(float(target['end_km'])-float(target['start_km']))
                 candidate={'minute_offset':minute,'time':dt.isoformat(),
@@ -491,13 +534,22 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
             by_minute[minute]=winner
             confirmed_faces.add(winner['target_face_km'])
     return {'gaps':[], 'status':('local_targets_verified' if verified else
-                                  'unresolved_data' if (uncovered_minutes or source_boundary_unresolved_minutes)
+                                  'unresolved_data' if (uncovered_minutes or source_boundary_unresolved_minutes or horizontal_conflict_minutes)
                                   else 'no_verified_source'),
             'evaluations':evaluations,'illuminated_target_count':len(confirmed_faces),
             'verified_minutes':sorted(by_minute),
             'verified_target_bands':verified_target_bands,
             'spatially_unverified_minutes':sorted(uncovered_minutes),
             'source_boundary_unresolved_minutes':sorted(source_boundary_unresolved_minutes),
+            'horizontal_conflict_unresolved_minutes':sorted(horizontal_conflict_minutes),
+            'horizontal_conflict_count':horizontal_conflict_count,
+            'horizontal_target_conflict_count':horizontal_target_conflict_count,
+            'horizontal_fusion_enabled':bool(use_horizontal_fusion),
+            'horizontal_ray_checks':horizontal_scanned_rays,
+            'horizontal_evaluated_nodes':horizontal_evaluated_nodes,
+            'horizontal_conflict_examples':horizontal_conflict_examples[:12],
+            'horizontal_evidence_mode':'OM_2D_api_vertical_conflict_veto_only',
+
             'off_axis_rays_measured':len(off_axis_used),
             'off_axis_rays_missing':len(off_axis_missing),
             'cloud_top_clearance_km':round(cloud_top_ceiling_km,3),
