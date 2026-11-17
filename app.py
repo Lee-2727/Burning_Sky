@@ -158,13 +158,39 @@ class WebForecastEngine(engine.FireCloudApp):
                 'cells':info.get('cells_read'),
                 'gfs_resolution_caution':info.get('experimental_gfs_domain_mismatch',False)})
             return result
-        except Exception as exc:
-            # Do not convert missing OM pressure data into clear sky, or mask an
-            # API failure. The original weather API is still the source of truth.
+        except Exception as pressure_exc:
+            # ECMWF IFS .om normally has horizontal cloud layers, while
+            # pressure-level cloud cover is derived from relative humidity by
+            # the API.  Do not discard genuine horizontal evidence just because
+            # the spatial manifest has no *native* pressure-level cloud cover.
+            # This path uses the original point API for VERTICAL strict rays.
+            try:
+                from burning_sky.spatial_om import fetch_horizontal_clouds
+                horizontal = fetch_horizontal_clouds(
+                    coords, distances, sunset_utc, model_id)
+            except Exception as horizontal_exc:
+                self.spatial_fetch_log.append({
+                    'status': 'point_api_fallback',
+                    'distance_count': len(coords), 'model': model_id,
+                    'reason': f'{type(pressure_exc).__name__}: {str(pressure_exc)[:190]}',
+                    'horizontal_reason': f'{type(horizontal_exc).__name__}: {str(horizontal_exc)[:190]}'})
+                return fallback()
+            # Missing vertical evidence is never synthesized from the 2-D
+            # layer field. Preserve the existing authoritative API profile.
+            pressure = fallback()
+            pressure['spatial_horizontal'] = horizontal
+            summary = horizontal.get('spatial_source') or {}
             self.spatial_fetch_log.append({
-                'status':'point_api_fallback','distance_count':len(coords),
-                'model':model_id,'reason':f'{type(exc).__name__}: {str(exc)[:210]}'})
-            return fallback()
+                'status': 'spatial_horizontal_used_vertical_api',
+                'distance_count': len(coords), 'model': model_id,
+                'run': summary.get('reference_time'),
+                'valid': summary.get('valid_time'),
+                'cells': summary.get('cells_read'),
+                'horizontal_fields': summary.get('fields'),
+                'pressure_source': 'point_api',
+                'full_pressure_reason': f'{type(pressure_exc).__name__}: {str(pressure_exc)[:140]}',
+                'warning': '二维云场仅供空间对照；严格光路继续使用坐标API气压层'})
+            return pressure
     def after(self, delay_ms, callback=None, *args):
         """Tk compatibility: Streamlit renders results after computation, not via Tk callbacks."""
         return None
@@ -1072,9 +1098,15 @@ if run:
     if runner.spatial_fetch_log:
         with st.expander('空间网格数据源诊断 · 本次查询', expanded=False):
             _ok = sum(x.get('status')=='spatial_used' for x in runner.spatial_fetch_log)
+            _hybrid = sum(x.get('status')=='spatial_horizontal_used_vertical_api' for x in runner.spatial_fetch_log)
             _all = len(runner.spatial_fetch_log)
-            st.caption(f'.om 空间气压层已采用 {_ok}/{_all} 批；其余批次回退原坐标 API。'
-                       '没有成功读取的空间数据绝不会被当成晴空。')
+            if _hybrid:
+                st.caption(f'.om 原生气压层采用 {_ok}/{_all} 批；'
+                           f'二维低中高云场已读取 {_hybrid}/{_all} 批，垂直气压层仍用原坐标 API。'
+                           '二维云量目前只用于空间数据核验，不参与严格光路判定；缺测不视为晴空。')
+            else:
+                st.caption(f'.om 空间气压层已采用 {_ok}/{_all} 批；'
+                           '其余批次回退原坐标 API。缺测不视为晴空。')
             st.json(runner.spatial_fetch_log)
     if engine.messagebox.last_error:
         st.error(f"{engine.messagebox.last_error[0]}：{engine.messagebox.last_error[1]}")
