@@ -1,4 +1,4 @@
-"""Raster rendering of the desktop spherical cloud profile for Streamlit."""
+"""Streamlit cloud section using final adaptive OM-compatible strict rays."""
 import json
 import math
 import os
@@ -21,25 +21,22 @@ def render_profile(result, width=1400, height=760):
                 ray_records=json.load(f).get("results",[])
         except (OSError,ValueError,TypeError):
             pass
-    # Desktop uses this same file and only renders verified contiguous runs.
-    ordered=sorted((r for r in ray_records if isinstance(r.get("solar_altitude_deg"),(int,float)) and isinstance(r.get("time"),str)),key=lambda r:r["time"])
-    runs=[];current=[]
-    for ray in ordered:
-        if ray.get("status")!="clear_path":
-            if len(current)>=2:runs.append(current)
-            current=[]
-            continue
-        if current:
-            try:gap=(datetime.fromisoformat(ray["time"])-datetime.fromisoformat(current[-1]["time"])).total_seconds()
-            except (ValueError,TypeError):gap=float("inf")
-            if not 1<=gap<=61:
-                if len(current)>=2:runs.append(current)
-                current=[]
-        current.append(ray)
-    if len(current)>=2:runs.append(current)
-    target=next((r.get("target_cloud_base_km") for r in ray_records if isinstance(r.get("target_cloud_base_km"),(int,float))),None)
+    # Only the final adaptive ray gate knows which routes remain verified AFTER
+    # OM conflicts.  The legacy independent debug raytrace is candidate-only.
+    gate = inferred.get('strict_primary_path_diagnostic') or {}
+    verified = [r for r in (inferred.get('verified_primary_ray_traces') or [])
+                if isinstance(r,dict) and isinstance(r.get('solar_altitude_deg'),(int,float))
+                and isinstance(r.get('target_height_km'),(int,float))
+                and isinstance(r.get('target_face_km'),(int,float))]
+    ordered = sorted((r for r in ray_records if isinstance(r.get('solar_altitude_deg'),(int,float))
+                      and isinstance(r.get('time'),str)), key=lambda r:r['time'])
+    target = next((r['target_height_km'] for r in verified), None)
     if target is None:
-        target=next((p.get("estimated_base_km") for p in profiles if p.get("distance_km")==0 and isinstance(p.get("estimated_base_km"),(int,float))),None)
+        target=next((r.get('target_cloud_base_km') for r in ray_records
+                     if isinstance(r.get('target_cloud_base_km'),(int,float))),None)
+    if target is None:
+        target=next((p.get('estimated_base_km') for p in profiles
+                     if p.get('distance_km')==0 and isinstance(p.get('estimated_base_km'),(int,float))),None)
     if target is None:target=4.0
     img=Image.new("RGB",(width,height),"#fbfcfe"); d=ImageDraw.Draw(img)
     left,right,top,bottom=76,102,35,65
@@ -90,38 +87,77 @@ def render_profile(result, width=1400, height=760):
                 if len(coords)>1:d.line(coords,fill="#7434ac",width=3)
                 coords=[]
         if len(coords)>1:d.line(coords,fill="#7434ac",width=3)
-    # Candidate rays are diagnostics only. Use the same recorded solar altitude
-    # per minute as the desktop view; never label these as verified clear paths.
-    candidates = [r for r in ordered if isinstance(r.get("solar_altitude_deg"), (int,float))]
-    if len(candidates) > 36:
-        picks = {round(i*(len(candidates)-1)/35) for i in range(36)}
-        picks.update(i for i in range(1,len(candidates))
-                     if candidates[i].get("status") != candidates[i-1].get("status"))
-        candidates = [candidates[i] for i in sorted(picks)]
-    for ray in candidates:
-        points = sample_ray_curve(target, float(ray["solar_altitude_deg"]), plotdist, 650)
-        for dist, h, blocked in points[::2]:
-            if not blocked and math.isfinite(h) and 0 <= h <= maxh:
-                xx, yy = x(dist), y(h)
-                d.ellipse((xx-1, yy-1, xx+1, yy+1), fill="#bb66e8")
-    for run in runs:
-        alts=[float(r["solar_altitude_deg"]) for r in run]
-        low,high=min(alts),max(alts)
-        if abs(high-low)<1e-8:continue
-        for col in range(1,241):
-            dist=plotdist*col/241.
-            if _earth_occluded(target,low,dist) or _earth_occluded(target,high,dist):continue
-            a=_ray_height_km(target,low,dist);b=_ray_height_km(target,high,dist)
-            if not (math.isfinite(a) and math.isfinite(b)):continue
-            lo=max(0,min(a,b));hi=min(maxh,max(a,b))
-            if hi<=lo:continue
-            for k in range(1,9):
-                yy=y(lo+(hi-lo)*k/9)
-                xx=x(dist)
-                d.ellipse((xx-1,yy-1,xx+1,yy+1),fill="#bb398d")
-        draw_curve(low);draw_curve(high)
-    if not runs:
-        d.text((left+pw*.28,top+25),"No continuous verified clear-ray interval (dotted = candidates)",fill="#8b3274")
+    # Candidate solar beams: use the same per-cloud-face, minute-varying
+    # geometry as the Desktop fusion visual when available.  They remain dotted
+    # and MUST NOT be confused with the accepted OM-reviewed rays below.
+    face_candidates=[r for r in (inferred.get('spherical_face_plot_traces') or [])
+                     if isinstance(r,dict) and isinstance(r.get('target_face_km'),(int,float))
+                     and isinstance(r.get('target_height_km'),(int,float))
+                     and isinstance(r.get('solar_altitude_deg'),(int,float))]
+    if face_candidates:
+        step=max(1,len(face_candidates)//35)
+        for ray in face_candidates[::step][:36]:
+            face=float(ray['target_face_km']); h0=float(ray['target_height_km']);alt=float(ray['solar_altitude_deg'])
+            if not 0<=face<plotdist:continue
+            for j in range(330):
+                dist=face+(plotdist-face)*j/329
+                relative=dist-face
+                if _earth_occluded(h0,alt,relative):continue
+                h=_ray_height_km(h0,alt,relative)
+                if math.isfinite(h) and 0<=h<=maxh and j%2==0:
+                    xx,yy=x(dist),y(h)
+                    d.ellipse((xx-1,yy-1,xx+1,yy+1),fill='#bb66e8')
+    else:
+        # Legacy standalone ray debug is a candidate drawing only, never a
+        # substitute for the final strict_primary_path_diagnostic evidence.
+        candidates=[r for r in ordered if isinstance(r.get('solar_altitude_deg'),(int,float))]
+        if len(candidates)>36:
+            picks={round(i*(len(candidates)-1)/35) for i in range(36)}
+            candidates=[candidates[i] for i in sorted(picks)]
+        for ray in candidates:
+            for dist,h,blocked in sample_ray_curve(target,float(ray['solar_altitude_deg']),plotdist,650)[::2]:
+                if not blocked and math.isfinite(h) and 0<=h<=maxh:
+                    xx,yy=x(dist),y(h)
+                    d.ellipse((xx-1,yy-1,xx+1,yy+1),fill='#bb66e8')
+    # Real accepted rays after OM conflict review. Plot each at ITS OWN cloud
+    # target height and face, not a shared artificial default cloud base.
+    drawn=0
+    for ray in verified:
+        face=float(ray['target_face_km']);alt=float(ray['solar_altitude_deg'])
+        cloud_h=float(ray['target_height_km'])
+        far=min(plotdist,float(ray.get('source_check_km',plotdist)))
+        if not (0<=face<far and 0<cloud_h<=maxh):continue
+        coords=[]
+        for j in range(401):
+            dist=face+(far-face)*j/400.
+            radial=dist-face
+            if _earth_occluded(cloud_h,alt,radial):
+                if len(coords)>1:d.line(coords,fill='#7434ac',width=3)
+                coords=[];continue
+            h=_ray_height_km(cloud_h,alt,radial)
+            if math.isfinite(h) and 0<=h<=maxh:
+                coords.append((x(dist),y(h)))
+            else:
+                if len(coords)>1:d.line(coords,fill='#7434ac',width=3)
+                coords=[]
+        if len(coords)>1:d.line(coords,fill='#7434ac',width=3)
+        drawn+=1
+        if drawn>=18:break  # Avoid hiding the cloud cells under 60 lines.
+    # Bounded logged conflict samples are placed at their actual face-axis
+    # distances and ray heights (not at guessed cloud-bottom positions).
+    conflicts = gate.get('horizontal_conflict_examples') or []
+    for row in conflicts[:24]:
+        try:
+            dist=float(row['distance_km']);h=float(row['ray_height_km'])
+        except (KeyError,TypeError,ValueError):continue
+        if not (0<=dist<=plotdist and 0<=h<=maxh):continue
+        xx,yy=x(dist),y(h)
+        for dd in ((-7,-7,7,7),(-7,7,7,-7)):
+            d.line((xx+dd[0],yy+dd[1],xx+dd[2],yy+dd[3]),fill='#ec770f',width=4)
+    if not verified:
+        d.text((left+pw*.20,top+25),'No final validated OM-compatible ray (dotted = geometry candidates)',fill='#8b3274')
+    elif conflicts:
+        d.text((left+pw*.07,top+25),f'OM horizontal/vertical conflicts: {gate.get("horizontal_conflict_count",len(conflicts))} (orange X = samples)',fill='#c45b00')
     if 0<=target<=maxh:
         xx=x(0);yy=y(target)
         d.ellipse((xx-5,yy-5,xx+5,yy+5),fill="#101820",outline="white")

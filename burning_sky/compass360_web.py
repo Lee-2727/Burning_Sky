@@ -83,40 +83,115 @@ def _hex_blend(a,b,t):
     return '#%02x%02x%02x' % tuple(int(round(x+(y-x)*t)) for x,y in zip(ca,cb))
 
 
+def _event_utc(event):
+    """Desktop engine stores an Asia/Shanghai wall clock when tz is absent."""
+    from datetime import datetime, timedelta, timezone
+    if isinstance(event, str):
+        event = datetime.fromisoformat(event)
+    if not isinstance(event, datetime):
+        raise ValueError('缺少有效的朝霞/晚霞事件时刻')
+    if event.tzinfo is None:
+        return (event - timedelta(hours=8)).replace(tzinfo=timezone.utc)
+    return event.astimezone(timezone.utc)
+
+
+def _region_bounds(lat, lon, radius_km=900):
+    """Observer-centered rectangle with extra room for 700 km upstream rays."""
+    import math
+    dlat = radius_km / 110.5
+    conservative_lat = min(83., abs(float(lat)) + dlat)
+    dlon = min(50., radius_km / max(20., 110.5*math.cos(math.radians(conservative_lat))))
+    return (max(-180.,lon-dlon), min(180.,lon+dlon),
+            max(-85.,lat-dlat), min(85.,lat+dlat))
+
+
+def _matching_cached_national(model_id, event_utc, expected_run=None):
+    """Use a separately cached manual nationwide cloud map only if time matches."""
+    from datetime import timedelta, timezone
+    from .web_national_map import MODELS, load_cached
+    from .spatial_ray_fusion import _utc
+    local_date = event_utc.astimezone(timezone(timedelta(hours=8))).date()
+    for display, mid in MODELS.items():
+        if mid != model_id:
+            continue
+        payload = load_cached(display,local_date)
+        if not payload:
+            continue
+        data=payload.get('data') or {}
+        info=data.get('spatial_source') or {}
+        valid=_utc(info.get('valid_time'))
+        run=_utc(info.get('reference_time'))
+        requested_run=_utc(expected_run)
+        if requested_run is not None and run != requested_run:
+            continue
+        if valid is not None and abs((valid-event_utc).total_seconds()) <= 5400:
+            return data
+    return None
+
+
+def _fetch_regional_compass_cloud(model_id, event_utc, lat, lon, expected_run=None):
+    """Fetch one regional OM raster; NO additional point/pressure HTTP batches.
+
+    Cloud-occupancy compass remains a 2-D candidate display and does NOT
+    replace the established 3-D single-direction ray verification.
+    """
+    from .spatial_om import resolve_valid_file, fetch_national_clouds_from_source
+    cached = _matching_cached_national(model_id, event_utc, expected_run=expected_run)
+    if cached:
+        return cached, '复用了此前的全国云图缓存'
+    ref=resolve_valid_file(model_id,event_utc)
+    from .spatial_ray_fusion import _utc
+    if _utc(expected_run) is not None and _utc(ref['reference_time']) != _utc(expected_run):
+        raise ValueError('OM 最新起报与本次单次结果采用的空间云场起报不同；拒绝混用，请重新运行单次查询')
+    source={'domain':ref['model_domain'], 'reference_time':ref['reference_time'],
+            'valid_time':ref['valid_time'],
+            'available_variables':sorted(ref['variables'])}
+    return fetch_national_clouds_from_source(
+        source,bounds=_region_bounds(lat,lon)), '已按需读取一次区域 OM 空间云场（可能包含多次分块传输）'
+
+
 def render_web_panel(st, engine, result, meta, direction_key, replay_only=False):
-    """No network until explicit click. Session cache is specific to full inputs."""
-    origin=result.get('origin')
-    event=result.get('event_dt')
-    if isinstance(event,str):
-        try: event=datetime.fromisoformat(event)
-        except ValueError: event=None
-    model_label=str(meta.get('model') or '')
-    key='compass360_illumination_v2_'+str((meta.get('date'),model_label,
-                                         meta.get('lat'),meta.get('lon'),direction_key,
-                                         str(event), result.get('azimuth')))
-    day=str(meta.get('date') or (event.date().isoformat() if event else ''))
+    """Display OM-based 8-sector candidate advantage, never the old 20-batch sampler."""
+    from datetime import datetime
+    from desktop.spatial_area_analysis import compass_candidate, render_compass_figure
+    origin = result.get('origin')
+    event = result.get('event_dt')
+    model_label = str(meta.get('model') or '')
+    day = str(meta.get('date') or '')
     name='朝霞' if direction_key in ('morning','朝霞') else '晚霞'
-    st.caption(f'当前单次结果：{day} · {model_label} · {name}。16目标气压层 + 64个上游光路采样点；只按需请求，预计20批。')
-    saved=st.session_state.get(key)
-    if saved:
-        st.image(render_compass(saved,f'{day} · {model_label} · {name}'),use_container_width=True)
-        st.caption(f"实际HTTP请求：{saved.get('http_requests','?')}；耗时：{saved.get('elapsed_seconds','?')}秒。圆内颜色代表离散光路候选，不是正式概率。")
-    if replay_only and not saved:
-        st.caption('当前为离线案例回放，未保存360°受光采样数据；不会联网生成新图。')
-    if st.button('生成/刷新360°受光补全图（约20批请求）',key=key+'_run',disabled=bool(replay_only)):
-        if not origin or event is None:
-            st.warning('缺少当前查询的观测坐标或事件时间。')
-            return
+    model_id=engine._weather_model_id_from_label(model_label)
+    if model_id not in ('ecmwf_ifs025','ncep_gfs_global'):
+        st.caption('OM 八方位候选优势目前仅支持 EC/GFS。')
+        return
+    if not origin or event is None:
+        st.caption('本次结果缺少地理坐标或事件时间，不能生成八方位图。')
+        return
+    lat,lon=float(origin[0]),float(origin[1])
+    event_utc=_event_utc(event)
+    observed_runs={str(row['spatial_horizontal_run']) for row in result.get('profiles',[])
+                   if isinstance(row,dict) and row.get('spatial_horizontal_run')}
+    expected_run=next(iter(observed_runs)) if len(observed_runs)==1 else None
+    cache_key='om_compass_'+str((model_id,day,name,lat,lon,event_utc.isoformat(),expected_run))
+    state=st.session_state.get(cache_key)
+    st.caption('八方位改为 OM 水平云场相对候选优势，不再使用旧的约 20 批坐标 API 采样。'
+               '这是二维区域参考图，不代表八个方位都已完成严格三维太阳光路验证。')
+    if state:
+        fig=render_compass_figure(state['candidate'])
+        st.pyplot(fig,use_container_width=True)
+        st.caption('云图来源：'+state['source']+'；OM run: '+str(state['candidate'].get('run'))+
+                   '；valid: '+str(state['candidate'].get('valid')))
+    elif replay_only:
+        st.caption('离线案例回放未含区域 OM 栅格；不自动访问网络。')
+    if st.button('生成 / 刷新 OM 八方位候选优势（不请求旧20批点位API）',
+                 key=cache_key+'_run',disabled=bool(replay_only)):
         try:
-            model_id=engine._weather_model_id_from_label(model_label)
-            if model_id not in ('ecmwf_ifs025','ncep_gfs_global'):
-                st.warning('360°受光实验目前只支持EC/GFS。')
-                return
-            with st.spinner('正在按统一限速规则采样目标云和上游光路……'):
-                data=survey_illumination(float(origin[0]),float(origin[1]),day,model_id,int(event.hour))
-            st.session_state[key]=data
-            st.image(render_compass(data,f'{day} · {model_label} · {name}'),use_container_width=True)
-            st.success(f"已完成 {data['target_points']} 个目标、{data['upstream_points']} 个上游采样点；HTTP {data['http_requests']}批。")
+            with st.spinner('正在复用或按需读取区域 OM 云场；一次网格读取可能包含多次 HTTP 分块……'):
+                data,source=_fetch_regional_compass_cloud(model_id,event_utc,lat,lon,expected_run=expected_run)
+                c=compass_candidate(data,lat,lon,direction=direction_key)
+            st.session_state[cache_key]={'candidate':c,'source':source}
+            fig=render_compass_figure(c)
+            st.pyplot(fig,use_container_width=True)
+            st.success('已完成：8 方位 OM 候选优势。'+source)
         except Exception as exc:
-            st.error('360°采样失败：'+str(exc)[:280])
-    st.caption('实验说明：当前仅对所采样方向进行离散球面光路筛选；轮廓闭合与扇区色彩是可视化，不表示中间方位经过独立严格验证。')
+            st.error('OM 八方位生成失败，未改动单次预报：'+str(exc)[:350])
+    st.caption('缺测方位不排行；分辨率受原生网格限制。为保证物理准确性，此图不会回写正式概率或色彩评分。')
