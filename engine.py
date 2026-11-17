@@ -1972,7 +1972,8 @@ class FireCloudApp(tk.Tk):
                             extension_factor=1.3,
                             target_limit_km=boundaries.get('fire_cloud_range_km'),
                             source_scan_km=_source_check_km,
-                            off_axis_ray_profiles=_off_axis_profiles)
+                            off_axis_ray_profiles=_off_axis_profiles,
+                            use_horizontal_fusion=not bool(_manual_overrides))
                         _ray_debug['adaptive_equivalent'] = _adaptive
                         # Adaptive candidate targets are not cloud holes. Never promote them to clear_gaps.
                         # A ray must be traced from a LOCAL target, with upstream evidence beyond
@@ -1981,7 +1982,7 @@ class FireCloudApp(tk.Tk):
                         inferred['adaptive_target_candidates'] = _adaptive.get('gaps', [])
                         inferred['verified_primary_ray_traces'] = _adaptive.get('verified_ray_traces', [])
                         inferred['strict_primary_path_diagnostic'] = {
-                            'method_version':'UPSTREAM_RAY_700_AUTO_RESAMPLE_V2',
+                            'method_version':'UPSTREAM_RAY_700_AUTO_RESAMPLE_SPATIAL_CONFLICT_V1',
                             'status':_adaptive.get('status'),
                             'verified_minutes':_adaptive.get('verified_minutes',[]),
                             'required_profile_km':_adaptive.get('required_profile_km'),
@@ -1989,6 +1990,13 @@ class FireCloudApp(tk.Tk):
                             'target_limit_km':_adaptive.get('target_limit_km'),
                             'off_axis_rays_measured':_adaptive.get('off_axis_rays_measured'),
                             'off_axis_rays_missing':_adaptive.get('off_axis_rays_missing'),
+                            'horizontal_ray_checks':_adaptive.get('horizontal_ray_checks',0),
+                            'horizontal_evaluated_nodes':_adaptive.get('horizontal_evaluated_nodes',0),
+                            'horizontal_conflict_count':_adaptive.get('horizontal_conflict_count',0),
+                            'horizontal_target_conflict_count':_adaptive.get('horizontal_target_conflict_count',0),
+                            'horizontal_fusion_enabled':_adaptive.get('horizontal_fusion_enabled',False),
+                            'horizontal_conflict_unresolved_minutes':_adaptive.get('horizontal_conflict_unresolved_minutes',[]),
+                            'horizontal_conflict_examples':_adaptive.get('horizontal_conflict_examples',[]),
                             'note':_adaptive.get('note')}
 
                         _profile_end = max((float(p.get('distance_km', 0)) for p in profiles), default=0.0)

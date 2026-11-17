@@ -142,8 +142,9 @@ class WebForecastEngine(engine.FireCloudApp):
             local_ground_elevation_m=local_ground_elevation_m)
         if not self.spatial_experiment:
             return fallback()
+        from burning_sky.spatial_ray_fusion import bind_horizontal_profiles
         try:
-            from burning_sky.spatial_om import fetch_pressure_profiles, SpatialUnavailable
+            from burning_sky.spatial_om import fetch_pressure_profiles
             from burning_sky.cloud_vertical import analyze_vertical_layers
             result = fetch_pressure_profiles(
                 coords, distances, sunset_utc, model_id,
@@ -151,19 +152,25 @@ class WebForecastEngine(engine.FireCloudApp):
                 analyze_vertical_layers=analyze_vertical_layers,
                 local_ground_elevation_m=local_ground_elevation_m)
             info = result.get('spatial_source') or {}
+            # Full OM pressure success may still benefit from independent
+            # horizontal cloud layers; failure must not lose good pressure data.
+            horizontal_status = 'not_available'
+            try:
+                from burning_sky.spatial_om import fetch_horizontal_clouds
+                horizontal = fetch_horizontal_clouds(coords,distances,sunset_utc,model_id)
+                attached = bind_horizontal_profiles(result['samples'],horizontal)
+                horizontal_status = ('attached_' + str(attached['attached']) if attached['attached']
+                                     else 'rejected_' + str(attached.get('reason')))
+            except Exception as h_exc:
+                horizontal_status = type(h_exc).__name__ + ': ' + str(h_exc)[:120]
             self.spatial_fetch_log.append({
                 'status':'spatial_used', 'distance_count':len(coords),
                 'model':model_id, 'run':info.get('reference_time'),
                 'valid':info.get('valid_time'), 'levels':info.get('pressure_levels'),
-                'cells':info.get('cells_read'),
+                'cells':info.get('cells_read'), 'horizontal_fusion':horizontal_status,
                 'gfs_resolution_caution':info.get('experimental_gfs_domain_mismatch',False)})
             return result
         except Exception as pressure_exc:
-            # ECMWF IFS .om normally has horizontal cloud layers, while
-            # pressure-level cloud cover is derived from relative humidity by
-            # the API.  Do not discard genuine horizontal evidence just because
-            # the spatial manifest has no *native* pressure-level cloud cover.
-            # This path uses the original point API for VERTICAL strict rays.
             try:
                 from burning_sky.spatial_om import fetch_horizontal_clouds
                 horizontal = fetch_horizontal_clouds(
@@ -175,21 +182,23 @@ class WebForecastEngine(engine.FireCloudApp):
                     'reason': f'{type(pressure_exc).__name__}: {str(pressure_exc)[:190]}',
                     'horizontal_reason': f'{type(horizontal_exc).__name__}: {str(horizontal_exc)[:190]}'})
                 return fallback()
-            # Missing vertical evidence is never synthesized from the 2-D
-            # layer field. Preserve the existing authoritative API profile.
+            # Preserve API vertical physics. The OM horizontal field is an
+            # independent conflict/uncertainty SCREEN, never a fabricated layer.
             pressure = fallback()
-            pressure['spatial_horizontal'] = horizontal
+            bind = bind_horizontal_profiles(pressure['samples'], horizontal)
             summary = horizontal.get('spatial_source') or {}
+            status = ('spatial_horizontal_used_vertical_api' if bind.get('attached')
+                      else 'point_api_fallback')
             self.spatial_fetch_log.append({
-                'status': 'spatial_horizontal_used_vertical_api',
-                'distance_count': len(coords), 'model': model_id,
-                'run': summary.get('reference_time'),
-                'valid': summary.get('valid_time'),
-                'cells': summary.get('cells_read'),
-                'horizontal_fields': summary.get('fields'),
-                'pressure_source': 'point_api',
+                'status': status, 'distance_count': len(coords), 'model': model_id,
+                'run': summary.get('reference_time'), 'valid': summary.get('valid_time'),
+                'cells': summary.get('cells_read'), 'horizontal_fields': summary.get('fields'),
+                'horizontal_bound_points': bind.get('attached',0),
+                'horizontal_bind_rejection': bind.get('reason'),
+                'pressure_source':'point_api',
                 'full_pressure_reason': f'{type(pressure_exc).__name__}: {str(pressure_exc)[:140]}',
-                'warning': '二维云场仅供空间对照；严格光路继续使用坐标API气压层'})
+                'warning': ('二维云场对严格光路执行冲突复核，不替代云底云顶；'
+                            'EC空间场与坐标API起报时次一致性尚未证实')})
             return pressure
     def after(self, delay_ms, callback=None, *args):
         """Tk compatibility: Streamlit renders results after computation, not via Tk callbacks."""
@@ -1103,11 +1112,27 @@ if run:
             if _hybrid:
                 st.caption(f'.om 原生气压层采用 {_ok}/{_all} 批；'
                            f'二维低中高云场已读取 {_hybrid}/{_all} 批，垂直气压层仍用原坐标 API。'
-                           '二维云量目前只用于空间数据核验，不参与严格光路判定；缺测不视为晴空。')
+                           '二维云量与气压层绑定后参与逐分钟光路冲突复核；若云区冲突则判未验证，不能据此认定遮挡或通光。')
             else:
                 st.caption(f'.om 空间气压层已采用 {_ok}/{_all} 批；'
                            '其余批次回退原坐标 API。缺测不视为晴空。')
             st.json(runner.spatial_fetch_log)
+            for _direction, _record in (runner.direction_results or {}).items():
+                _gate = ((_record.get('inferred') or {})
+                         .get('strict_primary_path_diagnostic') or {})
+                if not _gate:
+                    continue
+                _dir_name = '朝霞' if _direction == 'morning' else '晚霞'
+                st.caption(
+                    f"{_dir_name}：二维网格光路复核 {_gate.get('horizontal_ray_checks',0)} 条候选光路 / "
+                    f"{_gate.get('horizontal_evaluated_nodes',0)} 次网格节点检查；"
+                    f"水平/垂直证据冲突 {_gate.get('horizontal_conflict_count',0)} 次，"
+                    f"目标云存在性冲突 {_gate.get('horizontal_target_conflict_count',0)} 次。"
+                    + ("（人工云图修正期间停用 OM 冲突复核）" if
+                       not _gate.get('horizontal_fusion_enabled',True) else ""))
+                if _gate.get('horizontal_conflict_unresolved_minutes'):
+                    st.info(f"{_dir_name} 有部分分钟因二维/垂直云场冲突被标记为未验证，"
+                            "这不代表已经证实遮挡或完全晴空。")
     if engine.messagebox.last_error:
         st.error(f"{engine.messagebox.last_error[0]}：{engine.messagebox.last_error[1]}")
     elif not runner.direction_results:
