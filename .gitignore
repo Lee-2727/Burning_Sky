@@ -1,5 +1,0 @@
-__pycache__/
-*.py[cod]
-.streamlit/secrets.toml
-fire_cloud_cache/
-案例数据/
