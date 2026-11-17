@@ -303,8 +303,18 @@ if nav=='未来五日':
                if s.strip() and not s.lstrip().startswith('#')]
         city_list=list(dict.fromkeys([x for x in extra if x])) or city_list
     city=st.selectbox('地点',city_list,key='lite_overview_city') if len(city_list)>1 else city_list[0]
+    if st.button('刷新已发布数据', key='lite_overview_refresh'):
+        _published.clear()
+        st.rerun()
     with st.spinner('读取五日概览…'):
         overview=_published(city)
+    counts=overview.get('model_counts') or {}
+    st.caption(f"发布数据：{overview.get('source_name','未知')} · "
+               f"有效 {overview.get('valid_count',0)}/20 项 · "
+               f"EC {counts.get('ECMWF IFS 0.25°',0)}/10 · "
+               f"GFS {counts.get('GFS Global',0)}/10")
+    if overview.get('checkpoint_filled'):
+        st.info(f"已从当日检查点补齐 {overview['checkpoint_filled']} 项，未覆盖已发布结果。")
     if not overview['has_data']:
         st.info('当前尚无可显示的五日预报。')
     else:
@@ -326,6 +336,7 @@ if nav=='未来五日':
                             '色彩分':_display_metric('',record.get('color_score')),
                             '火烧云规模':_display_metric('',record.get('burn_scale'),'%')})
             st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True)
+            st.caption('说明：柱子上的 0 表示有效零值；— 表示没有已完成的数据。')
         if overview.get('updated_at'):
             st.caption('更新：'+str(overview['updated_at']))
 

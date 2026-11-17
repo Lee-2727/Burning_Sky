@@ -28,13 +28,24 @@ def render(days,direction,title):
         bars=[]
         for label,scale,prob,score in pair:
             if scale is None or prob is None or score is None:
-                bars.append('<div class="bs-lite-bar missing" title="暂无数据"></div>')
+                bars.append('<div class="bs-lite-bar missing" title="暂无数据">—</div>')
                 continue
             scale=max(0.,scale);prob=max(0.,min(100.,prob))
-            height=min(100.,scale/peak*100.)
             color=color_for_score(score)
             title_text=html.escape(f'{dt} {label} · 规模{scale:.1f}% · 概率{prob:.0f}% · 色彩分{score:.0f}',quote=True)
-            bars.append(f'<div class="bs-lite-bar" title="{title_text}" style="height:{height:.3f}%;background:{color};opacity:{prob/100:.3f};border-color:{color}"></div>')
+            if scale == 0:
+                # A completed zero forecast is not missing. Render a visible
+                # baseline marker; a zero-height bar cannot be perceived.
+                bars.append(f'<div class="bs-lite-bar zero" title="{title_text}">0</div>')
+            else:
+                height=min(100.,scale/peak*100.)
+                # Preserve opacity=probability for the FILL, not the bar itself:
+                # at 0% probability the independent outline must still show
+                # that a completed nonzero scale prediction exists.
+                bars.append(f'<div class="bs-lite-bar has-data" title="{title_text}" '
+                            f'style="height:{height:.3f}%;border-color:{color}">'
+                            f'<div class="bs-lite-bar-fill" style="background:{color};'
+                            f'opacity:{prob/100:.3f}"></div></div>')
         columns.append('<div class="bs-lite-day"><div class="bs-lite-pair">'+''.join(bars)+
                        '</div><div class="bs-lite-daylabel">'+html.escape(dt)+'</div></div>')
     return f'''<div class="bs-lite-card"><div class="bs-lite-card-title">{html.escape(title)}</div>
@@ -55,9 +66,13 @@ box-shadow:0 14px 34px rgba(8,10,20,.22);backdrop-filter:blur(22px) saturate(150
 .bs-lite-days{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));height:100%;gap:4px}
 .bs-lite-day{height:100%;display:flex;flex-direction:column;align-items:center;min-width:0}
 .bs-lite-pair{height:calc(100% - 25px);display:flex;align-items:flex-end;justify-content:center;gap:5px;width:100%;border-bottom:1px solid rgba(255,255,255,.10);padding:0 6px;box-sizing:border-box}
-.bs-lite-bar{width:min(28px,37%);max-height:100%;min-height:0;border:1px solid;border-radius:6px 6px 2px 2px;box-sizing:border-box;transition:height .2s ease}
+.bs-lite-bar{width:min(28px,37%);max-height:100%;min-height:0;border:1px solid;border-radius:6px 6px 2px 2px;box-sizing:border-box;transition:height .2s ease;position:relative;overflow:hidden}
+.bs-lite-bar-fill{position:absolute;inset:0;border-radius:5px 5px 1px 1px}
+.bs-lite-bar.zero{height:19px;width:23px;border:1px solid rgba(244,246,251,.42);border-radius:7px;display:flex;align-items:center;justify-content:center;color:#F4F6FB;font-size:10px;opacity:.82;background:rgba(255,255,255,.06)}
 .bs-lite-bar.missing{height:11px;border:1px dashed rgba(244,246,251,.32);background:transparent;opacity:1;border-radius:3px}
 .bs-lite-daylabel{height:25px;line-height:25px;color:rgba(244,246,251,.72);font-size:12px;white-space:nowrap}
 .bs-lite-legend{text-align:center;color:rgba(244,246,251,.46);font-size:11px;margin-top:16px;letter-spacing:.02em}
 @media(max-width:520px){.bs-lite-card{padding:16px 12px 14px;border-radius:18px}.bs-lite-pair{gap:3px;padding:0 2px}.bs-lite-bar{width:min(22px,40%)}.bs-lite-ticks{width:34px;font-size:10px}.bs-lite-daylabel{font-size:10px}}
 </style>'''
+
+CSS += "\n.bs-lite-bar.missing{height:19px;width:23px;font-size:12px;display:flex;align-items:center;justify-content:center;color:rgba(244,246,251,.5);background:transparent;opacity:1}\n"
