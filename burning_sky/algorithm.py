@@ -1751,19 +1751,17 @@ def calculate_color_performance_score(inferred):
                         min(4.0, max(0, gap_count - 1) * 2.0) + min(2.0, gap_fraction * 4.0))
         score += gap_bonus
         reasons.append(f"极限云距内识别到 {gap_count} 个有效云洞，最大约 {largest_gap:.0f} km；多个云洞共同增加远近云层显色潜力（加分 {gap_bonus:.0f}）。")
-    if isinstance(aod, (int, float)):
-        if aod <= 0.12:
-            score += 4
-        elif aod <= 0.25:
-            score += 1
-        elif aod >= 0.50:
-            score -= 14
-            reasons.append("AOD较高，远距离光线消光风险较大")
-        elif aod >= 0.35:
-            score -= 7
-            reasons.append("AOD偏高，远距离色彩可能减弱")
+    # Use the SAME continuous AOD response as the rendered cloud colors.
+    # The old -14 at AOD >= 0.50 could still produce score 62, even though
+    # aod_color_quality_factor(0.50)==0.30 strongly desaturates the swatch.
+    # A small floor represents residual visible warmth; this is a heuristic,
+    # not a calibrated radiative-transfer inversion.
+    if isinstance(aod, (int,float)) and math.isfinite(float(aod)):
+        optical_quality = aod_color_quality_factor(aod)
+        score *= 0.15 + 0.85 * optical_quality
+        reasons.append(f"AOD {aod:.3f}；与云色灰化一致的光学质量系数 {optical_quality:.2f}，已连续衰减色彩分")
     else:
-        reasons.append("AOD缺测，未能充分评估大气消光")
+        reasons.append("AOD缺测，色彩评分没有大气消光可信度；请结合数据缺测提示")
 
     # 与发生评分分离，但把低云屏障对色彩的直接影响带入色彩评分。
     factor = inferred.get("low_cloud_color_factor", 1.0)

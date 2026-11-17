@@ -244,9 +244,88 @@ def _solar_corridor_coverage(event_azimuth, origin_lat, origin_lon,
             'sample_axis_azimuth_deg':round(event_azimuth,5)}
 
 
+def plan_off_axis_rays(profiles, event_dt, utc_offset, lat, lon, direction,
+                       reach_km, target_limit_km, source_scan_km=700.0,
+                       existing_radius_km=9.0, dedupe_radius_km=9.0, step_km=50.0):
+    """Plan pressure-level measurements along the *actual* minute solar bearings.
+
+    A solar beam can leave the fixed sunrise bearing by >15 km near 700 km.
+    Never use the old one-dimensional section as evidence at such a location.
+    Returns a coordinate catalogue and per-minute/per-target ray node references.
+    The caller must fetch every new coordinate; a failed fetch stays unresolved.
+    """
+    from .spherical_raytrace import destination, profile_cloud_cells
+    base = [p for p in profiles if p.get('levels') and
+            isinstance(p.get('lat'), (int,float)) and isinstance(p.get('lon'), (int,float))]
+    eaz = solar_position(event_dt,utc_offset,lat,lon)[1]
+    limit = min(max(0.,float(reach_km or 0.)), max(0.,float(target_limit_km or 0.)))
+    valid = profile_cloud_cells(profiles, threshold=.000001,blur_horizontal_km=0.,blur_vertical_km=0.)
+    faces = sorted(set(round(min(float(c['end_km']),limit), 5) for c in valid
+                       if float(c['start_km']) < limit-1e-8 and float(c['top_km'])>1.5
+                       and float(c['end_km'])<source_scan_km-15.))
+    new_coords=[]; rays={}
+    base_positions=[(float(p['lat']),float(p['lon'])) for p in base]
+    mins=range(-30,1) if direction=='morning' else range(0,31)
+    for minute in mins:
+        dt=event_dt+timedelta(minutes=minute)
+        for face in faces:
+            plat,plon=destination(lat,lon,eaz,face)
+            _alt,saz=solar_position(dt,utc_offset,plat,plon)
+            cover=_solar_corridor_coverage(eaz,lat,lon,face,saz,source_scan_km)
+            if cover['covered']: continue
+            span=source_scan_km-face
+            count=max(2,math.ceil(span/max(5.,step_km)))
+            step=span/count
+            ray=[]
+            for i in range(count):
+                u=step*(i+.5)
+                pt=destination(plat,plon,saz,u)
+                nearest=None; nearest_d=float('inf')
+                for j,p in enumerate(base_positions):
+                    d=_great_circle_km(pt[0],pt[1],p[0],p[1])
+                    if d<nearest_d:nearest=j;nearest_d=d
+                if nearest_d<=existing_radius_km:
+                    ray.append({'distance_km':face+u,'source':'base','index':nearest,
+                                'offset_km':round(nearest_d,2)})
+                    continue
+                nearest=None;nearest_d=float('inf')
+                for j,p in enumerate(new_coords):
+                    d=_great_circle_km(pt[0],pt[1],p[0],p[1])
+                    if d<nearest_d:nearest=j;nearest_d=d
+                if nearest_d>dedupe_radius_km:
+                    nearest=len(new_coords);new_coords.append(pt);nearest_d=0.
+                ray.append({'distance_km':face+u,'source':'extra','index':nearest,
+                            'offset_km':round(nearest_d,2)})
+            rays[(minute,face)]=ray
+    return {'coordinates':new_coords,'rays':rays,'base_profiles':base,
+            'faces':faces,'step_km':step_km,'source_scan_km':source_scan_km}
+
+
+def materialize_off_axis_rays(plan, extra_profiles):
+    """Convert plan node indices into distance-aligned 1-D beam sections."""
+    out={}
+    base=plan['base_profiles']
+    for key,nodes in plan['rays'].items():
+        rows=[]
+        for node in nodes:
+            source=base if node['source']=='base' else extra_profiles
+            prof=(source[node['index']] if node['index']<len(source) else None)
+            if not prof or not prof.get('levels') or not any(
+                isinstance(lv.get('cloud_cover'),(int,float)) and
+                isinstance(lv.get('height_agl_km'),(int,float)) for lv in prof['levels']):
+                rows=[];break
+            row=dict(prof)
+            row['distance_km']=node['distance_km']
+            row['source_position_offset_km']=node['offset_km']
+            rows.append(row)
+        out[key]=rows
+    return out
+
+
 def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction,
                              reach_km, min_width_km=15.0, extension_factor=1.3,
-                             target_limit_km=None, source_scan_km=None):
+                             target_limit_km=None, source_scan_km=None,
+                             off_axis_ray_profiles=None):
     """Strict *sampled-corridor* spherical validation for illuminated cloud faces.
 
     The local cloud-target reach and the upstream solar-source verification
@@ -309,6 +388,7 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
     event_az = solar_position(event_dt,utc_offset,lat,lon)[1]
     uncovered_minutes=set(); coverage_debug=[]
     source_boundary_unresolved_minutes=set()
+    off_axis_used=set(); off_axis_missing=set()
     # Conservative atmospheric clearance condition beyond the last sampled point.
     # This is NOT a fixed sky-clear gap; it only certifies that the ray is above
     # the cloud-bearing model atmosphere and rising when sampling stops.
@@ -325,16 +405,34 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
             alt,solar_az=solar_position(dt,utc_offset,plat,plon)
             coverage=_solar_corridor_coverage(event_az,lat,lon,face,solar_az,required)
             if not coverage['covered']:
-                minute_uncovered=True
-                if len(coverage_debug)<30:
-                    coverage_debug.append({'minute_offset':minute,'target_face_km':round(face,3),
-                                           'solar_azimuth_deg':round(solar_az,5),**coverage})
-                # Do not test source cloud cells at locations never sampled.
-                continue
-            # Full cloud-cell intersection and Earth occlusion are computed on
-            # the same true spherical ray, through the entire required corridor.
-            upstream=[c for c in cells if
-                      float(c['end_km'])>face+1e-7 and float(c['start_km'])<required]
+                ray_key=(minute,round(face,5))
+                ray=(off_axis_ray_profiles or {}).get(ray_key)
+                # The beam was sampled at real minute-dependent locations.
+                # For 50-km midpoint nodes, the first/last cell boundaries
+                # must also cover the target face and the full source horizon.
+                if ray and len(ray)>=2:
+                    ds=[float(p['distance_km']) for p in ray]
+                    first=ds[0]-(ds[1]-ds[0])/2
+                    last=ds[-1]+(ds[-1]-ds[-2])/2
+                    complete=(first<=face+1e-5 and last>=required-1e-5
+                              and all(b-a<=55. for a,b in zip(ds,ds[1:])))
+                else: complete=False
+                if complete:
+                    upstream=profile_cloud_cells(ray,threshold=25.,
+                        blur_horizontal_km=0.,blur_vertical_km=0.)
+                    off_axis_used.add(ray_key)
+                else:
+                    minute_uncovered=True
+                    off_axis_missing.add(ray_key)
+                    if len(coverage_debug)<30:
+                        coverage_debug.append({'minute_offset':minute,'target_face_km':round(face,3),
+                                               'solar_azimuth_deg':round(solar_az,5),**coverage})
+                    continue
+            else:
+                upstream=[c for c in cells if
+                          float(c['end_km'])>face+1e-7 and float(c['start_km'])<required]
+            # Intersections are tested at real positions along this solar ray,
+            # not at fixed sunrise-axis positions if the ray diverges.
             bands=analyze_target_face(target,upstream,alt,
                                       max_distance_km=required).get('possible_face_height_bands_km',[])
             evaluations+=1
@@ -366,8 +464,8 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                            'target_face_km':round(face,3), 'target_height_km':round(h,6),
                            'solar_altitude_deg':round(alt,7),
                            'solar_azimuth_deg':round(solar_az,7),
-                           'profile_max_lateral_offset_km':coverage['max_offset_km'],
-                           'profile_corridor_radius_km':coverage['corridor_radius_km'],
+                           'profile_max_lateral_offset_km':(max((p.get('source_position_offset_km',0.) for p in ray),default=0.) if not coverage['covered'] else coverage['max_offset_km']),
+                           'profile_corridor_radius_km':(9.0 if not coverage['covered'] else coverage['corridor_radius_km']),
                            'source_check_km':round(required,2),
                            'clear_face_band_km':[round(low,6),round(high,6)],
                            'status':'verified_full_upstream_to_cloud_top_clearance',
@@ -400,6 +498,8 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
             'verified_target_bands':verified_target_bands,
             'spatially_unverified_minutes':sorted(uncovered_minutes),
             'source_boundary_unresolved_minutes':sorted(source_boundary_unresolved_minutes),
+            'off_axis_rays_measured':len(off_axis_used),
+            'off_axis_rays_missing':len(off_axis_missing),
             'cloud_top_clearance_km':round(cloud_top_ceiling_km,3),
             'spatial_coverage_diagnostics':coverage_debug,
             'corridor_radius_km':15.0,
