@@ -122,7 +122,7 @@ def _finite(x):
         return None
 
 
-def _fetch_grid(root, points, cloud_variables, all_names):
+def _fetch_grid(root, points, cloud_variables, all_names, *, include_raster=False):
     """One rectangle slice per pressure variable, not global-array downloads."""
     import numpy as np
     ys, xs = zip(*points)
@@ -132,6 +132,7 @@ def _fetch_grid(root, points, cloud_variables, all_names):
     if cells > MAX_CROP_CELLS:
         raise SpatialUnavailable(f'网格切片范围 {cells} 单元过大，拒绝自动批量下载')
     extracted = {}
+    rasters = {}
     for key in cloud_variables:
         if key not in all_names:
             continue
@@ -143,8 +144,12 @@ def _fetch_grid(root, points, cloud_variables, all_names):
             if arr.shape != (yb-ya, xb-xa):
                 continue
             extracted[key] = [_finite(arr[y-ya,x-xa]) for y,x in points]
+            if include_raster:
+                rasters[key] = [[_finite(v) for v in row] for row in arr]
         except (AttributeError, KeyError, ValueError):
             continue
+    if include_raster:
+        return extracted, cells, rasters, (ya, yb, xa, xb)
     return extracted, cells
 
 
@@ -169,78 +174,326 @@ def _terrain_elevations(coords):
     return out
 
 
-def fetch_horizontal_clouds(coords, distances, event_utc, model_id, *,
-                            metadata=None, reader_factory=None, mesh_factory=None):
-    """Read *horizontal* OM low/mid/high cloud percentages (no vertical claim).
+def _gfs_cloud_level_groups(names):
+    """Pressure class proxy for GFS025, *not* native low/mid/high layers.
 
-    This is a separate evidence product, not a replacement for pressure-profile
-    cloud_cover or a strictly-verified 3-D sun ray. Unknown/invalid pixels cause
-    a batch fallback, never a conversion to clear sky.
+    GFS025 spatial files have pressure-level variables but are not guaranteed
+    to publish the three surface cloud layer products.  A level is never
+    considered clear simply because its native cloud_cover field is missing.
+    The proxy is deliberately labeled as pressure-layer maximum, not satellite
+    cloud or exact altitude based cloud cover.
     """
-    if not coords or len(coords) != len(distances) or len(coords) > MAX_COORDINATES:
-        raise SpatialUnavailable('二维空间云场采样点数无效或超出上限')
-    info = resolve_valid_file(model_id, event_utc, metadata)
-    required = ('cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high')
-    names = info['variables']
-    missing = [v for v in required if v not in names]
-    if missing:
-        raise SpatialUnavailable('空间清单缺少二维低中高云量: ' + ', '.join(missing))
+    import re
+    levels = sorted({int(m.group(1)) for name in names
+                     if (m := re.fullmatch(r'cloud_cover_(\d+)hPa', str(name)))},reverse=True)
+    groups = {
+        'cloud_cover_low': [p for p in levels if p >= 700],
+        'cloud_cover_mid': [p for p in levels if 400 <= p < 700],
+        'cloud_cover_high': [p for p in levels if 100 <= p < 400],
+    }
+    # Avoid 'clear sky' derived from a single sparse level.
+    if any(len(ps) < 2 for ps in groups.values()):
+        raise SpatialUnavailable('GFS025 OM 气压层云量不够完整：各低/中/高压强区间至少需 2 层；清单所含云量气压层：'+str(levels))
+    # Bounded cost: use 4-5 levels per band, maintaining vertical coverage.
+    chosen = {}
+    for key, ps in groups.items():
+        if len(ps) <= 5: chosen[key] = ps
+        else:
+            ix = sorted({round(i*(len(ps)-1)/4) for i in range(5)})
+            chosen[key] = [ps[i] for i in ix]
+    return chosen
 
-    if reader_factory is None:
-        try:
-            import fsspec
-            from omfiles import OmFileReader
-        except ImportError as exc:
-            raise SpatialUnavailable('缺少 omfiles / fsspec 空间读取依赖') from exc
-        cache_dir = Path(tempfile.gettempdir()) / 'burning_sky_om_cache'
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        source = fsspec.open('blockcache::' + info['url'], mode='rb',
-                            blockcache={'cache_storage': str(cache_dir)},
-                            https={'block_size': 65536})
-        reader_factory = lambda: OmFileReader(source)
+
+def _cloud_spec(info):
+    """Determine field contract from the actual OM manifest, never assumptions."""
+    names = set(info['variables'])
+    native=('cloud_cover_low','cloud_cover_mid','cloud_cover_high')
+    if all(k in names for k in native):
+        return {'mode':'native_layers', 'fields':list(native),'groups':{k:[k] for k in native},
+                'evidence':'2D_low_mid_high_model_cover_only'}
+    if info['model_domain']=='ncep_gfs025':
+        groups=_gfs_cloud_level_groups(names)
+        fields=sorted({f'cloud_cover_{p}hPa' for ps in groups.values() for p in ps})
+        return {'mode':'pressure_layer_proxy','fields':fields,
+                'groups':{k:[f'cloud_cover_{p}hPa' for p in ps] for k,ps in groups.items()},
+                'evidence':'GFS_pressure_level_max_cloud_proxy_not_native_layer'}
+    missing=[k for k in native if k not in names]
+    raise SpatialUnavailable('空间清单缺少二维低中高云量: '+', '.join(missing))
+
+
+# Only GFS pressure-level cloud values *slightly* above the physical ceiling
+# are interpreted as saturated 100% cloud. This never converts unknown or
+# negative values to clear sky. Severe overflow remains unknown/NaN.
+GFS_CLOUD_OVERFLOW_TOLERANCE_PCT = 1.0
+
+
+def _normalize_gfs_cloud_overflow(values):
+    """Round 100..101% GFS pressure cloud to 100%; preserve other anomalies."""
+    import numpy as np
+    arr = np.asarray(values, dtype=float)
+    small_high = (np.isfinite(arr) & (arr > 100.0) &
+                  (arr <= 100.0 + GFS_CLOUD_OVERFLOW_TOLERANCE_PCT))
+    return np.where(small_high, 100.0, arr)
+
+
+def _invalid_cloud_mask(values):
+    """A missing or out-of-range OM cloud value is unknown, never clear sky.
+
+    Negative fill values, percent overflow, NaN and infinities all remain
+    invalid. We intentionally do NOT clip these values into 0..100.
+    """
+    import numpy as np
+    arr=np.asarray(values,dtype=float)
+    return (~np.isfinite(arr)) | (arr < 0.0) | (arr > 100.0)
+
+
+def _cloud_data_quality(arrays, spec):
+    """Diagnostic counts for the ACTUALLY READ rectangle (not whole globe)."""
+    import numpy as np
+    out={}
+    for name in spec['fields']:
+        if name not in arrays:
+            continue
+        arr=np.asarray(arrays[name],dtype=float)
+        gfs_approx = spec['mode'] == 'pressure_layer_proxy'
+        near_cap = (np.isfinite(arr) & (arr > 100) &
+                    (arr <= 100 + GFS_CLOUD_OVERFLOW_TOLERANCE_PCT)) if gfs_approx else np.zeros(arr.shape, dtype=bool)
+        checked = _normalize_gfs_cloud_overflow(arr) if gfs_approx else arr
+        bad=_invalid_cloud_mask(checked)
+        if np.any(bad) or np.any(near_cap):
+            finite=arr[np.isfinite(arr)]
+            out[name]={
+                'invalid_cells':int(np.count_nonzero(bad)),
+                'normalized_near_100_cells':int(np.count_nonzero(near_cap)),
+                'normalization_rule':'GFS pressure cloud (100%, 101%] -> 100% only' if gfs_approx else 'none',
+                'total_cells':int(arr.size),
+                'finite_min':float(np.min(finite)) if finite.size else None,
+                'finite_max':float(np.max(finite)) if finite.size else None,
+            }
+    return out
+
+
+def _bad_cloud_sample_fields(arrays, spec, row, col):
+    """Report the ACTUAL invalid source field/value at a queried grid cell."""
+    import numpy as np
+    issues=[]
+    for name in spec['fields']:
+        raw=np.asarray(arrays[name],dtype=float)[row,col]
+        if not np.isfinite(raw) or raw < 0 or raw > 100:
+            issues.append(f'{name}={float(raw):.6g}')
+    return issues
+
+
+def _combine_cloud_arrays(arrays, spec, *, required_points=None):
+    import numpy as np
+    out={}
+    for layer,fields in spec['groups'].items():
+        layers=[]
+        for name in fields:
+            if name not in arrays:
+                raise SpatialUnavailable('OM 实际数组缺失：'+name+'（不把缺测当晴空）')
+            x=np.asarray(arrays[name],dtype=float)
+            if spec['mode']=='pressure_layer_proxy':
+                x=_normalize_gfs_cloud_overflow(x)
+            bad=_invalid_cloud_mask(x)
+            # For derived GFS bands a single bad cell must not invalidate all
+            # OTHER cells in a 25km-grid rectangle. Unknown pixels are NaN.
+            # Native EC behavior is deliberately kept unchanged in this patch.
+            if spec['mode']!='pressure_layer_proxy' and np.any(np.isfinite(x)&((x<0)|(x>100))):
+                raise SpatialUnavailable('OM 云量超出 0–100%：'+name)
+            layers.append(np.where(bad,np.nan,x))
+        if not layers: raise SpatialUnavailable('OM 分层数据为空：'+layer)
+        stack=np.stack(layers,axis=0)
+        # Only infer a layer where ALL selected pressure levels are valid.
+        # Missing any level means we cannot safely bound the maximum cloud.
+        valid=np.all(np.isfinite(stack),axis=0)
+        with np.errstate(invalid='ignore'):
+            layer_data=np.max(np.where(np.isfinite(stack),stack,-1),axis=0)
+        layer_data=np.where(valid,layer_data,np.nan)
+        out[layer]=layer_data
+    return out
+
+
+def _om_reader(info, reader_factory=None):
+    if reader_factory is not None:return reader_factory()
+    try:
+        import fsspec
+        from omfiles import OmFileReader
+    except ImportError as exc:
+        raise SpatialUnavailable('缺少 omfiles / fsspec 空间读取依赖') from exc
+    cache_dir=Path(tempfile.gettempdir())/'burning_sky_om_cache'
+    cache_dir.mkdir(parents=True,exist_ok=True)
+    source=fsspec.open('blockcache::'+info['url'],mode='rb',
+                       blockcache={'cache_storage':str(cache_dir)},https={'block_size':65536})
+    return OmFileReader(source)
+
+
+def _om_mesh(crs, shape, mesh_factory=None):
     if mesh_factory is None:
         try:
             from omfiles.grids import OmGrid
         except ImportError as exc:
             raise SpatialUnavailable('缺少 omfiles grids 扩展') from exc
-        mesh_factory = lambda wkt, shape: OmGrid(wkt, shape).get_meshgrid()
+        mesh_factory=lambda wkt,shape: OmGrid(wkt,shape).get_meshgrid()
+    return mesh_factory(crs,shape)
+
+
+def _om_cloud_rectangle(root, info, spec, bounds, mesh_factory=None):
+    import numpy as np
+    representative=root.get_child_by_name(spec['fields'][0])
+    shape=representative.shape
+    if len(shape)!=2:raise SpatialUnavailable('空间云场不是二维数组')
+    crs=root.get_child_by_name('crs_wkt').read_scalar()
+    lon_grid,lat_grid=_om_mesh(crs,shape,mesh_factory)
+    ya,yb,xa,xb=bounds(lat_grid,lon_grid)
+    n=(yb-ya)*(xb-xa)
+    if n<=0:raise SpatialUnavailable('网格切片为空')
+    raw={}
+    for name in spec['fields']:
+        try:
+            child=root.get_child_by_name(name)
+            if not child.is_array:raise SpatialUnavailable('OM 非数组字段：'+name)
+            arr=np.asarray(child.read_array((slice(ya,yb),slice(xa,xb))),dtype=float)
+            if arr.shape!=(yb-ya,xb-xa):raise SpatialUnavailable('OM 网格形状错误：'+name)
+            raw[name]=arr
+        except SpatialUnavailable:raise
+        except Exception as exc:raise SpatialUnavailable(f'OM 读取 {name} 失败: {type(exc).__name__}: {str(exc)[:130]}') from exc
+    composite=_combine_cloud_arrays(raw,spec)
+    lat=np.asarray(lat_grid)[ya:yb,xa:xb]
+    lon=((np.asarray(lon_grid)[ya:yb,xa:xb]+180)%360)-180
+    return lat,lon,composite,n,(ya,yb,xa,xb)
+
+
+def _grid_payload(lat,lon,cloud,n,coverage):
+    import numpy as np
+    return {
+        'latitude':np.asarray(lat,dtype=float).tolist(),
+        'longitude':np.asarray(lon,dtype=float).tolist(),
+        'layers':{name:np.asarray(layer,dtype=float).tolist() for name,layer in cloud.items()},
+        'shape':[int(lat.shape[0]),int(lat.shape[1])],
+        'coverage':coverage,
+        'note':'Only actual cells read from OM. Missing pixels remain unknown; pressure-derived GFS bands are approximation.',
+    }
+
+
+def _cloud_source_info(info,spec,n,points):
+    return {
+        'domain':info['model_domain'],'reference_time':info['reference_time'],
+        'valid_time':info['valid_time'], 'url':info['url'],
+        'cells_read':n,'points':points,'fields':list(spec['fields']),
+        'layer_origin':spec['mode'], 'evidence':spec['evidence'],
+        'pressure_profile_source':'point_api_required',
+        'model_run_equality_with_api':'unverified',
+    }
+
+
+def fetch_horizontal_clouds(coords, distances, event_utc, model_id, *,
+                            metadata=None, reader_factory=None, mesh_factory=None):
+    """EC native 2D layers or *GFS025 pressure-level-derived* 2D layer proxy.
+
+    Both preserve the original API vertical profile.  Derived GFS layers are
+    a diagnostic 2.5-D approximation: max native cloud across pressure bands,
+    and must not be represented as measured native low/mid/high layers.
+    """
+    if not coords or len(coords)!=len(distances) or len(coords)>MAX_COORDINATES:
+        raise SpatialUnavailable('二维空间云场采样点数无效或超出上限')
+    info=resolve_valid_file(model_id,event_utc,metadata)
+    spec=_cloud_spec(info)
     try:
-        with reader_factory() as root:
-            if not root.is_group:
-                raise SpatialUnavailable('空间 OM 文件不是分层数据结构')
-            child = root.get_child_by_name(required[0])
-            shape = child.shape
-            if len(shape) != 2:
-                raise SpatialUnavailable('空间二维云量维度不正确')
-            crs = root.get_child_by_name('crs_wkt').read_scalar()
-            longitude_grid, latitude_grid = mesh_factory(crs, shape)
-            pixels = _pixel_indices(latitude_grid, longitude_grid, coords)
-            extracted, cells = _fetch_grid(root, pixels, required, names)
-    except SpatialUnavailable:
-        raise
+        with _om_reader(info,reader_factory) as root:
+            if not root.is_group:raise SpatialUnavailable('空间 OM 文件不是分层数据结构')
+            child=root.get_child_by_name(spec['fields'][0]);shape=child.shape
+            crs=root.get_child_by_name('crs_wkt').read_scalar()
+            lons,lats=_om_mesh(crs,shape,mesh_factory)
+            pixels=_pixel_indices(lats,lons,coords)
+            ys,xs=zip(*pixels)
+            bounds=(min(ys),max(ys)+1,min(xs),max(xs)+1)
+            n=(bounds[1]-bounds[0])*(bounds[3]-bounds[2])
+            if n>MAX_CROP_CELLS:
+                raise SpatialUnavailable('局部网格切片范围过大，拒绝下载：'+str(n))
+            ya,yb,xa,xb=bounds
+            raw={}
+            import numpy as np
+            for field in spec['fields']:
+                child=root.get_child_by_name(field)
+                arr=np.asarray(child.read_array((slice(ya,yb),slice(xa,xb))),dtype=float)
+                if arr.shape!=(yb-ya,xb-xa):raise SpatialUnavailable('云场矩形读取形状不符：'+field)
+                raw[field]=arr
+            cloud=_combine_cloud_arrays(raw,spec)
+            lat=np.asarray(lats)[ya:yb,xa:xb]
+            lon=((np.asarray(lons)[ya:yb,xa:xb]+180)%360)-180
+            rows=[]
+            for (plat,plon),(y,x),distance in zip(coords,pixels,distances):
+                row={'distance_km':distance,'lat':plat,'lon':plon}
+                for key,arr in cloud.items():
+                    v=_finite(arr[y-ya,x-xa])
+                    if v is None:
+                        fields=_bad_cloud_sample_fields(raw,spec,y-ya,x-xa)
+                        detail='；原始异常值：'+', '.join(fields[:6]) if fields else ''
+                        raise SpatialUnavailable(f'{distance} km 的 {key} 数据无效或缺测{detail}；不把缺测当晴空')
+                    row[key]=v
+                rows.append(row)
+            grid_view=_grid_payload(lat,lon,cloud,n,'sample_coordinate_bounding_rectangle_only')
+    except SpatialUnavailable:raise
     except Exception as exc:
         raise SpatialUnavailable(f'空间二维云场读取失败: {type(exc).__name__}: {str(exc)[:160]}') from exc
-    if any(key not in extracted for key in required):
-        raise SpatialUnavailable('空间二维云量数组未完整读取，不用缺测值假设晴空')
-    rows = []
-    for idx, ((lat, lon), distance) in enumerate(zip(coords, distances)):
-        row = {'distance_km': distance, 'lat': lat, 'lon': lon}
-        for key in required:
-            value = extracted[key][idx]
-            if value is None or not 0 <= value <= 100:
-                raise SpatialUnavailable(f'{distance} km 的 {key} 无效，不以 0% 补缺测')
-            row[key] = value
-        rows.append(row)
-    return {'samples': rows, 'spatial_source': {
-        'domain': info['model_domain'],
-        'reference_time': info['reference_time'],
-        'valid_time': info['valid_time'],
-        'cells_read': cells,
-        'points': len(rows),
-        'fields': list(required),
-        'evidence': '2D_low_mid_high_model_cover_only',
-        'pressure_profile_source': 'point_api_required',
-    }}
+    source=_cloud_source_info(info,spec,n,len(rows))
+    source['invalid_cells_in_read_rectangle']=_cloud_data_quality(raw,spec)
+    return {'samples':rows,'grid_view':grid_view,'spatial_source':source}
+
+
+# The nationwide rectangle is deliberately requested only by an explicit user
+# click; drawing an existing snapshot never opens a remote connection.
+CHINA_BOUNDS=(73.0,136.0,17.5,54.5) # west,east,south,north
+MAX_NATIONAL_CELLS=90000
+
+
+def fetch_national_clouds_from_source(spatial_source, *,reader_factory=None,mesh_factory=None,
+                                      bounds=CHINA_BOUNDS):
+    """Read one run/valid's China raster, not a fake enlargement of a line slice."""
+    import numpy as np
+    info=dict(spatial_source or {})
+    domain=info.get('domain')
+    if domain not in ALLOWED_MODELS.values():raise SpatialUnavailable('全国图数据源不是受支持的 OM 模型')
+    run=_as_utc(info.get('reference_time'))
+    valid=_as_utc(info.get('valid_time'))
+    url=f'{BASE}/{domain}/{run:%Y/%m/%d/%H%M}Z/{valid:%Y-%m-%dT%H%M}.om'
+    info={'model_domain':domain,'reference_time':run.isoformat(), 'valid_time':valid.isoformat(),
+          'url':url,'variables':set(info.get('available_variables') or info.get('fields') or [])}
+    # For GFS, saved fields are the 2–5 pressure variables chosen for each
+    # band; use precisely those same layer keys without a new manifest request.
+    spec=_cloud_spec(info)
+    try:
+        with _om_reader(info,reader_factory) as root:
+            if not root.is_group:raise SpatialUnavailable('全国 OM 文件不是数据组')
+            field=root.get_child_by_name(spec['fields'][0]);shape=field.shape
+            crs=root.get_child_by_name('crs_wkt').read_scalar()
+            lons,lats=_om_mesh(crs,shape,mesh_factory)
+            west,east,south,north=bounds
+            mask=(np.isfinite(lats)&np.isfinite(lons)&(lats>=south)&(lats<=north)&
+                  ((((lons+180)%360)-180)>=west)&((((lons+180)%360)-180)<=east))
+            if not np.any(mask):raise SpatialUnavailable('中国区域不在当前 OM 网格中')
+            ys,xs=np.where(mask)
+            ya,yb,xa,xb=int(ys.min()),int(ys.max()+1),int(xs.min()),int(xs.max()+1)
+            n=(yb-ya)*(xb-xa)
+            if n>MAX_NATIONAL_CELLS:raise SpatialUnavailable(f'全国网格 {n} 单元超过安全限制 {MAX_NATIONAL_CELLS}')
+            raw={}
+            for name in spec['fields']:
+                arr=np.asarray(root.get_child_by_name(name).read_array((slice(ya,yb),slice(xa,xb))),dtype=float)
+                if arr.shape!=(yb-ya,xb-xa):raise SpatialUnavailable('全国 OM 数据维度有误：'+name)
+                raw[name]=arr
+            cloud=_combine_cloud_arrays(raw,spec)
+            lat=np.asarray(lats)[ya:yb,xa:xb]
+            lon=((np.asarray(lons)[ya:yb,xa:xb]+180)%360)-180
+            valid_mask=mask[ya:yb,xa:xb]
+            cloud={k:np.where(valid_mask,v,np.nan) for k,v in cloud.items()}
+            grid_view=_grid_payload(lat,lon,cloud,n,'china_extent_actual_om_grid_only')
+    except SpatialUnavailable:raise
+    except Exception as exc:raise SpatialUnavailable(f'全国云场读取失败: {type(exc).__name__}: {str(exc)[:160]}') from exc
+    source=_cloud_source_info(info,spec,n,0)
+    source['coverage']='China extent';source['national_overlay']=True
+    source['invalid_cells_in_read_rectangle']=_cloud_data_quality(raw,spec)
+    return {'samples':[], 'grid_view':grid_view, 'spatial_source':source}
 
 
 def fetch_pressure_profiles(coords, distances, event_utc, model_id, *,

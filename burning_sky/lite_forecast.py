@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 import math
 import re
+from .spatial_pipeline import HybridSpatialMixin
 
 
 class _Value:
@@ -29,7 +30,7 @@ class _Label:
 
 
 def create_runner(engine, *, place, lat, lon, elevation, date, model_label):
-    class Runner(engine.FireCloudApp):
+    class Runner(HybridSpatialMixin, engine.FireCloudApp):
         def after(self, *_a, **_k):
             return None
         def _set_main_progress(self, *_a, **_k):
@@ -53,6 +54,8 @@ def create_runner(engine, *, place, lat, lon, elevation, date, model_label):
     }
     runner.vars = {k: _Value(v) for k, v in values.items()}
     runner.direction_results = {}
+    runner.spatial_enabled = True
+    runner.spatial_fetch_log = []
     runner.last_report = ''
     runner.last_fetch_time = None
     runner.aod_manual_override = False
@@ -94,6 +97,7 @@ def run_single(engine, *, place, lat, lon, elevation, day, model_label, directio
             raise RuntimeError('当前时段暂时未返回有效的预测结果')
         return {
             'result': record,
+            'spatial_source_log': runner.spatial_fetch_log,
             'cache': request_cache,
             'fetched_at': runner.last_fetch_time,
             'meta': {'place':place, 'lat':float(lat), 'lon':float(lon),

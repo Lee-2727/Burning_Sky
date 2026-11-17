@@ -4,3 +4,9 @@
 omfiles[fsspec,grids]>=1.2,<2
 fsspec>=2024.0
 aiohttp>=3.9
+
+# Desktop V2: local cached map / fused profile visualization; plotting is offline.
+matplotlib>=3.8,<4
+numpy>=1.26,<3
+# Desktop V4 cached-cloud sector / nationwide candidate evaluation
+scipy>=1.11,<2

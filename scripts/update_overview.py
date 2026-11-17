@@ -153,7 +153,9 @@ class _Widget:
         pass
 
 
-class _HeadlessForecast(engine.FireCloudApp):
+from burning_sky.spatial_pipeline import HybridSpatialMixin
+
+class _HeadlessForecast(HybridSpatialMixin, engine.FireCloudApp):
     """不创建 Tk 窗口，直接复用现有完整预测计算流程。"""
     def _set_main_progress(self, percent, status=None):
         pass
@@ -186,6 +188,8 @@ def _new_runner(city, day, model_label, lat=None, lon=None, elevation_m=None):
     }
     runner.vars = {k: _Value(v) for k, v in values.items()}
     runner.direction_results = {}
+    runner.spatial_enabled = True
+    runner.spatial_fetch_log = []
     runner.skip_rainbow_for_overview = True
     runner.last_report = ""
     runner.last_fetch_time = None
@@ -247,6 +251,8 @@ def _record(result):
         "local_high_cloud": local_high_cloud,
         "fire_score_no_color": fire_score,
         "burn_scale_label": inferred.get("burn_scale_label", "暂不可判定"),
+        "spatial_calibration_status": (inferred.get('spatial_calibration') or {}).get('status','not_available'),
+        "spatial_corrected_point_count": len((inferred.get('spatial_calibration') or {}).get('corrected_distances',[])),
         "event_time": ((result or {}).get("event_dt").isoformat()
                        if hasattr((result or {}).get("event_dt"), "isoformat") else None),
     }

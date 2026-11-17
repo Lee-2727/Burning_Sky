@@ -1718,6 +1718,12 @@ class FireCloudApp(tk.Tk):
                     profiles = [{"distance_km": d, "estimated_base_km": None,
                                  "status": f"剖面获取失败：{profile_exc}", "levels": []}
                                 for d in distances]
+                # Unified EC/GFS OM horizontal calibration is performed HERE,
+                # before the original geometry, inference, and scoring pipeline.
+                # No new OM-only probability/color multipliers are introduced.
+                from burning_sky.spatial_pipeline import calibrate_path_samples
+                _spatial_calibration = calibrate_path_samples(
+                    samples, profiles, manual=bool(_manual_overrides))
                 raw_profiles_before_reconstruction = copy.deepcopy(profiles)
                 _vertical_aod = {"status":"未启用", "factor":1.0}
                 if aod_source == "CAMS（垂直分布）":
@@ -1748,6 +1754,7 @@ class FireCloudApp(tk.Tk):
                 inferred = infer_from_cloud_path(samples, effective_aod,
                                                  local_low_cloud_above_ground=local_low_above_ground)
                 inferred["cloud_height_reconstruction"] = inferred_cloud_height_sources
+                inferred["spatial_calibration"] = _spatial_calibration
                 farthest = geometry["farthest"]
                 local_geometry = next((r for r in geometry.get("rows", []) if r.get("distance_km") == 0), None)
                 local_reach = local_geometry.get("reach_km") if local_geometry else None
@@ -2636,6 +2643,7 @@ class FireCloudApp(tk.Tk):
                                           "rainbow": rainbow_result, "dynamic_light_curve": dynamic_curve,
                                           "origin": (data["lat"], data["lon"]), "azimuth": azimuth, "event_dt": event_dt,
                                           "query_model_id": model_id, "query_model_label": model_label,
+                                          "model_metadata_signature": model_meta,
                                           "boundaries": boundaries,
                                           # 保存本次实际请求返回的原始天气响应，供案例复盘；不额外发起请求。
                                           "raw_weather": raw_locations}

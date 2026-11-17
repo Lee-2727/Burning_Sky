@@ -92,7 +92,9 @@ class _DummyLabel:
     def configure(self, **kwargs):
         pass
 
-class WebForecastEngine(engine.FireCloudApp):
+from burning_sky.spatial_pipeline import HybridSpatialMixin
+
+class WebForecastEngine(HybridSpatialMixin, engine.FireCloudApp):
     """Reuses v1.4.49 calculation and data-fetch methods without creating Tk."""
     def __init__(self, values):
         # Do not call the Tkinter constructor. The inherited forecast method only
@@ -127,79 +129,10 @@ class WebForecastEngine(engine.FireCloudApp):
         self.morning_aod_status_var = _Var("")
         self.evening_aod_status_var = _Var("")
         self.skip_rainbow_single_var = _BoolVar(not values.get("rainbow_enabled", False))
-        self.spatial_experiment = bool(values.get("spatial_experiment", False))
+        self.spatial_experiment = bool(values.get("spatial_experiment", True))
+        self.spatial_enabled = self.spatial_experiment
         self.spatial_fetch_log = []
         self._error = None
-    def _fetch_cloud_base_profiles(self, coords, distances, sunset_utc, model_id,
-                                   local_ground_elevation_m=None):
-        """Pro-only opt-in spatial pressure source, strict full-batch fallback.
-
-        Desktop code and background overview intentionally remain unchanged
-        until an actual OM run/time/pressure-field comparison is verified.
-        """
-        fallback = lambda: super(WebForecastEngine, self)._fetch_cloud_base_profiles(
-            coords, distances, sunset_utc, model_id,
-            local_ground_elevation_m=local_ground_elevation_m)
-        if not self.spatial_experiment:
-            return fallback()
-        from burning_sky.spatial_ray_fusion import bind_horizontal_profiles
-        try:
-            from burning_sky.spatial_om import fetch_pressure_profiles
-            from burning_sky.cloud_vertical import analyze_vertical_layers
-            result = fetch_pressure_profiles(
-                coords, distances, sunset_utc, model_id,
-                estimate_cloud_base=engine.estimate_cloud_base_from_profile,
-                analyze_vertical_layers=analyze_vertical_layers,
-                local_ground_elevation_m=local_ground_elevation_m)
-            info = result.get('spatial_source') or {}
-            # Full OM pressure success may still benefit from independent
-            # horizontal cloud layers; failure must not lose good pressure data.
-            horizontal_status = 'not_available'
-            try:
-                from burning_sky.spatial_om import fetch_horizontal_clouds
-                horizontal = fetch_horizontal_clouds(coords,distances,sunset_utc,model_id)
-                attached = bind_horizontal_profiles(result['samples'],horizontal)
-                horizontal_status = ('attached_' + str(attached['attached']) if attached['attached']
-                                     else 'rejected_' + str(attached.get('reason')))
-            except Exception as h_exc:
-                horizontal_status = type(h_exc).__name__ + ': ' + str(h_exc)[:120]
-            self.spatial_fetch_log.append({
-                'status':'spatial_used', 'distance_count':len(coords),
-                'model':model_id, 'run':info.get('reference_time'),
-                'valid':info.get('valid_time'), 'levels':info.get('pressure_levels'),
-                'cells':info.get('cells_read'), 'horizontal_fusion':horizontal_status,
-                'gfs_resolution_caution':info.get('experimental_gfs_domain_mismatch',False)})
-            return result
-        except Exception as pressure_exc:
-            try:
-                from burning_sky.spatial_om import fetch_horizontal_clouds
-                horizontal = fetch_horizontal_clouds(
-                    coords, distances, sunset_utc, model_id)
-            except Exception as horizontal_exc:
-                self.spatial_fetch_log.append({
-                    'status': 'point_api_fallback',
-                    'distance_count': len(coords), 'model': model_id,
-                    'reason': f'{type(pressure_exc).__name__}: {str(pressure_exc)[:190]}',
-                    'horizontal_reason': f'{type(horizontal_exc).__name__}: {str(horizontal_exc)[:190]}'})
-                return fallback()
-            # Preserve API vertical physics. The OM horizontal field is an
-            # independent conflict/uncertainty SCREEN, never a fabricated layer.
-            pressure = fallback()
-            bind = bind_horizontal_profiles(pressure['samples'], horizontal)
-            summary = horizontal.get('spatial_source') or {}
-            status = ('spatial_horizontal_used_vertical_api' if bind.get('attached')
-                      else 'point_api_fallback')
-            self.spatial_fetch_log.append({
-                'status': status, 'distance_count': len(coords), 'model': model_id,
-                'run': summary.get('reference_time'), 'valid': summary.get('valid_time'),
-                'cells': summary.get('cells_read'), 'horizontal_fields': summary.get('fields'),
-                'horizontal_bound_points': bind.get('attached',0),
-                'horizontal_bind_rejection': bind.get('reason'),
-                'pressure_source':'point_api',
-                'full_pressure_reason': f'{type(pressure_exc).__name__}: {str(pressure_exc)[:140]}',
-                'warning': ('二维云场对严格光路执行冲突复核，不替代云底云顶；'
-                            'EC空间场与坐标API起报时次一致性尚未证实')})
-            return pressure
     def after(self, delay_ms, callback=None, *args):
         """Tk compatibility: Streamlit renders results after computation, not via Tk callbacks."""
         return None
@@ -234,15 +167,23 @@ with st.sidebar:
     if st.button('🌅 单次预测 · 快速查询', use_container_width=True, key='nav_single_forecast'):
         st.session_state['show_multi_day_overview'] = False
         st.session_state['show_manual_overview'] = False
+        st.session_state['show_spatial_map'] = False
         st.rerun()
     if st.button("未来多日概览", use_container_width=True, key="open_multi_day_overview"):
         st.session_state["show_multi_day_overview"] = True
         st.session_state["show_manual_overview"] = False
+        st.session_state["show_spatial_map"] = False
         st.rerun()
     # 手动多日概览已从概览页独立出来，入口就放在“未来多日概览”按钮下方。
     if st.button("手动查询多日概览", use_container_width=True, key="open_manual_overview"):
         st.session_state["show_manual_overview"] = True
         st.session_state["show_multi_day_overview"] = False
+        st.session_state["show_spatial_map"] = False
+        st.rerun()
+    if st.button("🗺️ 全国朝霞晚霞云场地图", use_container_width=True, key="open_spatial_map"):
+        st.session_state["show_spatial_map"] = True
+        st.session_state["show_multi_day_overview"] = False
+        st.session_state["show_manual_overview"] = False
         st.rerun()
     st.markdown("### 快速查询")
     place_query = st.text_input("地点名称（输入前几个字联想）", "合肥", key="place_query")
@@ -311,11 +252,9 @@ with st.sidebar:
     st.caption('彩虹附加计算默认关闭；单独彩虹查询在下方折叠工具内。')
     with st.expander('🛰️ Open-Meteo 空间云场（实验入口）', expanded=False):
         spatial_experiment = st.checkbox(
-            '优先尝试 .om 空间气压层，失败自动回退坐标 API',
-            value=False, key='pro_spatial_experiment')
-        st.caption('仅作用于本次联网单次预测的气压层取样；不改变算法公式。'
-                   '需要额外安装 requirements-spatial.txt。'
-                   '尚未完成真实云端数据联调，默认关闭。')
+            'EC/GFS 使用 OM 水平云场校准（失败回退原 API）',
+            value=True, key='pro_spatial_experiment')
+        st.caption('使用二维云场校准现有云量和球面光路；评分公式不变。不同起报时次仍须核实；数据不足时回退。')
         if spatial_experiment and model_label not in ('ECMWF IFS 0.25°','GFS Global'):
             st.warning('该模型暂不支持空间气压层，使用原坐标 API。')
         if spatial_experiment and model_label == 'GFS Global':
@@ -537,6 +476,8 @@ if not run and st.session_state.get('rainbow_only_web_result') is not None:
 
 # 在“未来多日概览 / 手动查询多日概览”页面点击左侧任一查询按钮时，优先执行单次查询。
 # 清除概览页面状态，避免 st.stop() 截断查询流程，也避免下次 rerun 又跳回概览。
+if run and st.session_state.get("show_spatial_map"):
+    st.session_state["show_spatial_map"] = False
 if run and st.session_state.get("show_multi_day_overview"):
     st.session_state["show_multi_day_overview"] = False
 if run and st.session_state.get("show_manual_overview"):
@@ -582,6 +523,11 @@ def _published_overview_json(filename):
             pass
     return local, "部署本地文件（远端未取得）"
 
+
+if st.session_state.get("show_spatial_map") and not run:
+    from burning_sky.web_national_map import render_national_map_page
+    render_national_map_page(st)
+    st.stop()
 
 if st.session_state.get("show_multi_day_overview"):
     st.title("未来多日概览")
@@ -1051,7 +997,7 @@ if run:
         "elevation": f"{elevation:.0f}",
         "weather_model": model_label,
         "rainbow_enabled": bool(st.session_state.get("rainbow_with_fire", False)),
-        "spatial_experiment": bool(st.session_state.get("pro_spatial_experiment", False)) and not use_case_cache,
+        "spatial_experiment": bool(st.session_state.get("pro_spatial_experiment", True)) and not use_case_cache,
         "cloud_base_mode": cloud_base_mode,
         "aod_source": aod_source,
         "morning_cloud_base_km": f"{morning_cloud_base:.2f}",

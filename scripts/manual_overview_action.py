@@ -59,7 +59,8 @@ def main():
                         raise RuntimeError('预测结果不完整：概率、色彩分或火烧云规模缺失')
                     records.append({'date':day.isoformat(),'model':model,'direction':direction,
                                     'probability':inf.get('regular_score'), 'color_score':inf.get('color_score'),
-                                    'burn_scale':inf.get('burn_scale_index')})
+                                    'burn_scale':inf.get('burn_scale_index'),
+                                    'spatial_calibration_status':(inf.get('spatial_calibration') or {}).get('status','not_available')})
                 except Exception as exc:
                     reason=str(exc)
                     errors.append(f'{day} {model} {direction}: {reason}')
