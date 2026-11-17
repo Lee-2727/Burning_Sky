@@ -1,0 +1,117 @@
+{
+  "identity": {
+    "place": "合肥",
+    "lat": 31.8206,
+    "lon": 117.2272,
+    "elev": 30.0,
+    "date": "2026-11-18",
+    "models": [
+      "ECMWF IFS 0.25°",
+      "GFS Global"
+    ]
+  },
+  "obtained_at": "2026-11-17T14:46:30+08:00",
+  "records": [
+    {
+      "date": "2026-11-18",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 30,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-18",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 50,
+      "color_score": 31,
+      "burn_scale": 9.07
+    },
+    {
+      "date": "2026-11-18",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-18",
+      "model": "GFS Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 24,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-19",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 11,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-19",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 69,
+      "color_score": 57,
+      "burn_scale": 7.25
+    },
+    {
+      "date": "2026-11-19",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 15,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-19",
+      "model": "GFS Global",
+      "direction": "evening",
+      "probability": 66,
+      "color_score": 68,
+      "burn_scale": 26.26
+    },
+    {
+      "date": "2026-11-20",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 35,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-20",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 11,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-20",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 85,
+      "color_score": 69,
+      "burn_scale": 19.46
+    },
+    {
+      "date": "2026-11-20",
+      "model": "GFS Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 15,
+      "burn_scale": 0.0
+    }
+  ],
+  "errors": [],
+  "completed": 12,
+  "total": 12,
+  "state": "completed",
+  "request_id": "61d27a667c05728e5dbd17cf"
+}
