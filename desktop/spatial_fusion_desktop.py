@@ -765,7 +765,7 @@ class DesktopSpatialApp(SpatialDesktopMixin, FireCloudApp):
                 data,float(origin[0]),float(origin[1]),event,direction,
                 verified_rays=(row.get('inferred') or {}).get('verified_primary_ray_traces') or [])
             fig=render_compass_figure(result)
-            self._open_figure_window('八方位 · 受光目标云与反烧候选',fig,note=result['note'])
+            self._open_figure_window('八方位 · 云洞偏移与中高云加权',fig,note=result['note'])
         except Exception as exc:
             messagebox.showerror('八方位分析失败',str(exc))
 

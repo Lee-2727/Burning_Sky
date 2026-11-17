@@ -191,10 +191,10 @@ def render_web_panel(st, engine, result, meta, direction_key, replay_only=False)
     # from another version of the single-direction strict verification.
     ray_signature=tuple((r.get('minute_offset'), r.get('target_height_km'),r.get('target_face_km'))
                         for r in traces if isinstance(r,dict))
-    cache_key='om_compass_projected_v2_'+str((model_id,day,name,lat,lon,event_utc.isoformat(),expected_run,ray_signature))
+    cache_key='om_compass_gap_weight_v3_'+str((model_id,day,name,lat,lon,event_utc.isoformat(),expected_run,ray_signature))
     state=st.session_state.get(cache_key)
-    st.caption('八方位依据校准后的有效太阳光路时间/高度与 OM 云场，把可能受光的目标云按观测方位分配；'
-               '正烧、侧烧与反烧使用同一处理方式。新增离轴目标仍属于待验证的二维候选，不改变正式评分。')
+    st.caption('朝霞只看日出前、晚霞只看日落后。OM 云洞相对太阳方位偏南/偏北决定光照优势，'
+               '再按对应方向中高云量加权；迎日侧少云、背日侧多云时分析反烧候选。')
     if state:
         fig=render_compass_figure(state['candidate'])
         st.pyplot(fig,use_container_width=True)
@@ -214,9 +214,9 @@ def render_web_panel(st, engine, result, meta, direction_key, replay_only=False)
             fig=render_compass_figure(c)
             st.pyplot(fig,use_container_width=True)
             st.caption(_compass_brief(c))
-            st.success('已完成：OM 受光目标云方位分布。'+source)
+            st.success('已完成：OM 云洞偏移×中高云八方位。'+source)
         except Exception as exc:
             st.error('OM 八方位生成失败，未改动单次预报：'+str(exc)[:350])
-    st.caption('金线长度=模型中可能受光目标云的方向性指数（非发生概率）；太阳方位虚线不是观察方向。'
-               '反太阳侧凸起仅代表反烧候选，须逐目标验证气压层与能见度后方可称为严格受光。'
+    st.caption('金线长度=云洞南北偏移光照优势×对应中高云量的相对指数（非发生概率）；虚线=太阳。'
+               '反太阳侧凸起仅代表反烧候选，不能冒充严格受光。'
                '缺测不可视为0，本图不回写正式概率或色彩分。')

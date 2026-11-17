@@ -179,7 +179,7 @@ def render_compass_figure(result):
     finite=values[np.isfinite(values)]
     peak=float(np.max(finite)) if finite.size else 0.
     radial_cap=(max(20.,min(110.,10.*math.ceil(1.4*peak/10.)))
-                if result.get('method')=='projected_target_clouds_from_solar_rays_v2'
+                if result.get('method') in ('projected_target_clouds_from_solar_rays_v2','solar_gap_offset_cloud_weight_v3')
                 else 110.)
     ax.set_ylim(0,radial_cap)
     ax.set_thetagrids(range(0,360,45),labels=['北','东北','东','东南','南','西南','西','西北'])
@@ -205,13 +205,7 @@ def render_compass_figure(result):
                 ha='center',va='center',fontsize=9,color='#FFF1C4',zorder=7)
     for index in np.where(~good)[0]:
         ax.text(theta[index],radial_cap*.88,'缺测',fontsize=8,color='#E3BEDB',ha='center',va='center')
-    # White outline identifies the direction of an existing *strictly*
-    # verified original-axis target ray. Nearby 2-D projected targets are
-    # still candidates, even within the same 45-degree sector.
-    for index, sector in enumerate(sectors):
-        if int(sector.get('strict_original_ray_seeds') or 0)>0 and good[index]:
-            ax.scatter([theta[index]],[values[index]],s=140,facecolors='none',
-                       edgecolors='#FFFFFF',linewidth=1.7,zorder=8)
+    # 原白圈仅表示太阳方位的八扇区归属，并非最有利受光方向；取消。
     sun=result.get('sun_azimuth_deg')
     if sun is not None and math.isfinite(float(sun)):
         bearing=math.radians(float(sun))
@@ -220,9 +214,9 @@ def render_compass_figure(result):
         ax.scatter([bearing],[radial_cap*.93],s=125,facecolors='none',edgecolors='#FFD23F',linewidth=1.8,zorder=8)
         ax.text(bearing,radial_cap*.985,'日',color='#FFD23F',ha='center',va='center',fontsize=11,fontweight='bold')
     title='朝霞' if result['direction']=='morning' else '晚霞'
-    fig.text(.07,.956,f'{title} · OM 受光目标八方位',color='#FFEBF3',fontsize=15,weight='bold')
+    fig.text(.07,.956,f'{title} · OM 云洞偏移 × 中高云八方位',color='#FFEBF3',fontsize=15,weight='bold')
     fig.text(.07,.915,str(result.get('model'))+' | '+str(result.get('valid'))+f' | 雷达刻度 0–{radial_cap:g}',color='#E8CFE9',fontsize=9)
-    fig.text(.07,.032,'金线=受光云方向候选；白圈=原始严格光路所在方向；虚线=太阳；反烧待单独三维验证。',color='#F1DDF0',fontsize=9)
+    fig.text(.07,.032,'金线=云洞偏移光照优势×中高云；虚线=太阳；反烧为候选方向，非严格受光结论。',color='#F1DDF0',fontsize=9)
     fig.subplots_adjust(left=.12,right=.88,top=.87,bottom=.10)
     return fig
 
