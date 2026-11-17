@@ -64,7 +64,8 @@ class LiteDataTests(unittest.TestCase):
         chart=render(days,'morning','朝霞')
         self.assertNotIn('<svg',chart)
         self.assertIn('rgba(255,255,255,.82)',__import__('lite.bar_cards',fromlist=['CSS']).CSS)
-        self.assertIn('opacity:0.000',chart)
+        self.assertIn('bs-lite-bar zero',chart)
+        self.assertIn('opacity:1.000',chart)
         self.assertIn('height:100.000%',chart)
         self.assertIn('暂无数据',chart) if False else None
         self.assertIn('EC',chart)
