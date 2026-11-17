@@ -169,6 +169,80 @@ def _terrain_elevations(coords):
     return out
 
 
+def fetch_horizontal_clouds(coords, distances, event_utc, model_id, *,
+                            metadata=None, reader_factory=None, mesh_factory=None):
+    """Read *horizontal* OM low/mid/high cloud percentages (no vertical claim).
+
+    This is a separate evidence product, not a replacement for pressure-profile
+    cloud_cover or a strictly-verified 3-D sun ray. Unknown/invalid pixels cause
+    a batch fallback, never a conversion to clear sky.
+    """
+    if not coords or len(coords) != len(distances) or len(coords) > MAX_COORDINATES:
+        raise SpatialUnavailable('二维空间云场采样点数无效或超出上限')
+    info = resolve_valid_file(model_id, event_utc, metadata)
+    required = ('cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high')
+    names = info['variables']
+    missing = [v for v in required if v not in names]
+    if missing:
+        raise SpatialUnavailable('空间清单缺少二维低中高云量: ' + ', '.join(missing))
+
+    if reader_factory is None:
+        try:
+            import fsspec
+            from omfiles import OmFileReader
+        except ImportError as exc:
+            raise SpatialUnavailable('缺少 omfiles / fsspec 空间读取依赖') from exc
+        cache_dir = Path(tempfile.gettempdir()) / 'burning_sky_om_cache'
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        source = fsspec.open('blockcache::' + info['url'], mode='rb',
+                            blockcache={'cache_storage': str(cache_dir)},
+                            https={'block_size': 65536})
+        reader_factory = lambda: OmFileReader(source)
+    if mesh_factory is None:
+        try:
+            from omfiles.grids import OmGrid
+        except ImportError as exc:
+            raise SpatialUnavailable('缺少 omfiles grids 扩展') from exc
+        mesh_factory = lambda wkt, shape: OmGrid(wkt, shape).get_meshgrid()
+    try:
+        with reader_factory() as root:
+            if not root.is_group:
+                raise SpatialUnavailable('空间 OM 文件不是分层数据结构')
+            child = root.get_child_by_name(required[0])
+            shape = child.shape
+            if len(shape) != 2:
+                raise SpatialUnavailable('空间二维云量维度不正确')
+            crs = root.get_child_by_name('crs_wkt').read_scalar()
+            longitude_grid, latitude_grid = mesh_factory(crs, shape)
+            pixels = _pixel_indices(latitude_grid, longitude_grid, coords)
+            extracted, cells = _fetch_grid(root, pixels, required, names)
+    except SpatialUnavailable:
+        raise
+    except Exception as exc:
+        raise SpatialUnavailable(f'空间二维云场读取失败: {type(exc).__name__}: {str(exc)[:160]}') from exc
+    if any(key not in extracted for key in required):
+        raise SpatialUnavailable('空间二维云量数组未完整读取，不用缺测值假设晴空')
+    rows = []
+    for idx, ((lat, lon), distance) in enumerate(zip(coords, distances)):
+        row = {'distance_km': distance, 'lat': lat, 'lon': lon}
+        for key in required:
+            value = extracted[key][idx]
+            if value is None or not 0 <= value <= 100:
+                raise SpatialUnavailable(f'{distance} km 的 {key} 无效，不以 0% 补缺测')
+            row[key] = value
+        rows.append(row)
+    return {'samples': rows, 'spatial_source': {
+        'domain': info['model_domain'],
+        'reference_time': info['reference_time'],
+        'valid_time': info['valid_time'],
+        'cells_read': cells,
+        'points': len(rows),
+        'fields': list(required),
+        'evidence': '2D_low_mid_high_model_cover_only',
+        'pressure_profile_source': 'point_api_required',
+    }}
+
+
 def fetch_pressure_profiles(coords, distances, event_utc, model_id, *,
                             estimate_cloud_base, analyze_vertical_layers,
                             local_ground_elevation_m=None,
