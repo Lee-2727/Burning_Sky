@@ -2007,6 +2007,7 @@ class FireCloudApp(tk.Tk):
                         _equiv = []
                         inferred['adaptive_target_candidates'] = _adaptive.get('gaps', [])
                         inferred['verified_primary_ray_traces'] = _adaptive.get('verified_ray_traces', [])
+                        inferred['verified_bottom_sample_traces'] = _adaptive.get('verified_target_bottom_points', [])
                         inferred['strict_primary_path_diagnostic'] = {
                             'method_version':'DYNAMIC_SOLAR_CLOUD_EXIT_AUTO_RESAMPLE_V1',
                             'status':_adaptive.get('status'),

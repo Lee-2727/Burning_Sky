@@ -1527,6 +1527,26 @@ if results:
             _profile_fig = _web_profile_figure(result)
             if _profile_fig is not None:
                 st.image(_profile_fig, use_container_width=True)
+                _bottom_rows = (result.get('inferred') or {}).get('verified_bottom_sample_traces') or []
+                if _bottom_rows:
+                    _states = {}
+                    for _b in _bottom_rows:
+                        _status = str(_b.get('status','未知'))
+                        _states[_status] = _states.get(_status,0) + 1
+                    st.caption('云底临界扫描：' + ' · '.join(f'{k} {v}' for k,v in sorted(_states.items())) +
+                               '。实线＝严格验证通过，橙色＝确实撞云，浅灰＝数据不足；浅灰不能当成无遮挡。')
+                    with st.expander('云底内侧逐点光路验证（使用本次已有气压层数据）', expanded=False):
+                        _rows=[]
+                        for _b in _bottom_rows:
+                            _key=_b.get('target_key') or []
+                            _rows.append({'相对日出/日落分钟':_b.get('minute_offset'),
+                                '云底受光点km':_b.get('position_km'),
+                                '目标云段km':f'{float(_key[0]):.1f}–{float(_key[1]):.1f}' if len(_key)>=2 else '—',
+                                '云底高度km':float(_key[2]) if len(_key)>=3 else None,
+                                '太阳高度角°':_b.get('solar_altitude_deg'),
+                                '光路结果':_b.get('status'),
+                                '必要上游距离km':_b.get('required_source_km')})
+                        st.dataframe(pd.DataFrame(_rows),hide_index=True,use_container_width=True)
             else:
                 st.caption('当前结果没有可显示的严格光路剖面。')
             # Optional expensive sampling must never run while the panel is closed.
