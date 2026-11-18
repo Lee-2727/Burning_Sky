@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_at": "2026-11-18T14:19:40+08:00",
+  "updated_at": "2026-11-18T15:24:37+08:00",
   "cities": {
     "合肥": {
       "schema_version": 2,
@@ -9,10 +9,10 @@
       "longitude": 117.2272,
       "elevation_m": 30.0,
       "timezone": "Asia/Shanghai",
-      "updated_at": "2026-11-18 14:19:40 CST",
+      "updated_at": "2026-11-18 15:24:37 CST",
       "direction_updated_at": {
-        "morning": "2026-11-18 14:19:40 CST",
-        "evening": "2026-11-18 14:19:40 CST"
+        "morning": "2026-11-18 15:24:37 CST",
+        "evening": "2026-11-18 15:24:37 CST"
       },
       "days": [
         {
@@ -196,7 +196,7 @@
       "publication": {
         "state": "completed",
         "batch_day": "2026-11-18",
-        "published_at": "2026-11-18 14:19:40 CST",
+        "published_at": "2026-11-18 15:24:37 CST",
         "valid_in_batch": 12,
         "retained_old_keys": [],
         "missing_keys": [],
