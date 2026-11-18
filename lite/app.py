@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Burning Sky Lite: independent Streamlit entry, shared forecast engine.
 
-No weather query is triggered by the five-day overview. Only one of morning or
+No weather query is triggered by the three-day overview. Only one of morning or
 night is calculated per form submission. Screenshot calibration is automatic
 and fail-closed; the screenshot itself is not rendered back to the user.
 """
@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from datetime import timedelta
 import sys
 
 # Set before engine import (the engine has an optional Tk desktop interface).
@@ -29,6 +30,9 @@ from burning_sky.warm_web_theme import apply_warm_theme, render_hero
 from burning_sky.advanced_bridge import identity as advanced_identity, read as archive_read, write as archive_write
 from lite.overview_data import get_overview, china_today
 from lite.bar_cards import CSS as CHART_CSS, render as render_bars
+
+# Visible build marker: if the hosted Lite still shows five dates, it is running old code.
+LITE_OVERVIEW_UI_BUILD = '3D-20261118-R2'
 
 st.set_page_config(page_title='Burning Skies Lite', page_icon='🌅', layout='wide', initial_sidebar_state='collapsed')
 
@@ -308,6 +312,14 @@ if nav=='未来三日':
         st.rerun()
     with st.spinner('读取三日概览…'):
         overview=_published(city)
+    # UI-level guard: published JSON may still contain five historical days.
+    # Keep exactly today's three-day window independent of source age/order.
+    _today=china_today()
+    _dates=[(_today+timedelta(days=i)).isoformat() for i in range(3)]
+    _by_date={str(day.get('date')):day for day in (overview.get('days') or [])
+              if isinstance(day,dict)}
+    display_days=[_by_date.get(d,{'date':d,'morning':{},'evening':{}}) for d in _dates]
+    st.caption(f'Lite 三日显示版 · {LITE_OVERVIEW_UI_BUILD} · 展示 {_dates[0]} 至 {_dates[-1]}')
     counts=overview.get('model_counts') or {}
     st.caption(f"发布数据：{overview.get('source_name','未知')} · "
                f"有效 {overview.get('valid_count',0)}/12 项 · "
@@ -326,7 +338,7 @@ if nav=='未来三日':
         st.info('当前尚无可显示的三日预报。')
     else:
         for direction,label in (('morning','朝霞'),('evening','晚霞')):
-            chart=render_bars(overview['days'],direction,label)
+            chart=render_bars(display_days,direction,label)
             if hasattr(st,'html'):
                 st.html(chart)
             else:
@@ -334,7 +346,7 @@ if nav=='未来三日':
         # Entire overview is read-only, and its detailed table is optional.
         with st.expander('查看全部数据',expanded=False):
             rows=[]
-            for day in overview['days']:
+            for day in display_days:
                 for direction,name in (('morning','朝霞'),('evening','晚霞')):
                     for model,short in (('ECMWF IFS 0.25°','EC'),('GFS Global','GFS')):
                         record=(day.get(direction) or {}).get(model) or {}
