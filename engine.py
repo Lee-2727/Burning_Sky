@@ -1760,6 +1760,12 @@ class FireCloudApp(tk.Tk):
                 local_reach = local_geometry.get("reach_km") if local_geometry else None
                 if not isinstance(local_reach, (int, float)):
                     local_reach = max_reach if max_reach > 0 else None
+                # Compute the INITIAL target-cloud boundary before planning the
+                # dynamic solar-source horizon.  The full boundaries are
+                # recomputed after remote weather/profile extension below.
+                # Previously `boundaries` was first assigned after this planner,
+                # causing UnboundLocalError in both morning and evening forecasts.
+                boundaries = estimate_path_cloud_boundaries(samples, local_reach)
                 # Target reach decides which clouds matter. The source distance
                 # is computed independently from each minute's actual Sun and
                 # every candidate cloud-bottom / front target. Longer than 700km
