@@ -5,7 +5,7 @@ import math
 
 from burning_sky.spherical_raytrace import destination
 from burning_sky.sky_six import (plan_off_axis_rays, materialize_off_axis_rays,
-                                  adaptive_equivalent_gaps)
+                                  adaptive_equivalent_gaps,dynamic_solar_source_horizon)
 from burning_sky.algorithm import calculate_color_performance_score, aod_color_quality_factor
 
 DT=datetime(2026,11,18,6,41)
@@ -19,7 +19,7 @@ def event_axis():
     return [{'distance_km':d,'lat':destination(LAT,LON,90,d)[0],
              'lon':destination(LAT,LON,90,d)[1],
              'levels':cloud_levels(80 if d==0 else 0)}
-            for d in (0,25,50,100,150,200,250,300,350,400,450,500,550,600,650,700)]
+            for d in (0,25,50,100,150,200,250,300,350,400,450,500,550,600,650,700,750)]
 
 def shifted(dt,offset,lat,lon):
     return (-1.7, 90 if abs(lat-LAT)<1e-6 and abs(lon-LON)<1e-6 and dt==DT else 95)
@@ -27,7 +27,7 @@ def shifted(dt,offset,lat,lon):
 def get_setup(block=False):
     axis=event_axis()
     with patch('burning_sky.sky_six.solar_position',side_effect=shifted):
-        plan=plan_off_axis_rays(axis,DT,8,LAT,LON,'morning',27.52,25,source_scan_km=700)
+        plan=plan_off_axis_rays(axis,DT,8,LAT,LON,'morning',27.52,25,source_scan_km=750)
     assert plan['rays']
     data=[{'levels':cloud_levels(100 if block and (370 < i*20 < 440) else 0)}
           for i in range(len(plan['coordinates']))]

@@ -1760,12 +1760,19 @@ class FireCloudApp(tk.Tk):
                 local_reach = local_geometry.get("reach_km") if local_geometry else None
                 if not isinstance(local_reach, (int, float)):
                     local_reach = max_reach if max_reach > 0 else None
-                # Local geometric reach decides WHAT targets can tint, not HOW FAR
-                # solar light must be checked. Always request a 700-km source
-                # corridor (longer if physical reach demands it), regardless of AOD.
-                # Recompute after each extension; do not claim completion for missing data.
+                # Target reach decides which clouds matter. The source distance
+                # is computed independently from each minute's actual Sun and
+                # every candidate cloud-bottom / front target. Longer than 700km
+                # if the Sun is low; never bless a short cloud sample corridor.
+                from burning_sky.sky_six import dynamic_solar_source_horizon
+                _source_plan=dynamic_solar_source_horizon(
+                    profiles,event_dt,data['utc_offset'],data['lat'],data['lon'],
+                    direction_key,float(local_reach or 0.),
+                    target_limit_km=boundaries.get('fire_cloud_range_km'),min_scan_km=700.,extension_factor=1.3)
+                _required_end=_source_plan['required_source_km']
+                inferred['dynamic_source_horizon']=_source_plan
+                # Fetch any missing 50km pressure-layer nodes to this horizon.
                 for _extension_round in range(3):
-                    _required_end = max(700.0, 1.3 * float(local_reach or 0.0))
                     _actual_end = max((float(p.get('distance_km', 0)) for p in profiles if p.get('levels')), default=0.0)
                     if _required_end <= _actual_end + 0.01:
                         break
@@ -1901,7 +1908,7 @@ class FireCloudApp(tk.Tk):
                 _ray_debug = None
                 _adaptive = {'status':'unresolved_data','verified_minutes':[], 'verified_ray_traces':[]}
                 _profile_end = max((float(p.get('distance_km',0)) for p in profiles if p.get('levels')),default=0.)
-                _source_check_km = max(700.0, 1.3 * float(local_reach or 0))
+                _source_check_km = _required_end
                 if True:  # TRACE_PRIMARY: quick screen is diagnostic only; never bypass ray tracing
                     try:
                         from burning_sky.spherical_raytrace import scan_window as _spherical_scan, render_schematic_map as _render_spherical_map, equivalent_gaps as _equivalent_gaps
@@ -1944,7 +1951,7 @@ class FireCloudApp(tk.Tk):
                         _off_axis_diag = {'state':'no_missing_rays','new_locations':0,
                                           'measured_rays':0,'failed_batches':[]}
                         try:
-                            _required = max(700.,1.3*float(local_reach or 0))
+                            _required = _source_check_km
                             _plan = plan_off_axis_rays(profiles,event_dt,data['utc_offset'],
                                 data['lat'],data['lon'],direction_key,float(local_reach or 0),
                                 boundaries.get('fire_cloud_range_km'),source_scan_km=_required)
@@ -1995,7 +2002,7 @@ class FireCloudApp(tk.Tk):
                         inferred['adaptive_target_candidates'] = _adaptive.get('gaps', [])
                         inferred['verified_primary_ray_traces'] = _adaptive.get('verified_ray_traces', [])
                         inferred['strict_primary_path_diagnostic'] = {
-                            'method_version':'UPSTREAM_RAY_700_AUTO_RESAMPLE_SPATIAL_CONFLICT_V1',
+                            'method_version':'DYNAMIC_SOLAR_CLOUD_EXIT_AUTO_RESAMPLE_V1',
                             'status':_adaptive.get('status'),
                             'verified_minutes':_adaptive.get('verified_minutes',[]),
                             'required_profile_km':_adaptive.get('required_profile_km'),
@@ -2013,7 +2020,7 @@ class FireCloudApp(tk.Tk):
                             'note':_adaptive.get('note')}
 
                         _profile_end = max((float(p.get('distance_km', 0)) for p in profiles), default=0.0)
-                        _source_check_km = max(700.0, 1.3 * float(local_reach or 0))
+                        _source_check_km = _required_end
                         inferred['upstream_source_check'] = {
                             'method_version':'UPSTREAM_RAY_700_AUTO_RESAMPLE_V2',
                             'required_km': round(_source_check_km, 2),
@@ -2245,7 +2252,8 @@ class FireCloudApp(tk.Tk):
                 _local_light = _local_illumination(
                     profiles, event_dt, direction_key, data['utc_offset'],
                     data['lat'], data['lon'], potential_limit,
-                    verified_target_bands=(_adaptive.get('verified_target_bands') or []))
+                    verified_target_bands=(_adaptive.get('verified_target_bands') or []),
+                    verified_target_bottom_points=_adaptive.get('verified_target_bottom_points'))
                 # Unified profile-target light coverage (1-minute diagnostic; no extra API requests).
                 # A negative sample cannot prove that a sub-minute window does not exist.
                 _light_times = []
@@ -2296,7 +2304,8 @@ class FireCloudApp(tk.Tk):
                 _observed_gap_verified = False
                 _primary_path_verified = bool(
                     _adaptive.get('status') == 'local_targets_verified'
-                    and _adaptive.get('verified_target_bands'))
+                    and (_adaptive.get('verified_target_bands') or
+                         _adaptive.get('bottom_verified_point_count',0)>0))
                 # Scenario estimate is NOT strict verification.  Only allow a
                 # separately labelled estimate when the continuous local-face
                 # geometry is positive, a sampled upstream clear gap exists,
@@ -2421,12 +2430,14 @@ class FireCloudApp(tk.Tk):
                     tintable_ratio = round(100*_best_local['fraction'],1)
                     inferred['tintable_ratio_diagnostic'] = (
                         '霞云距内中高云按云量连续加权；逐分钟逐目标严格光路'
-                        '高度区间门控；目前为剖面受光代理，不是二维可见面积')
+                        '云底逐点严格球面门控，云锋面另计；目前为剖面受光代理，不是二维可见面积')
                     inferred['local_cloud_illumination'] = {
                         'potential_km':_local_light['potential_km'],
                         'target_count':_local_light['target_count'],
                         'peak_minute':_best_local['minutes_from_event'],
                         'peak_fraction':round(_best_local['fraction'],5),
+                        'front_face_peak_fraction':round(max((v.get('front_face_fraction',0) for v in _scenario_times),default=0),5),
+                        'bottom_unresolved_at_peak':round(_best_local.get('bottom_unresolved_weight_fraction',0),5),
                         'strict_peak_fraction':round(_scenario_strict_peak,5),
                         'possible_peak_fraction':round(_scenario_possible_peak,5),
                         'caveat':_local_light['caveat']}
@@ -4342,7 +4353,7 @@ class FireCloudApp(tk.Tk):
             visible_verified=0
             stride=max(1, math.ceil(len(verified_traces)/8))
             for trace in verified_traces[::stride]:
-                face=float(trace['target_face_km'])
+                face=float(trace.get('target_bottom_position_km',trace['target_face_km']))
                 h0=float(trace['target_height_km'])
                 alt=float(trace['solar_altitude_deg'])
                 source_end=min(plot_dist,float(trace['source_check_km']))
@@ -6945,8 +6956,9 @@ class FireCloudApp(tk.Tk):
         except Exception as exc:
             messagebox.showerror("导出案例失败", str(exc))
 
-    def load_case(self):
-        folder = filedialog.askdirectory(title="选择要加载的案例文件夹", initialdir=self.case_root if os.path.isdir(self.case_root) else os.path.dirname(os.path.abspath(__file__)))
+    def load_case(self, folder=None):
+        if folder is None:
+            folder = filedialog.askdirectory(title="选择要加载的案例文件夹", initialdir=self.case_root if os.path.isdir(self.case_root) else os.path.dirname(os.path.abspath(__file__)))
         if not folder:
             return
         state_path = os.path.join(folder, "analysis_state.json")

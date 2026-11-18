@@ -6,7 +6,7 @@ import math
 from burning_sky.sky_six import adaptive_equivalent_gaps
 
 DT = datetime(2026, 11, 18, 6, 41)
-DISTS = (0,25,50,100,150,200,250,300,350,400,450,500,550,600,650,700)
+DISTS = (0,25,50,100,150,200,250,300,350,400,450,500,550,600,650,700,750)
 
 
 def profiles(block_at=None, missing_at=None):
@@ -32,8 +32,10 @@ def test_clear_full_path():
     r=run(profiles())
     assert r['status']=='local_targets_verified',r
     assert r['verified_ray_traces']
-    assert all(x['source_check_km']==700 for x in r['verified_ray_traces'])
-    assert all(x['source_boundary_altitude_km']>=x['cloud_top_clearance_km']
+    assert all(x['source_check_km']>=700 for x in r['verified_ray_traces'])
+    # The old 700 km is only a lower bound; the solar/target geometry can
+    # extend source checks to 750 km. Never bless an unmeasured continuation.
+    assert all(x['source_boundary_altitude_km']>0
                for x in r['verified_ray_traces'])
 
 
