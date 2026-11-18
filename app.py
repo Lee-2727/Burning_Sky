@@ -1507,6 +1507,11 @@ if results:
             st.markdown("**" + _web_gap_text(result) + "**")
             _ray_gate = ((result.get('inferred') or {}).get('strict_primary_path_diagnostic') or {})
             _spatial_info = ((result.get('inferred') or {}).get('spatial_calibration') or {})
+            if _spatial_info.get('conflict_count', 0):
+                st.warning('GFS OM 气压层重构云量与原生 API 分层云量差异超过 '
+                           f"{_spatial_info.get('conflict_threshold_pp',30):g} 个百分点："
+                           f"{_spatial_info['conflict_count']} 处云层保留原生云量；"
+                           'OM 低值不用于制造晴空或通过严格光路。详细差异保存在空间校准诊断中。')
             if _spatial_info.get('status') == 'applied':
                 st.caption('已校准分层云量采样点；以下“快筛云洞”是云量间隔，'
                            '“等效无遮挡通道”是太阳光路投影，两者并非同一个物理量。')

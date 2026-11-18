@@ -79,6 +79,11 @@ def bind_horizontal_profiles(pressure_samples, spatial_horizontal, *, max_time_g
         p['spatial_horizontal_valid_time'] = info.get('valid_time')
         p['spatial_horizontal_run'] = info.get('reference_time')
         p['spatial_horizontal_time_uncertainty'] = True
+        # Preserve provenance so native EC layers and GFS pressure-derived
+        # approximate cloud fractions are never silently treated as peers.
+        p['spatial_horizontal_layer_origin'] = info.get('layer_origin')
+        p['spatial_horizontal_model_domain'] = info.get('domain')
+        p['spatial_horizontal_evidence'] = info.get('evidence')
     return {'attached': len(checked), 'valid_time': info.get('valid_time'),
             'reference_time': info.get('reference_time'),
             'note': 'OM horizontal and API pressure valid times near, run equality unverified'}
@@ -97,7 +102,7 @@ def check_horizontal_ray_consistency(ray_profiles, target_face_km, target_height
     conflicts = []
     available = 0
     for row in ray_profiles:
-        hdata = row.get('spatial_horizontal_om')
+        hdata = row.get('spatial_horizontal_effective', row.get('spatial_horizontal_om'))
         if not isinstance(hdata, dict):
             continue
         try:
@@ -144,7 +149,9 @@ def check_horizontal_target_support(target_profile, target_height_km):
     This does not prove the target cloud is absent; a grid-cell mean is not a
     cloud-object detector. A disagreement is explicitly *unresolved*.
     """
-    hdata = target_profile.get('spatial_horizontal_om') if isinstance(target_profile,dict) else None
+    hdata = (target_profile.get('spatial_horizontal_effective',
+                                target_profile.get('spatial_horizontal_om'))
+             if isinstance(target_profile, dict) else None)
     if not isinstance(hdata,dict):
         return {'checked':False,'unresolved':False}
     plausible=[k for k, bounds in POSSIBLE_HEIGHT_KM.items()

@@ -200,7 +200,18 @@ def _gfs_cloud_level_groups(names):
         if len(ps) <= 5: chosen[key] = ps
         else:
             ix = sorted({round(i*(len(ps)-1)/4) for i in range(5)})
-            chosen[key] = [ps[i] for i in ix]
+            selected = [ps[i] for i in ix]
+            if key == 'cloud_cover_high' and 350 in ps and 350 not in selected:
+                # 350hPa contains useful ~8km cloud evidence in real GFS
+                # cases. Keep the end levels, replace one interior level;
+                # never issue one extra OM field request for this adjustment.
+                interior = [v for v in selected[1:-1]]
+                if interior:
+                    replacement = min(interior, key=lambda v: abs(v-350))
+                    selected.remove(replacement)
+                    selected.append(350)
+                    selected.sort(reverse=True)
+            chosen[key] = selected
     return chosen
 
 

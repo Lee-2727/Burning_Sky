@@ -1882,6 +1882,12 @@ class FireCloudApp(tk.Tk):
                         break
                 samples.sort(key=lambda x: float(x.get('distance_km',0)))
                 profiles.sort(key=lambda x: float(x.get('distance_km',0)))
+                # Reapply the per-layer OM/native guard after 700-km upstream
+                # extensions.  It is idempotent: the saved original API layer
+                # remains the reference and no additional HTTP requests occur.
+                _spatial_calibration = calibrate_path_samples(
+                    samples, profiles, manual=bool(_manual_overrides))
+                inferred['spatial_calibration'] = _spatial_calibration
                 boundaries = estimate_path_cloud_boundaries(samples, local_reach)
                 # Preserve sampled physical clear intervals separately from verified illumination.
                 # Never feed these diagnostic gaps back into geometric scoring.

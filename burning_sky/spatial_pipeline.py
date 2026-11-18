@@ -96,48 +96,120 @@ class HybridSpatialMixin:
                                   local_ground_elevation_m)
 
 
-def calibrate_path_samples(samples,profiles,*,manual=False):
-    """Use matched OM *horizontal* cloud fractions as the spatial correction.
+# The API's native 9-point layer cover is authoritative over a GFS OM
+# pressure-level *proxy*.  The two quantities have different footprints, so
+# 30 percentage points is a conservative discrepancy flag, NOT a proof that
+# either product is physically incorrect.
+GFS_PROXY_CONFLICT_DELTA_PP = 30.0
 
-    The original scoring and strict ray functions consume these same samples.
-    No new scoring multipliers. Original 9-point area means remain available
-    in original_cloud_cover_* for auditing. Pressure levels are never rewritten
-    by this function. Manual satellite/cloud edits always take priority.
+
+def calibrate_path_samples(samples, profiles, *, manual=False):
+    """Apply spatial layer data without letting GFS proxies erase native cover.
+
+    EC native OM layers retain their previous treatment.  A GFS OM pressure-
+    level approximation is accepted per layer only when its discrepancy from
+    the native point-API layer is <= 30 percentage points.  On a larger
+    discrepancy, retain native cover in the scoring/quick-screen sample and
+    in the horizontal ray-check *effective* evidence, but keep raw OM intact
+    for diagnostics.  Profile pressure levels and the original total cover
+    are never rewritten. This function is safe to call again after upstream
+    sample extension; preserved API values remain the reference.
     """
     if manual:
-        return {'status':'manual_priority','corrected_distances':[]}
-    pmap={round(float(p.get('distance_km',-9999)),4):p for p in profiles
-          if isinstance(p,dict) and isinstance(p.get('distance_km'),(float,int))}
-    corrected=[]; changes=[]
+        return {'status': 'manual_priority', 'corrected_distances': []}
+    pmap = {round(float(p.get('distance_km', -9999)), 4): p
+            for p in profiles if isinstance(p, dict)
+            and isinstance(p.get('distance_km'), (float, int))}
+    fields = ('cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high')
+    corrected = []
+    changes = []
+    conflicts = []
+    proxy_points = 0
     for sample in samples:
-        if not isinstance(sample,dict):continue
-        try:dist=round(float(sample['distance_km']),4)
-        except (KeyError,ValueError,TypeError):continue
-        p=pmap.get(dist) or {}
-        vals=p.get('spatial_horizontal_om')
-        if not isinstance(vals,dict):continue
-        if p.get('spatial_horizontal_time_uncertainty') is not True:
+        if not isinstance(sample, dict):
+            continue
+        try:
+            dist = round(float(sample['distance_km']), 4)
+        except (KeyError, ValueError, TypeError):
+            continue
+        p = pmap.get(dist) or {}
+        vals = p.get('spatial_horizontal_om')
+        if not isinstance(vals, dict) or p.get('spatial_horizontal_time_uncertainty') is not True:
             continue
         if sample.get('lat') is not None and p.get('lat') is not None:
-            if abs(float(sample['lat'])-float(p['lat']))>0.0001 or abs(float(sample['lon'])-float(p['lon']))>0.0001:
+            try:
+                if (abs(float(sample['lat']) - float(p['lat'])) > .0001 or
+                        abs(float(sample['lon']) - float(p['lon'])) > .0001):
+                    continue
+            except (TypeError, ValueError, KeyError):
                 continue
-        row_changes={}
-        valid=all(isinstance(vals.get(k),(int,float)) and math.isfinite(vals[k])
-                  and 0<=float(vals[k])<=100 for k in ('cloud_cover_low','cloud_cover_mid','cloud_cover_high'))
-        if not valid:continue
-        for field in ('cloud_cover_low','cloud_cover_mid','cloud_cover_high'):
-            old=sample.get(field)
-            if isinstance(old,(float,int)) and math.isfinite(old):
-                sample['point_api_area_'+field]=float(old)
-            new=float(vals[field]);sample[field]=new
-            row_changes[field]=(old,new)
-        # A three-layer maximum is not a mathematically equivalent total
-        # cloud-cover field; preserve observed total rather than fabricating it.
-        sample['spatial_calibration']='om_horizontal_layer_25km_cell'
-        sample['spatial_calibration_run_unproven']=True
+        valid = all(isinstance(vals.get(k), (int, float))
+                    and math.isfinite(vals[k]) and 0 <= float(vals[k]) <= 100
+                    for k in fields)
+        if not valid:
+            continue
+        # Only the GFS pressure-level-derived approximation is subject to the
+        # native/proxy discrepancy gate. Native 2D OM layer data are not the
+        # same weak reconstructed product.
+        is_proxy = (p.get('spatial_horizontal_layer_origin') == 'pressure_layer_proxy'
+                    and p.get('spatial_horizontal_model_domain') == 'ncep_gfs025')
+        if is_proxy:
+            proxy_points += 1
+        row_changes = {}
+        rejected = {}
+        effective = dict(vals)
+        effective_sources = {field: 'om_native' if not is_proxy else 'gfs_om_pressure_proxy'
+                             for field in fields}
+        for field in fields:
+            original_key = 'point_api_area_' + field
+            old = sample.get(original_key, sample.get(field))
+            if isinstance(old, (float, int)) and math.isfinite(old):
+                old = float(old)
+                sample[original_key] = old
+            else:
+                old = None
+            new = float(vals[field])
+            if (is_proxy and old is not None and 0 <= old <= 100 and
+                    abs(old - new) > GFS_PROXY_CONFLICT_DELTA_PP):
+                sample[field] = old
+                effective[field] = old
+                effective_sources[field] = 'native_point_api_conflict_fallback'
+                row = {'distance_km': dist, 'field': field, 'api_pct': old,
+                       'om_proxy_pct': new, 'delta_pp': round(abs(old-new), 3),
+                       'decision': 'retain_native_api'}
+                rejected[field] = row
+                conflicts.append(row)
+                row_changes[field] = (old, old)
+            else:
+                sample[field] = new
+                row_changes[field] = (old, new)
+        # The original OM data remain separately inspectable.  These are the
+        # values the later horizontal consistency / target checks must use.
+        p['spatial_horizontal_effective'] = effective
+        p['spatial_horizontal_effective_sources'] = effective_sources
+        if rejected:
+            p['spatial_horizontal_conflict_layers'] = rejected
+            sample['spatial_calibration_conflicts'] = rejected
+        else:
+            p.pop('spatial_horizontal_conflict_layers', None)
+            sample.pop('spatial_calibration_conflicts', None)
+        sample['spatial_calibration'] = ('gfs_proxy_conflict_native_fallback'
+                                         if rejected else 'om_horizontal_layer_25km_cell')
+        sample['spatial_calibration_run_unproven'] = True
         corrected.append(dist)
-        changes.append({'distance_km':dist,'layers':row_changes})
-    return {'status':'applied' if corrected else 'not_available',
-            'corrected_distances':corrected,
-            'changes':changes[:30],
-            'caveat':'Original 9-point means replaced by coarse OM grid-cell layers. Same forecast-run is not proven; sensitivity test only.'}
+        changes.append({'distance_km': dist, 'layers': row_changes,
+                        'rejected_proxy_layers': list(rejected)})
+    return {
+        'status': 'applied' if corrected else 'not_available',
+        'corrected_distances': corrected,
+        'changes': changes[:30],
+        'gfs_proxy_points': proxy_points,
+        'conflict_count': len(conflicts),
+        'conflicts': conflicts[:40],
+        'conflict_threshold_pp': GFS_PROXY_CONFLICT_DELTA_PP,
+        'caveat': ('EC native 2D layers remain independently sampled. GFS OM '
+                   'pressure-layer proxy conflicts >30 percentage points '
+                   'retain native API layer cover; raw OM preserved, ray '
+                   'cross-check uses the same effective cover. Spatial grid '
+                   'cell and 9-point area footprints differ; run equality '
+                   'with point API is unproven.')}
