@@ -59,16 +59,16 @@
         },
         "evening": {
           "ECMWF IFS 0.25°": {
-            "probability": 56.0,
-            "color_score": 65.0,
-            "burn_scale": 29.72,
-            "local_mid_cloud": 80.0,
-            "local_high_layer_cloud": 98.0,
+            "probability": 61.0,
+            "color_score": 58.0,
+            "burn_scale": 10.9,
+            "local_mid_cloud": 97.0,
+            "local_high_layer_cloud": 59.0,
             "local_high_cloud": 100.0,
-            "fire_score_no_color": 16.64,
+            "fire_score_no_color": 6.65,
             "burn_scale_label": "小烧",
             "spatial_calibration_status": "applied",
-            "spatial_corrected_point_count": 26,
+            "spatial_corrected_point_count": 17,
             "event_time": "2026-11-19T17:09:54.609366"
           },
           "GFS Global": {
@@ -152,5 +152,5 @@
       }
     ]
   },
-  "saved_at": "2026-11-19T02:14:49+08:00"
+  "saved_at": "2026-11-19T04:02:09+08:00"
 }
