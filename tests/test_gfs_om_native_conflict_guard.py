@@ -46,15 +46,16 @@ def test_reapply_after_extra_sampling_preserves_native_instead_of_calibrated_val
 def test_proxy_close_agreement_and_other_layers_still_calibrated():
     sample,profile=make(cloud=(12.,35.,70.),native=(10.,20.,100.))
     diag=calibrate_path_samples([sample],[profile])
-    assert diag['conflict_count']==0  # 30pp exactly is allowed
-    assert (sample['cloud_cover_low'], sample['cloud_cover_mid'],sample['cloud_cover_high'])==(12,35,70)
+    assert diag['conflict_count']==1  # the high layer differs by 30pp (>25pp)
+    assert diag['gfs_native_priority_layers']==3
+    assert (sample['cloud_cover_low'], sample['cloud_cover_mid'],sample['cloud_cover_high'])==(10,20,100)
 
 
 def test_conflict_per_layer_not_all_or_nothing():
     sample,profile=make(cloud=(5.,64.,13.9),native=(8.,20.,100.))
     diag=calibrate_path_samples([sample],[profile])
     assert diag['conflict_count']==2
-    assert sample['cloud_cover_low']==5
+    assert sample['cloud_cover_low']==8
     assert sample['cloud_cover_mid']==20
     assert sample['cloud_cover_high']==100
     assert profile['spatial_horizontal_effective']['cloud_cover_mid']==20
@@ -100,4 +101,19 @@ def test_proxy_conflict_never_stands_in_for_missing_local_baseline():
     sample['cloud_cover_high']=None
     diag=calibrate_path_samples([sample],[profile])
     assert diag['conflict_count']==0  # no native comparable variable
-    assert sample['cloud_cover_high']==13.9  # documented proxy, not a claimed native product
+    assert sample['cloud_cover_high']==13.9  # only missing native values can use the labelled proxy
+
+
+def test_small_proxy_delta_still_cannot_change_15pct_clear_threshold():
+    sample,profile=make(cloud=(10.,20.,14.),native=(10.,20.,17.))
+    diag=calibrate_path_samples([sample],[profile])
+    assert diag['conflict_count']==0
+    assert sample['cloud_cover_high']==17.
+    assert profile['spatial_horizontal_effective']['cloud_cover_high']==17.
+
+
+def test_manual_override_not_vetoed_by_unverified_raw_om():
+    sample,profile=make(cloud=(95.,95.,95.),native=(0.,0.,0.))
+    assert calibrate_path_samples([sample],[profile],manual=True)['status']=='manual_priority'
+    assert profile['spatial_horizontal_effective']=={}
+    assert check_horizontal_target_support(profile,8.)['checked'] is False

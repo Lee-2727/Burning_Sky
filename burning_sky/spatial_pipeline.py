@@ -98,24 +98,30 @@ class HybridSpatialMixin:
 
 # The API's native 9-point layer cover is authoritative over a GFS OM
 # pressure-level *proxy*.  The two quantities have different footprints, so
-# 30 percentage points is a conservative discrepancy flag, NOT a proof that
+# 25 percentage points is a conservative discrepancy flag, NOT a proof that
 # either product is physically incorrect.
-GFS_PROXY_CONFLICT_DELTA_PP = 30.0
+GFS_PROXY_CONFLICT_DELTA_PP = 25.0
 
 
 def calibrate_path_samples(samples, profiles, *, manual=False):
     """Apply spatial layer data without letting GFS proxies erase native cover.
 
     EC native OM layers retain their previous treatment.  A GFS OM pressure-
-    level approximation is accepted per layer only when its discrepancy from
-    the native point-API layer is <= 30 percentage points.  On a larger
-    discrepancy, retain native cover in the scoring/quick-screen sample and
-    in the horizontal ray-check *effective* evidence, but keep raw OM intact
-    for diagnostics.  Profile pressure levels and the original total cover
+    level approximation never overrides a valid native point-API cloud layer.
+    Differences above 25 percentage points are flagged as strong conflicts;
+    smaller ones keep the native layer too because the proxy and the 9-point
+    native area mean are not interchangeable measurements. The OM raw values
+    remain available for diagnostics.  Profile pressure levels and the original total cover
     are never rewritten. This function is safe to call again after upstream
     sample extension; preserved API values remain the reference.
     """
     if manual:
+        # Prevent downstream horizontal 2D cross-checks from quietly using raw
+        # OM evidence after a user cloud/satellite override has taken priority.
+        for p in profiles:
+            if isinstance(p, dict) and isinstance(p.get('spatial_horizontal_om'), dict):
+                p['spatial_horizontal_effective'] = {}
+                p['spatial_horizontal_effective_sources'] = {'all': 'manual_priority'}
         return {'status': 'manual_priority', 'corrected_distances': []}
     pmap = {round(float(p.get('distance_km', -9999)), 4): p
             for p in profiles if isinstance(p, dict)
@@ -125,6 +131,7 @@ def calibrate_path_samples(samples, profiles, *, manual=False):
     changes = []
     conflicts = []
     proxy_points = 0
+    native_priority_layers = 0
     for sample in samples:
         if not isinstance(sample, dict):
             continue
@@ -169,16 +176,21 @@ def calibrate_path_samples(samples, profiles, *, manual=False):
             else:
                 old = None
             new = float(vals[field])
-            if (is_proxy and old is not None and 0 <= old <= 100 and
-                    abs(old - new) > GFS_PROXY_CONFLICT_DELTA_PP):
+            if is_proxy and old is not None and 0 <= old <= 100:
+                # A maximum over sparse 25-km pressure levels is NOT the same
+                # variable as native low/mid/high cloud area cover.  Preserve
+                # the native GFS013/025 point-API mean even for small deltas:
+                # a 10pp change can cross the strict 15%-clear threshold.
                 sample[field] = old
                 effective[field] = old
-                effective_sources[field] = 'native_point_api_conflict_fallback'
-                row = {'distance_km': dist, 'field': field, 'api_pct': old,
-                       'om_proxy_pct': new, 'delta_pp': round(abs(old-new), 3),
-                       'decision': 'retain_native_api'}
-                rejected[field] = row
-                conflicts.append(row)
+                effective_sources[field] = 'native_point_api_gfs_proxy_reference'
+                native_priority_layers += 1
+                if abs(old - new) > GFS_PROXY_CONFLICT_DELTA_PP:
+                    row = {'distance_km': dist, 'field': field, 'api_pct': old,
+                           'om_proxy_pct': new, 'delta_pp': round(abs(old-new), 3),
+                           'decision': 'retain_native_api'}
+                    rejected[field] = row
+                    conflicts.append(row)
                 row_changes[field] = (old, old)
             else:
                 sample[field] = new
@@ -194,7 +206,8 @@ def calibrate_path_samples(samples, profiles, *, manual=False):
             p.pop('spatial_horizontal_conflict_layers', None)
             sample.pop('spatial_calibration_conflicts', None)
         sample['spatial_calibration'] = ('gfs_proxy_conflict_native_fallback'
-                                         if rejected else 'om_horizontal_layer_25km_cell')
+                                         if rejected else 'gfs_proxy_native_priority' if is_proxy
+                                         else 'om_horizontal_layer_25km_cell')
         sample['spatial_calibration_run_unproven'] = True
         corrected.append(dist)
         changes.append({'distance_km': dist, 'layers': row_changes,
@@ -204,12 +217,14 @@ def calibrate_path_samples(samples, profiles, *, manual=False):
         'corrected_distances': corrected,
         'changes': changes[:30],
         'gfs_proxy_points': proxy_points,
+        'gfs_native_priority_layers': native_priority_layers,
         'conflict_count': len(conflicts),
         'conflicts': conflicts[:40],
         'conflict_threshold_pp': GFS_PROXY_CONFLICT_DELTA_PP,
-        'caveat': ('EC native 2D layers remain independently sampled. GFS OM '
-                   'pressure-layer proxy conflicts >30 percentage points '
-                   'retain native API layer cover; raw OM preserved, ray '
-                   'cross-check uses the same effective cover. Spatial grid '
-                   'cell and 9-point area footprints differ; run equality '
-                   'with point API is unproven.')}
+        'caveat': ('EC native 2D layers retain original calibration behavior. '
+                   'GFS OM pressure-derived proxy never replaces available '
+                   'native API low/mid/high cover; discrepancies >25 pp are '
+                   'flagged. Raw OM and pressure levels remain diagnostic. '
+                   'Horizontal ray checks use the effective native cover. '
+                   '25-km cell and 9-point area means differ in footprint; '
+                   'the API/OM forecast-run identity remains unverified.')}
