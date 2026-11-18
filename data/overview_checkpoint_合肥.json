@@ -12,7 +12,9 @@
     "2026-11-21"
   ],
   "completed": [
-    "合肥|2026-11-19|ECMWF IFS 0.25°|evening"
+    "合肥|2026-11-19|ECMWF IFS 0.25°|evening",
+    "合肥|2026-11-19|GFS Global|evening",
+    "合肥|2026-11-20|GFS Global|morning"
   ],
   "snapshot": {
     "schema_version": 2,
@@ -72,16 +74,16 @@
             "event_time": "2026-11-19T17:09:54.609366"
           },
           "GFS Global": {
-            "probability": 61.0,
-            "color_score": 56.0,
-            "burn_scale": 8.14,
-            "local_mid_cloud": 87.40740966796875,
-            "local_high_layer_cloud": 0.0,
-            "local_high_cloud": 87.40740966796875,
-            "fire_score_no_color": 4.97,
-            "burn_scale_label": "微烧",
+            "probability": 62.0,
+            "color_score": 68.0,
+            "burn_scale": 54.67,
+            "local_mid_cloud": 100.0,
+            "local_high_layer_cloud": 48.888888888888886,
+            "local_high_cloud": 100.0,
+            "fire_score_no_color": 33.9,
+            "burn_scale_label": "中烧",
             "spatial_calibration_status": "applied",
-            "spatial_corrected_point_count": 17,
+            "spatial_corrected_point_count": 26,
             "event_time": "2026-11-19T17:09:54.609366"
           }
         }
@@ -103,16 +105,16 @@
             "event_time": "2026-11-20T06:43:25.831621"
           },
           "GFS Global": {
-            "probability": 85.0,
+            "probability": 49.0,
             "color_score": 66.0,
-            "burn_scale": 18.21,
-            "local_mid_cloud": 0.0,
-            "local_high_layer_cloud": 90.90908813476562,
-            "local_high_cloud": 90.90908813476562,
-            "fire_score_no_color": 15.48,
-            "burn_scale_label": "小烧",
+            "burn_scale": 79.62,
+            "local_mid_cloud": 0.5555555555555556,
+            "local_high_layer_cloud": 100.0,
+            "local_high_cloud": 100.0,
+            "fire_score_no_color": 39.01,
+            "burn_scale_label": "大烧",
             "spatial_calibration_status": "applied",
-            "spatial_corrected_point_count": 17,
+            "spatial_corrected_point_count": 22,
             "event_time": "2026-11-20T06:43:25.831621"
           }
         },
@@ -152,5 +154,5 @@
       }
     ]
   },
-  "saved_at": "2026-11-19T04:02:09+08:00"
+  "saved_at": "2026-11-19T04:12:39+08:00"
 }
