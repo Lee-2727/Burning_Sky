@@ -70,6 +70,7 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
         numerator=0.; strict_numerator=0.; possible_numerator=0.
         face_numerator=0.; unknown_bottom_weight=0.
         biggest=None; biggest_possible=None
+        colored_solar_alt_weight=0.0; colored_solar_alt_sum=0.0
         for target in targets:
             face=target['end_km']
             p_lat,p_lon=destination(lat,lon,az,face)
@@ -103,17 +104,30 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
             # Keep face illumination as a SEPARATE diagnostic.  Never use
             # its vertical band fraction as the cloud bottom's area fraction.
             face_fraction=fraction
+            # Cloud colour must follow the SUN AT THE ACTUALLY ILLUMINATED
+            # UNDERSIDE POSITION.  The old version assigned the far-face Sun
+            # angle to every strip, making local clouds jump to unrelated hues.
+            effective_solar_alt=solar_alt
             if verified_target_bottom_points is not None:
                 target_key=tuple(round(float(target[k]),6) for k in
                                  ('start_km','end_km','bottom_km','top_km'))
                 points=bottom_index.get((m,target_key),[])
-                # All five sampled strips must be accounted for; unresolved
-                # solar corridors are reported separately, not called clear.
-                lit_count=sum(p['status']=='verified_bottom' for p in points)
-                missing_count=max(0,5-len(points))
-                unresolved_count=missing_count+sum(p['status'].startswith('unresolved') for p in points)
-                fraction=_clip(lit_count/5.0)
-                unknown_bottom_weight+=target['target_weight']*_clip(unresolved_count/5.0)
+                # Strict cloud-bottom observations carry the real horizontal
+                # interval they represent. Never normalize by a fixed count.
+                total_width=max(1e-12,float(target['end_km'])-float(target['start_km']))
+                verified_points=[p for p in points if p['status']=='verified_bottom']
+                lit_width=sum(float(p.get('area_width_km',0.)) for p in verified_points)
+                unknown_width=sum(float(p.get('area_width_km',0.))
+                                  for p in points if p['status'].startswith('unresolved'))
+                if verified_points and lit_width>0:
+                    effective_solar_alt=sum(float(p['solar_altitude_deg'])*float(p.get('area_width_km',0.))
+                                            for p in verified_points)/lit_width
+                # Missing samples remain unknown rather than silently dark.
+                represented=sum(float(p.get('area_width_km',0.)) for p in points)
+                unknown_width+=max(0.,total_width-represented)
+                fraction=_clip(lit_width/total_width)
+                unresolved_fraction=_clip(unknown_width/total_width)
+                unknown_bottom_weight+=target['target_weight']*unresolved_fraction
             strict_fraction=fraction
             face_numerator+=target['target_weight']*face_fraction
             # Diagnostic upper bound: only fully overcast upstream cells are
@@ -125,7 +139,7 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
             if verified_target_bottom_points is not None:
                 # Underside upper bound: unresolved strips MAY be illuminated.
                 # Sun-facing height bands are a separate physical surface.
-                possible_fraction=_clip(fraction+unresolved_count/5.0)
+                possible_fraction=_clip(fraction+unresolved_fraction)
             possible_dominance=target['target_weight']*possible_fraction
             if biggest_possible is None or possible_dominance>biggest_possible['dominance']:
                 biggest_possible={'dominance':possible_dominance,'face_km':face,
@@ -134,8 +148,11 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
             w=target['target_weight']; numerator+=w*fraction
             strict_numerator+=w*strict_fraction; possible_numerator+=w*possible_fraction
             dominance=w*fraction
+            if dominance>0:
+                colored_solar_alt_sum+=dominance*effective_solar_alt
+                colored_solar_alt_weight+=dominance
             if biggest is None or dominance>biggest['dominance']:
-                biggest={'dominance':dominance,'face_km':face,'solar_altitude_deg':solar_alt,
+                biggest={'dominance':dominance,'face_km':face,'solar_altitude_deg':effective_solar_alt,
                          'height_km':(a,b),'illumination_fraction':fraction,
                          'cloud_cover_pct':100*target['cloud_cover']/100 if False else target['cloud_cover']}
         frac=_clip(numerator/den); lower=_clip(strict_numerator/den); upper=_clip(possible_numerator/den)
@@ -144,6 +161,7 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
                        'front_face_fraction':_clip(face_numerator/den),
                        'bottom_unresolved_weight_fraction':_clip(unknown_bottom_weight/den),
                        'dominant':biggest if biggest and biggest['dominance']>1e-9 else None,
+                       'representative_solar_altitude_deg':(colored_solar_alt_sum/colored_solar_alt_weight if colored_solar_alt_weight>0 else None),
                        'possible_dominant':biggest_possible if biggest_possible and biggest_possible['dominance']>1e-9 else None})
     return {'available':True,'potential_km':limit,'target_count':len(targets),
             'target_weight':den,'times':result,'method':'spherical_bottom_surface_area_strict_target_minute_gate',
@@ -201,7 +219,7 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
             # is an independent brightness/colour adjustment.
             point['brightness']=round(_clip(dominant['illumination_fraction']*atmospheric_factor,0.,1.)*100.,1)
             if color_fn:
-                base=color_fn(dominant['solar_altitude_deg'])
+                base=color_fn(row.get('representative_solar_altitude_deg') if row.get('representative_solar_altitude_deg') is not None else dominant['solar_altitude_deg'])
                 rr,gg,bb=[v/255. for v in base]
                 h,l,s=colorsys.rgb_to_hls(rr,gg,bb)
                 r,g,b=colorsys.hls_to_rgb(h,l,_clip(s*(0.08+0.92*aod_color_quality)))
@@ -221,19 +239,9 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
         point['local_cloud_possible_fraction']=round(row['possible_fraction'],6) if row else 0.
         point['sunward_face_illumination_fraction']=round(row['front_face_fraction'],6) if row else 0.
         point['cloud_bottom_unresolved_fraction']=round(row['bottom_unresolved_weight_fraction'],6) if row else 0.
-    # Keep the legacy 3%-of-peak colored-area visibility floor. This prevents
-    # isolated sub-percent geometric slivers from producing a misleading
-    # second twilight interval after the main cloud-color episode.
-    _max_area=max((p['tintable_cloud_area'] for p in original),default=0.)
-    _min_area=max(1e-8,.03*_max_area)
-    for point in original:
-        if point['tintable_cloud_area'] < _min_area:
-            point['geometry_valid']=False
-            point['brightness']=0.
-            point['tintable_cloud_area']=0.
-            point['colored_cloud_area_pct']=0.0
-            point['major_coloration_valid']=False
-            point['strict_light_window']=False
+    # Preserve all actually verified per-minute rays. The 5% threshold above
+    # controls only the vivid major-colour overlay; it must not erase weak
+    # verified light, or disconnect the strict minute chronology.
     peak_b=max((p['brightness'] for p in original),default=0.)
     for point in original:
         point['relative_brightness']=round(100*point['brightness']/peak_b,1) if peak_b else 0.

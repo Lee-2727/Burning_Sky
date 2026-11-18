@@ -119,6 +119,41 @@ def render_profile(result, width=1400, height=760):
                 if not blocked and math.isfinite(h) and 0<=h<=maxh:
                     xx,yy=x(dist),y(h)
                     d.ellipse((xx-1,yy-1,xx+1,yy+1),fill='#bb66e8')
+    # Critical underside sweep: show cloud-bottom candidate starts AT THEIR
+    # OWN positions, never at the front face. A purple verified trace is NOT
+    # implied by a dashed or unresolved underside candidate.
+    underside = inferred.get('verified_bottom_sample_traces') or []
+    accepted = [p for p in underside if p.get('status') == 'verified_bottom']
+    blocked = [p for p in underside if p.get('status') == 'cloud_blocked']
+    unknown = [p for p in underside if str(p.get('status','')).startswith('unresolved')]
+    def underside_rays(points, color, max_count=24):
+        if not points:return
+        # Show a distance-spread selection rather than just the first minute.
+        chosen=sorted(points,key=lambda v:(float(v.get('position_km',0)),float(v.get('solar_altitude_deg',0))))
+        step=max(1,len(chosen)//max_count)
+        for p in chosen[::step][:max_count]:
+            try:
+                dist=float(p['position_km']);alt=float(p['solar_altitude_deg'])
+                key=p.get('target_key') or []
+                height=float(key[2])
+            except (ValueError,TypeError,IndexError,KeyError):continue
+            if not (0<=dist<plotdist and 0<height<maxh):continue
+            px,py=x(dist),y(height)
+            d.ellipse((px-3,py-3,px+3,py+3),fill=color)
+            if p.get('status')=='verified_bottom':continue
+            # A candidate route is a DOTTED geometric possibility only.
+            far=min(plotdist,dist+300.)
+            for j in range(1,145,3):
+                xx=dist+(far-dist)*j/144.
+                hh=_ray_height_km(height,alt,xx-dist)
+                if math.isfinite(hh) and 0<=hh<=maxh:
+                    d.ellipse((x(xx)-1,y(hh)-1,x(xx)+1,y(hh)+1),fill=color)
+    underside_rays(unknown,'#a8b0c6',25)
+    underside_rays(blocked,'#e2893b',14)
+    underside_rays(accepted,'#7034a8',18)
+    d.text((left+pw*.5,top+7),
+           f'Cloud-bottom sweep: verified {len(accepted)} / blocked {len(blocked)} / unresolved {len(unknown)}',
+           fill='#524265')
     # Real accepted rays after OM conflict review. Plot each at ITS OWN cloud
     # target height and face, not a shared artificial default cloud base.
     drawn=0

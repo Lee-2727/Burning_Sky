@@ -337,15 +337,55 @@ def materialize_off_axis_rays(plan, extra_profiles):
     return out
 
 
-def _bottom_samples(target, count=5):
-    """Cell-strip midpoint quadrature over *horizontal cloud-bottom area*.
+# All cloud-bottom targets use ONE local-to-sunward scan grid.  The weather
+# profiles already cover this domain; adding target points does not fetch data.
+BOTTOM_SWEEP_STEP_KM = 15.0
+# Kept only for older diagnostic callers/tests, not for the official sweep.
+UNDERSIDE_AREA_STRIPS = 9
 
-    Cloud length, not a face-height fraction, is the area dimension.  Each
-    point owns an equal sub-strip of this sampled 1-D cloud footprint.
-    """
-    start=float(target['start_km']); end=float(target['end_km'])
+
+def _bottom_samples(target, count=5):
+    """Legacy midpoint probes for standalone diagnostic callers."""
+    start=float(target['start_km']);end=float(target['end_km'])
     if end<=start:return []
     return [start+(end-start)*(i+.5)/count for i in range(count)]
+
+
+def _cloud_bottom_sweep_grid(limit_km):
+    """One probe for a 0..15 km range; otherwise strict 15-km intervals.
+
+    A range shorter than 15 km uses its midpoint to represent the entire
+    range. For longer ranges the global stations are 0, 15, 30, ...; the
+    last fractional tail belongs to the nearest station for area weighting.
+    """
+    limit=max(0.,float(limit_km))
+    if limit<=0:return []
+    if limit<BOTTOM_SWEEP_STEP_KM:
+        return [limit*.5]
+    count=int((limit+1e-8)//BOTTOM_SWEEP_STEP_KM)
+    return [BOTTOM_SWEEP_STEP_KM*i for i in range(count+1)]
+
+
+def _bottom_sweep_strips(target, limit_km, refine_points=()):
+    """Actual widths owned by cloud-bottom positions on the global scan grid.
+
+    Clip to this cloud's horizontal interval.  A cloud cell shorter than one
+    grid step is still examined, never silently dropped.  Extra points inserted
+    around light/dark changes subdivide area instead of increasing total area.
+    """
+    a=max(0.,float(target['start_km']))
+    b=min(float(target['end_km']),float(limit_km))
+    if b<=a:return []
+    nodes=[d for d in _cloud_bottom_sweep_grid(limit_km) if a-1e-8<=d<=b+1e-8]
+    nodes += [float(d) for d in refine_points if a<float(d)<b]
+    if not nodes:nodes=[(a+b)*.5]
+    nodes=sorted(set(round(max(a,min(b,d)),9) for d in nodes))
+    intervals=[]
+    for i,d in enumerate(nodes):
+        left=a if i==0 else (nodes[i-1]+d)*.5
+        right=b if i==len(nodes)-1 else (d+nodes[i+1])*.5
+        intervals.append({'position_km':d,'area_width_km':max(0.,right-left)})
+    return intervals
 
 
 def _cloud_ray_intersects_bottom(target_d, base_height_km, solar_alt_deg, cell,
@@ -392,6 +432,71 @@ def _offaxis_ray_supports_bottom(ray, target_lat, target_lon, solar_az, target_d
             return False
     return True
 
+
+
+
+def _measured_station_index(axis_profiles, off_axis_profiles, cell_deg=0.2):
+    """Index ACTUALLY measured stations, not synthetic clear positions.
+
+    Face rays are a cache of real pressure-level requests.  Their measurements
+    may be reused for other underside targets *only at their actual lat/lon*.
+    No spatial extrapolation and no additional meteorological request.
+    """
+    buckets={}
+    seen=set()
+    sources=list(axis_profiles or ())
+    for ray in (off_axis_profiles or {}).values():
+        sources.extend(ray or ())
+    for row in sources:
+        if not row or not row.get('levels') or not isinstance(row.get('lat'),(int,float)) or not isinstance(row.get('lon'),(int,float)):
+            continue
+        if not any(isinstance(v.get('height_agl_km'),(int,float)) and isinstance(v.get('cloud_cover'),(int,float)) for v in row['levels']):
+            continue
+        la=float(row['lat']); lo=float(row['lon'])
+        key=(round(la,5),round(lo,5))
+        if key in seen:continue
+        seen.add(key)
+        cell=(math.floor(la/cell_deg),math.floor(lo/cell_deg))
+        buckets.setdefault(cell,[]).append(row)
+    return (buckets,cell_deg)
+
+
+def _reproject_measured_ray(index, target_lat, target_lon, solar_azimuth,
+                            target_distance_km, source_end_km,
+                            radius_km=15., spacing_km=50.):
+    """Resample the real underside sunbeam from cached measured points.
+
+    Do not claim a ray verified if even ONE station on the path lacks a
+    nearby independent atmospheric profile.  The 15-km tolerance is the
+    corridor's existing horizontal spatial support radius, not free sky.
+    """
+    buckets,cell_deg=index
+    if not buckets:return None
+    span=float(source_end_km)-float(target_distance_km)
+    if span<=0:return None
+    count=max(2,math.ceil(span/spacing_km))
+    width=span/count
+    rows=[]
+    for i in range(count):
+        u=(i+.5)*width
+        pt=destination(target_lat,target_lon,solar_azimuth,u)
+        a,b=math.floor(pt[0]/cell_deg),math.floor(pt[1]/cell_deg)
+        nearest=None;best=radius_km+1e-8
+        # The lat/lon grids are only a fast index: actual matching uses great-
+        # circle distance and never invents an intermediate weather sample.
+        lat_steps=max(1,math.ceil((radius_km/110.6)/cell_deg)+1)
+        lon_steps=max(1,math.ceil((radius_km/(111.3*max(.15,abs(math.cos(math.radians(pt[0]))))))/cell_deg)+1)
+        for x in range(a-lat_steps,a+lat_steps+1):
+            for y in range(b-lon_steps,b+lon_steps+1):
+                for candidate in buckets.get((x,y),()):
+                    d=_great_circle_km(pt[0],pt[1],float(candidate['lat']),float(candidate['lon']))
+                    if d<best:nearest=candidate;best=d
+        if nearest is None:return None
+        row=dict(nearest)
+        row['distance_km']=target_distance_km+u
+        row['source_position_offset_km']=round(best,2)
+        rows.append(row)
+    return rows
 
 
 # Conservative upper bound of the ordinary cloud-bearing atmosphere. This is
@@ -456,7 +561,7 @@ def dynamic_solar_source_horizon(profiles, event_dt, utc_offset, lat, lon,
     max_required=base
     worst=None
     eligible=0
-    # Each bottom is checked at the same five horizontal positions as the
+    # Each bottom is checked at the same fixed 15-km positions as the
     # strict underside tracer. The frontal target includes the lowest height
     # that can physically see over Earth's limb, not just a random midpoint.
     for cell in cells:
@@ -468,7 +573,7 @@ def dynamic_solar_source_horizon(profiles, event_dt, utc_offset, lat, lon,
         if face<=float(target['start_km']):continue
         for minute in minutes:
             dt=event_dt+timedelta(minutes=minute)
-            for pos in list(_bottom_samples(target)) + [face]:
+            for pos in [p["position_km"] for p in _bottom_sweep_strips(target,limit)] + [face]:
                 tlat,tlon=destination(lat,lon,event_az,pos)
                 alt,_=solar_position(dt,utc_offset,tlat,tlon)
                 heights=[float(target['bottom_km'])]
@@ -501,7 +606,7 @@ def dynamic_solar_source_horizon(profiles, event_dt, utc_offset, lat, lon,
 def _validated_cloud_bottom(target, minute, dt, event_az, lat, lon, utc_offset,
                             required, axis_cells, axis_profiles, off_axis_profiles,
                             use_horizontal_fusion, target_pressure_by_distance,
-                            sample_count=5):
+                            measured_index=None, sample_count=5, sweep_strips=None):
     """Strict spherical/cloud-occlusion test at every sampled *cloud bottom*.
 
     Returns individual area-strip observations; inconclusive off-axis paths
@@ -515,23 +620,44 @@ def _validated_cloud_bottom(target, minute, dt, event_az, lat, lon, utc_offset,
     key=[round(float(target[k]),6) for k in
          ('start_km','end_km','bottom_km','top_km')]
     outcome=[]
-    for pos in _bottom_samples(target,sample_count):
+    strips=(sweep_strips if sweep_strips is not None else
+            [{'position_km':x,'area_width_km':(
+                float(target['end_km'])-float(target['start_km']))/sample_count}
+             for x in _bottom_samples(target,sample_count)])
+    for strip in strips:
+        pos=float(strip['position_km'])
+        width=float(strip['area_width_km'])
         tlat,tlon=destination(lat,lon,event_az,pos)
         alt,az=solar_position(dt,utc_offset,tlat,tlon)
         covered=_solar_corridor_coverage(event_az,lat,lon,pos,az,required)
         ray=None
         if not covered['covered']:
             ray=(off_axis_profiles or {}).get((minute,round(face,5)))
-            if not _offaxis_ray_supports_bottom(ray,tlat,tlon,az,pos,face,required):
+            # A face-anchored measured ray is NOT automatically the ray from
+            # an interior cloud-bottom point. Reproject all already measured
+            # station positions onto this point's own Sun direction first.
+            # If an actual station is missing, retain UNKNOWN (never CLEAR).
+            measured=_reproject_measured_ray(measured_index,tlat,tlon,az,pos,required) if measured_index else None
+            reused_face_ray=False
+            if measured is None and _offaxis_ray_supports_bottom(ray,tlat,tlon,az,pos,face,required):
+                measured=ray
+                reused_face_ray=True
+            if measured is None:
                 outcome.append({'status':'unresolved_off_axis','position_km':pos,
                                 'solar_altitude_deg':alt,'target_key':key});continue
+            ray=measured
             ray_cells=profile_cloud_cells(ray,threshold=25.,
                                           blur_horizontal_km=0.,blur_vertical_km=0.)
-            # Real main-axis samples bridge bottom -> face; measured off-axis
-            # samples then cover the face -> 700km source segment.
-            obstacles=[c for c in axis_cells if
-                       float(c['end_km'])>pos and float(c['start_km'])<face]
-            obstacles += [c for c in ray_cells if float(c['end_km'])>face]
+            # Reprojected stations cover the WHOLE corridor including cloud
+            # interior.  A reused face ray starts at the face and therefore
+            # needs the real main-axis cells between this bottom point and
+            # the face (otherwise own-cloud interception would be skipped).
+            if reused_face_ray:
+                obstacles=[c for c in axis_cells if
+                           float(c['end_km'])>pos and float(c['start_km'])<face]
+                obstacles += [c for c in ray_cells if float(c['end_km'])>face]
+            else:
+                obstacles=[c for c in ray_cells if float(c['end_km'])>pos]
             horizontal_profiles=(ray if use_horizontal_fusion else [])
         else:
             obstacles=[c for c in axis_cells if float(c['end_km'])>pos and
@@ -573,6 +699,8 @@ def _validated_cloud_bottom(target, minute, dt, event_az, lat, lon, utc_offset,
         outcome.append({'status':'verified_bottom','position_km':pos,
                         'solar_altitude_deg':alt,'target_key':key,
                         'source_boundary_altitude_km':round(_ray_height_km(bottom,alt,travel),3)})
+    for row,strip in zip(outcome,strips):
+        row['area_width_km']=float(strip['area_width_km'])
     return outcome
 
 
@@ -660,6 +788,7 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
     from .spatial_ray_fusion import (check_horizontal_ray_consistency,
                                      check_horizontal_target_support)
     target_pressure_by_distance = {round(float(p['distance_km']),5):p for p in valid}
+    measured_index=_measured_station_index(valid,off_axis_ray_profiles)
     # A valid model-domain ray requires sampled profiles throughout the full
     # upstream window, exact solar/Earth non-intersection and NO actual cloud
     # intersections. Neither an arbitrary 20-km endpoint threshold nor a
@@ -803,14 +932,16 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                 })
                 if winner is None or candidate['weight']>winner['weight']:
                     winner=candidate
-        # Independent underside illumination: each strip has its OWN target
-        # coordinate, Sun altitude and full 700km spherical obstruction test.
-        # A dark SUNWARD FACE is not evidence of a dark cloud bottom.
+        # Uniform 15-km cloud-bottom target grid from the observer.
+        # <15 km: one representative sample. Do not increase sampling for
+        # short ranges; this pass reuses existing weather profiles.
         for target in targets:
+            base_strips=_bottom_sweep_strips(target,limit)
             underside=_validated_cloud_bottom(
                 target,minute,dt,event_az,lat,lon,utc_offset,required,
                 cells,valid,off_axis_ray_profiles,use_horizontal_fusion,
-                target_pressure_by_distance)
+                target_pressure_by_distance,measured_index,
+                sweep_strips=base_strips)
             verified_target_bottom_points.extend(
                 {'minute_offset':minute,**point} for point in underside)
             for point in underside:
@@ -832,9 +963,7 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                     'status':'verified_cloud_bottom_spherical',
                     'surface':'cloud_bottom',
                     'source_boundary_altitude_km':point['source_boundary_altitude_km'],
-                    # area-strip rather than vertical face-height weighting
-                    'weight':float(target.get('cloud_cover',0))*(
-                        float(target['end_km'])-float(target['start_km']))/5.}
+                    'weight':float(target.get('cloud_cover',0))*point['area_width_km']}
                 if winner is None or candidate['weight']>winner['weight']:
                     winner=candidate
         if minute_uncovered:
@@ -852,6 +981,7 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
             'verified_target_bottom_points':verified_target_bottom_points,
             'bottom_verified_point_count':bottom_verified_count,
             'bottom_unresolved_point_count':bottom_unknown_count,
+            'bottom_inner_sweep_method':'global_fixed_15km_single_if_short',
             'target_surface_methods':['cloud_bottom','sunward_face'],
             'spatially_unverified_minutes':sorted(uncovered_minutes),
             'source_boundary_unresolved_minutes':sorted(source_boundary_unresolved_minutes),
