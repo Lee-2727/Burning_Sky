@@ -5,10 +5,10 @@
   "longitude": 117.2272,
   "elevation_m": 30.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": "2026-11-18 10:30:05 CST",
+  "updated_at": "2026-11-18 10:53:09 CST",
   "direction_updated_at": {
-    "morning": "2026-11-18 10:30:05 CST",
-    "evening": "2026-11-18 10:30:05 CST"
+    "morning": "2026-11-18 10:53:09 CST",
+    "evening": "2026-11-18 10:53:09 CST"
   },
   "days": [
     {
@@ -16,11 +16,11 @@
       "morning": {
         "ECMWF IFS 0.25°": {
           "probability": 0.0,
-          "color_score": 13.0,
+          "color_score": 12.0,
           "burn_scale": 0.0,
-          "local_mid_cloud": 6.0,
-          "local_high_layer_cloud": 2.0,
-          "local_high_cloud": 8.0,
+          "local_mid_cloud": 23.0,
+          "local_high_layer_cloud": 3.0,
+          "local_high_cloud": 26.0,
           "fire_score_no_color": 0.0,
           "burn_scale_label": "不烧",
           "spatial_calibration_status": "applied",
@@ -190,12 +190,16 @@
     }
   ],
   "publication": {
-    "state": "completed",
+    "state": "partial",
     "batch_day": "2026-11-18",
-    "published_at": "2026-11-18 10:30:05 CST",
-    "valid_in_batch": 12,
-    "retained_old_keys": [],
+    "published_at": "2026-11-18 10:53:09 CST",
+    "valid_in_batch": 11,
+    "retained_old_keys": [
+      "合肥|2026-11-18|ECMWF IFS 0.25°|morning"
+    ],
     "missing_keys": [],
-    "failed_keys": []
+    "failed_keys": [
+      "合肥|2026-11-18|ECMWF IFS 0.25°|morning"
+    ]
   }
 }
