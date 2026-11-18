@@ -75,6 +75,10 @@ def status_view(status, snapshot, now=None):
     # Old progress can belong to a subsequent run; do not describe it as proof
     # that the displayed published data are incomplete.
     if completed:
+        if state in ('partial', 'rate_limited') and status.get('partial_published'):
+            return ('warning', f'⚠️ 本轮部分更新已发布：新有效 {status.get("success_count", "?")}/{task_total}，'
+                    f'沿用上一轮 {status.get("retained_old_count", 0)} 项，'
+                    f'暂无有效结果 {status.get("missing_count", 0)} 项。已显示的完整数据不等于本轮20项全部成功。')
         if state == 'completed':
             return ('success', f'✅ 未来五日 EC/GFS 朝霞及晚霞数据已完整发布（{published_at}）。')
         if state in ('running', 'between_models'):
@@ -91,6 +95,10 @@ def status_view(status, snapshot, now=None):
     if state == 'completed':
         return ('success', f'✅ 本轮多日概览更新完成，状态更新时间：{status.get("updated_at", "未知")}。')
     if state in ('partial', 'failed', 'rate_limited'):
+        if status.get('partial_published'):
+            return ('warning', f'⚠️ 本轮 {status.get("success_count", "?")}/{task_total} 项有效，'
+                    f'已正式发布；沿用旧数据 {status.get("retained_old_count", 0)} 项，'
+                    f'缺失 {status.get("missing_count", 0)} 项。')
         if completed:
             return ('success', f'✅ 当前仍可查看完整五日预测（{published_at}）；最近一次后台任务状态为 {state}。')
         return ('warning', f'⚠️ 后台任务尚未全部完成（{state}）；已成功的预测仍可查看。'

@@ -10,6 +10,9 @@ import time
 import subprocess
 import shutil
 import tempfile
+import signal
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -28,12 +31,32 @@ CITY_CONFIG_FILE = ROOT / "overview_cities.txt"
 # Requests are processed conservatively within each model batch; each completed
 # model batch is published before the next model starts.
 REQUEST_INTERVAL_SECONDS = 20  # Additional spacing between individual direction tasks.
-MAX_TASK_ATTEMPTS = 3  # Each unfinished date/model/direction is attempted at most 3 times per batch.
-RETRY_WAIT_SECONDS = 180  # Recoverable failures wait 3 minutes, then resume the same task.
+MAX_TASK_ATTEMPTS = 2  # Fresh run: at most one retry for actual transient exceptions.
+RETRY_WAIT_SECONDS = 25  # Short bounded wait, never repeated 180-second waits.
 # When a quota remains exhausted, retain checkpoint and leave the task unfinished;
 # later scheduled runs will retry it without redoing completed tasks.
 
-UPDATER_BUILD_ID = 'v2.1.4-clean-worktree-publish-fresh-mode-20261116'
+UPDATER_BUILD_ID = 'partial-results-publish-safe-resume-20261118'
+
+# GitHub Actions uses Linux; cap a single stalled API/forecast task so that
+# remaining valid results can still be published. No hard kill on Windows.
+@contextmanager
+def _bounded_forecast_task(seconds):
+    if (not hasattr(signal, 'SIGALRM') or
+            threading.current_thread() is not threading.main_thread()):
+        yield
+        return
+    def _expired(_signum, _frame):
+        raise TimeoutError(f'单项预测超过 {int(seconds)} 秒，推迟到下次定时计算')
+    previous = signal.signal(signal.SIGALRM, _expired)
+    old_seconds = signal.alarm(int(seconds))
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+        if old_seconds:
+            signal.alarm(old_seconds)
 
 def _check_scheduled_rate():
     # Verify the HTTP limiter used by the imported engine, not just an env flag.
@@ -154,6 +177,7 @@ class _Widget:
 
 
 from burning_sky.spatial_pipeline import HybridSpatialMixin
+from burning_sky.overview_partial_publish import prepare_publication
 
 class _HeadlessForecast(HybridSpatialMixin, engine.FireCloudApp):
     """不创建 Tk 窗口，直接复用现有完整预测计算流程。"""
@@ -362,9 +386,13 @@ def main():
                 and previous_checkpoint.get('dates') == [d.isoformat() for d in dates]):
             recovered = previous_checkpoint.get('snapshot')
             if isinstance(recovered, dict) and recovered.get('days'):
-                snapshots[PLACE] = recovered
+                from burning_sky.overview_snapshot_guard import restore_missing_only
                 checkpoint_completed = set(str(x) for x in previous_checkpoint.get('completed', []))
-                print(f'Resuming {len(checkpoint_completed)} successful tasks from checkpoint.', flush=True)
+                snapshots[PLACE], restored = restore_missing_only(
+                    snapshots[PLACE], recovered, [d.isoformat() for d in dates],
+                    checkpoint_completed, PLACE)
+                print(f'Resuming checkpoint: {len(checkpoint_completed)} saved task keys, '
+                      f'{restored} previously missing rows restored; already published rows kept.', flush=True)
     except (OSError, ValueError, TypeError, KeyError):
         pass
 
@@ -392,6 +420,33 @@ def main():
     print(f"Direction: {direction_title}; cities: {' → '.join(cities)}; models: 2; days: 5", flush=True)
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
     _publish_files(status, include_results=False)
+
+    # The most important resume guarantee: publish the validated checkpoint
+    # immediately BEFORE attempting a pending task. Even if that last task
+    # stalls in the network layer, 19/20 already exists in public JSON.
+    if run_mode == 'resume' and checkpoint_completed and len(checkpoint_completed) < status['task_total']:
+        early_stamp = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
+        early_snapshots, early_info = prepare_publication(
+            snapshots, dates, [m['label'] for m in models], checkpoint_completed,
+            [], early_stamp, now.date().isoformat())
+        for city, ready in early_snapshots.items():
+            _write_json_atomic(ROOT / 'data' / f'overview_{city}.json', ready)
+        _write_json_atomic(ROOT / 'data' / 'overview.json', {
+            'schema_version': 2, 'updated_at': datetime.now(TZ).isoformat(timespec='seconds'),
+            'cities': early_snapshots})
+        status.update(state='partial', partial_published=True,
+                      success_count=early_info['current_valid'],
+                      visible_valid_count=early_info['visible_valid'],
+                      retained_old_count=len(early_info['stale']),
+                      missing_count=len(early_info['missing']),
+                      updated_at=early_stamp,
+                      message='恢复任务启动前已发布有效检查点数据；现在只补未完成项目。')
+        _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
+        if not _publish_files(status, include_results=True):
+            raise SystemExit('Failed to publish the restored checkpoint before retrying')
+        print(f'[resume early publish] checkpoint {early_info["current_valid"]}/'
+              f'{early_info["total"]} made publicly visible before retry.', flush=True)
+        status.update(state='running', partial_published=False)
 
     old_info, old_error = engine.messagebox.showinfo, engine.messagebox.showerror
     engine.messagebox.showinfo = lambda *a, **k: None
@@ -424,7 +479,7 @@ def main():
                                 continue
                             checkpoint_completed.discard(task_key)
 
-                        if task_index:
+                        if task_index and run_mode != 'resume':
                             time.sleep(REQUEST_INTERVAL_SECONDS)
                         record = None
                         error = None
@@ -433,14 +488,16 @@ def main():
                         # checkpointed and must never be recalculated in this batch.
                         # Retrying transient invalid results is essential: some engine
                         # branches produce no direction_results without raising.
-                        for attempt in range(1, MAX_TASK_ATTEMPTS + 1):
+                        attempt_limit = 1 if run_mode == 'resume' else MAX_TASK_ATTEMPTS
+                        for attempt in range(1, attempt_limit + 1):
                             runner = _new_runner(city, day, label)
                             engine.messagebox.last_error = None
-                            print(f'[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: starting (attempt {attempt}/{MAX_TASK_ATTEMPTS})', flush=True)
+                            print(f'[{datetime.now(TZ):%H:%M:%S}] {city} {day} {label} {direction_title}: starting (attempt {attempt}/{attempt_limit})', flush=True)
                             diagnostic_traceback = None
                             try:
-                                runner._fetch_weather_task(direction, raise_errors=True,
-                                                           notify_success=False)
+                                with _bounded_forecast_task(480 if run_mode == 'resume' else 900):
+                                    runner._fetch_weather_task(direction, raise_errors=True,
+                                                               notify_success=False)
                             except Exception as exc:
                                 diagnostic_traceback = traceback.format_exc()
                                 engine.messagebox.last_error = ('Forecast error', str(exc))
@@ -453,7 +510,7 @@ def main():
                             if not valid_attempt:
                                 inferred_diagnostic = ((result or {}).get('inferred') or {})
                                 print('[OVERVIEW DIAGNOSTIC] '
-                                      f'key={task_key} attempt={attempt}/{MAX_TASK_ATTEMPTS} '
+                                      f'key={task_key} attempt={attempt}/{attempt_limit} '
                                       f'result_present={isinstance(result, dict)} '
                                       f'fields={list((result or {}).keys()) if isinstance(result, dict) else []} '
                                       f'inferred_fields={sorted(inferred_diagnostic.keys())} '
@@ -467,23 +524,26 @@ def main():
                                     print('[OVERVIEW TRACEBACK]\n' + diagnostic_traceback, flush=True)
                             if valid_attempt:
                                 if attempt > 1:
-                                    print(f'[recovered] {task_key}: successful on attempt {attempt}/{MAX_TASK_ATTEMPTS}', flush=True)
+                                    print(f'[recovered] {task_key}: successful on attempt {attempt}/{attempt_limit}', flush=True)
                                 break
                             reason = (str(error[1]) if error else '预测流程返回指标不完整：' + ', '.join(
                                 f'{key}={record.get(key) if isinstance(record, dict) else None!r}'
                                 for key in ('probability', 'color_score', 'burn_scale')))
                             attempts_diagnostics[task_key] = {'attempt': attempt, 'reason': reason[:500]}
-                            if attempt >= MAX_TASK_ATTEMPTS:
-                                print(f'[retry exhausted] {task_key}: {MAX_TASK_ATTEMPTS} attempts; '
-                                      'preserving checkpoint and continuing other unfinished tasks.', flush=True)
+                            # Incomplete scores/unknown illumination are not fixed by
+                            # repeatedly downloading the same weather run. A 429 is
+                            # deferred until the next scheduled batch as well.
+                            transient = bool(error) and not any(
+                                tag in reason.lower() for tag in ('429', 'limit exceeded', '限流'))
+                            if attempt >= attempt_limit or not transient:
+                                print(f'[task deferred] {task_key}: {reason[:250]}; '
+                                      'no long retry or partial-result loss.', flush=True)
                                 break
-                            # Server Retry-After / shared-limit cooldown may exceed 3m.
-                            # Never retry sooner than the specified 180s baseline.
                             from burning_sky.api_rate_limit import cooldown_remaining
-                            delay = max(RETRY_WAIT_SECONDS, float(cooldown_remaining() or 0) + 25)
+                            delay = min(60.0, max(RETRY_WAIT_SECONDS, float(cooldown_remaining() or 0) + 5))
                             print(f'[retry wait] {task_key}: {reason[:250]} '
-                                  f'— wait {delay:.0f}s, then retry ONLY this task '
-                                  f'({attempt + 1}/{MAX_TASK_ATTEMPTS}); successful checkpoint retained.', flush=True)
+                                  f'— wait at most {delay:.0f}s for one transient retry '
+                                  f'({attempt + 1}/{attempt_limit}); successful checkpoint retained.', flush=True)
                             save_checkpoint()
                             status.update(state='cooldown',
                                           message=f'第{attempt}次失败，等待{delay:.0f}秒后续跑 {task_key}',
@@ -525,45 +585,61 @@ def main():
     finally:
         engine.messagebox.showinfo, engine.messagebox.showerror = old_info, old_error
 
-    if failures:
-        # Publish the *checkpoint*, not a falsely "completed" daily snapshot.
-        # The web app overlays only validated task keys and leaves failures blank.
-        save_checkpoint()
-        status.update(state='rate_limited' if limit_hit else 'partial',
-                      failed_at=datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S %Z'),
-                      success_count=len(checkpoint_completed),
-                      failure_count=len(failures), failures=failures[:30],
-                      retry_diagnostics=attempts_diagnostics,
-                      message=f'本轮已有{len(checkpoint_completed)}/{status["task_total"]}项成功缓存并发布检查点；'
-                              '失败项目已分别等待180秒并有限重试，未完成项显示为空白；下次同日运行继续补齐。')
-        _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
-        _publish_files(status, include_results=False)
-        print(f'Overview checkpoint published: {len(checkpoint_completed)}/{status["task_total"]}; '
-              'published complete snapshot remains intact.', flush=True)
-        # A partially valid batch is not a complete forecast. Preserve the
-        # nonzero exit code for scheduled monitors and don't pretend success.
-        raise SystemExit(f'Overview batch partial ({len(failures)} failed tasks); checkpoint published')
-
     completed_at = datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
-    for city, snapshot in snapshots.items():
-        snapshot["direction_updated_at"]["morning"] = completed_at
-        snapshot["direction_updated_at"]["evening"] = completed_at
-        snapshot["updated_at"] = completed_at
-        _write_json_atomic(ROOT / "data" / f"overview_{city}.json", snapshot)
-    aggregate = {"schema_version": 2, "updated_at": datetime.now(TZ).isoformat(timespec="seconds"),
-                 "cities": {city: snapshots[city] for city in cities}}
-    _write_json_atomic(ROOT / "data" / "overview.json", aggregate)
-    status.update(state="completed", completed_at=completed_at, updated_at=completed_at,
-                  failure_count=0, message=f"{direction_title}双模式五日朝霞及晚霞数据已完整发布。")
-    _write_json_atomic(ROOT / "data" / "overview_status.json", status)
-    CHECKPOINT.unlink(missing_ok=True)
+    published_snapshots, summary = prepare_publication(
+        snapshots, dates, [m['label'] for m in models], checkpoint_completed,
+        failures, completed_at, now.date().isoformat())
+    # The formal five-day JSON is ALWAYS refreshed with independently valid
+    # results. A failed cell preserves an old valid record for the SAME date,
+    # model and direction, otherwise remains absent/unknown.
+    for city, snapshot in published_snapshots.items():
+        _write_json_atomic(ROOT / 'data' / f'overview_{city}.json', snapshot)
+    _write_json_atomic(ROOT / 'data' / 'overview.json', {
+        'schema_version': 2, 'updated_at': datetime.now(TZ).isoformat(timespec='seconds'),
+        'cities': published_snapshots})
+
+    if failures:
+        save_checkpoint()  # Keep only unfinished task keys eligible for resume.
+        status.update(
+            state='rate_limited' if limit_hit else 'partial',
+            failed_at=completed_at, updated_at=completed_at,
+            success_count=summary['current_valid'],
+            visible_valid_count=summary['visible_valid'],
+            retained_old_count=len(summary['stale']),
+            missing_count=len(summary['missing']),
+            failure_count=len(failures), failures=failures[:30],
+            retry_diagnostics=attempts_diagnostics,
+            partial_published=True,
+            message=(f'本轮有效 {summary["current_valid"]}/{summary["total"]}；'
+                     f'正式概览已发布，旧有效记录保留 {len(summary["stale"])} 项，'
+                     f'缺失 {len(summary["missing"])} 项。失败项留待下次定时任务。'))
+        _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
+        published = _publish_files(status, include_results=True)
+        if not published:
+            raise SystemExit('Partial results computed but GitHub publication failed; inspect publish_error')
+        print(f'[overview partial published] fresh={summary["current_valid"]}/{summary["total"]}; '
+              f'old_retained={len(summary["stale"])}; unknown={len(summary["missing"])}; '
+              'next scheduled run can retry only unfinished tasks.', flush=True)
+        # A PARTIAL published data set is a successful publication, but NOT a
+        # falsely completed 20/20 batch: the warning stays in status JSON.
+        return
+
+    status.update(state='completed', completed_at=completed_at, updated_at=completed_at,
+                  success_count=summary['current_valid'],
+                  visible_valid_count=summary['visible_valid'],
+                  failure_count=0,
+                  message='双模式五日朝霞及晚霞数据已完整发布。')
+    _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
+    # Keep checkpoint until the published complete snapshot is durable.
     published = _publish_files(status, include_results=True)
     if not published:
-        # Keep the complete data in the runner and fail honestly; do not claim
-        # that an external GitHub commit succeeded when it did not.
-        raise SystemExit('20/20 computed, but GitHub publish failed; see publish_error log')
-    print(f"Completed and atomically published {direction_title}: {len(cities)} cities × 2 models × 5 days × 2 directions", flush=True)
-
+        raise SystemExit('All tasks computed but GitHub publish failed; see publish_error log')
+    CHECKPOINT.unlink(missing_ok=True)
+    # A separate best-effort cleanup; a stale checkpoint never overrides a
+    # complete formally published snapshot.
+    _publish_files(status, include_results=False)
+    print(f'Completed and published {direction_title}: '
+          f'{len(cities)} cities × 2 models × 5 days × 2 directions', flush=True)
 
 if __name__ == "__main__":
     main()

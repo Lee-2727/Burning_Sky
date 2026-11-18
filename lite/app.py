@@ -313,6 +313,13 @@ if nav=='未来五日':
                f"有效 {overview.get('valid_count',0)}/20 项 · "
                f"EC {counts.get('ECMWF IFS 0.25°',0)}/10 · "
                f"GFS {counts.get('GFS Global',0)}/10")
+    _pub = overview.get('publication') or {}
+    if _pub.get('state') == 'partial':
+        _stale = _pub.get('retained_old_keys') or []
+        _missing = _pub.get('missing_keys') or []
+        st.warning(f'本轮部分更新已发布：本轮有效 {_pub.get("valid_in_batch", "?")}/20 项；'
+                   f'沿用旧结果 {len(_stale)} 项，缺失 {len(_missing)} 项。'
+                   '旧结果仅用于相同日期/模式/朝晚霞，不代表刚刚计算成功。')
     if overview.get('checkpoint_filled'):
         st.info(f"已从当日检查点补齐 {overview['checkpoint_filled']} 项，未覆盖已发布结果。")
     if not overview['has_data']:

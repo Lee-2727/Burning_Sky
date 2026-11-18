@@ -159,6 +159,8 @@ def from_sources(city, sources, *, today=None):
         'has_data': valid_total > 0, 'valid_count': valid_total, 'total_count':20,
         'model_counts': per_model, 'checkpoint_count': checkpoint_count,
         'checkpoint_filled': checkpoint_filled, 'source_name': source_name,
+        'publication': (selected.get('publication') if isinstance(selected.get('publication'), dict)
+                        and selected['publication'].get('batch_day') == today.isoformat() else {}),
     }
 
 
