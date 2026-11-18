@@ -20,7 +20,7 @@ def _date(value):
 
 
 def _complete_forecast(snapshot, now):
-    """Require 5 consecutive days and every EC/GFS × morning/evening metric.
+    """Require 3 consecutive days and every EC/GFS × morning/evening metric.
 
     Zero is a legitimate value. A carried-over incomplete checkpoint cannot
     satisfy this test after failed records have been removed by app.py.
@@ -31,7 +31,7 @@ def _complete_forecast(snapshot, now):
     if not isinstance(days, list):
         return False
     index = {str(d.get('date')): d for d in days if isinstance(d, dict)}
-    for offset in range(5):
+    for offset in range(3):
         day = index.get((now.date() + timedelta(days=offset)).isoformat())
         if not isinstance(day, dict):
             return False
@@ -62,12 +62,12 @@ def status_view(status, snapshot, now=None):
     completed = _complete_forecast(snapshot, now)
     published_at = str((snapshot or {}).get('updated_at') or '') if isinstance(snapshot, dict) else ''
     task_progress = status.get('task_progress', 0)
-    task_total = status.get('task_total', 20)
+    task_total = status.get('task_total', 12)
     try:
         task_progress = int(task_progress or 0)
-        task_total = int(task_total or 20)
+        task_total = int(task_total or 12)
     except (ValueError, TypeError):
-        task_progress, task_total = 0, 20
+        task_progress, task_total = 0, 12
     updated = _date(status.get('updated_at'))
     elapsed = (now - updated.astimezone(CN)).total_seconds() if updated else None
     # A verified full publication must not be presented as an unfinished batch
@@ -78,17 +78,17 @@ def status_view(status, snapshot, now=None):
         if state in ('partial', 'rate_limited') and status.get('partial_published'):
             return ('warning', f'⚠️ 本轮部分更新已发布：新有效 {status.get("success_count", "?")}/{task_total}，'
                     f'沿用上一轮 {status.get("retained_old_count", 0)} 项，'
-                    f'暂无有效结果 {status.get("missing_count", 0)} 项。已显示的完整数据不等于本轮20项全部成功。')
+                    f'暂无有效结果 {status.get("missing_count", 0)} 项。已显示的完整数据不等于本轮12项全部成功。')
         if state == 'completed':
-            return ('success', f'✅ 未来五日 EC/GFS 朝霞及晚霞数据已完整发布（{published_at}）。')
+            return ('success', f'✅ 未来三日 EC/GFS 朝霞及晚霞数据已完整发布（{published_at}）。')
         if state in ('running', 'between_models'):
-            return ('success', f'✅ 已有完整的未来五日 EC/GFS 朝霞及晚霞数据（最近发布：{published_at}）。'
-                    f'后台状态文件另记 {task_progress}/{task_total}，不能据此否定已发布的20项结果。')
-        return ('success', f'✅ 当前已有完整的未来五日 EC/GFS 朝霞及晚霞数据（{published_at}）。')
+            return ('success', f'✅ 已有完整的未来三日 EC/GFS 朝霞及晚霞数据（最近发布：{published_at}）。'
+                    f'后台状态文件另记 {task_progress}/{task_total}，不能据此否定已发布的12项结果。')
+        return ('success', f'✅ 当前已有完整的未来三日 EC/GFS 朝霞及晚霞数据（{published_at}）。')
     if state in ('running', 'between_models'):
         if elapsed is None or elapsed < -60 or elapsed > (15*60 if task_progress == 0 else 90*60):
             if completed:
-                return ('success', f'✅ 已有完整的未来五日预测（{published_at}）；后台进度记录未及时同步。')
+                return ('success', f'✅ 已有完整的未来三日预测（{published_at}）；后台进度记录未及时同步。')
             return ('caption', '后台进度记录已过期或时间不可靠；以下展示可获取的已发布数据。')
         return ('info', f'🔄 后台任务状态：{task_progress}/{task_total}；最近记录：'
                 f'{status.get("updated_at", "未知")}。下方仍展示可获取的已发布数据。')
@@ -100,11 +100,11 @@ def status_view(status, snapshot, now=None):
                     f'已正式发布；沿用旧数据 {status.get("retained_old_count", 0)} 项，'
                     f'缺失 {status.get("missing_count", 0)} 项。')
         if completed:
-            return ('success', f'✅ 当前仍可查看完整五日预测（{published_at}）；最近一次后台任务状态为 {state}。')
+            return ('success', f'✅ 当前仍可查看完整三日预测（{published_at}）；最近一次后台任务状态为 {state}。')
         return ('warning', f'⚠️ 后台任务尚未全部完成（{state}）；已成功的预测仍可查看。'
                 f'最近状态：{status.get("updated_at", "未知")}。')
     if completed:
-        return ('success', f'✅ 已发布完整五日预测（{published_at}）；后台状态信息暂不可用。')
+        return ('success', f'✅ 已发布完整三日预测（{published_at}）；后台状态信息暂不可用。')
     return ('caption', '后台状态尚未确认；以下展示当前可取得的概览数据。')
 
 

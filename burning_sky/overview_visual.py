@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Offline five-day chart of published overview values, using only HTML/CSS.
+"""Offline three-day chart of published overview values, using only HTML/CSS.
 
 No SVG, JavaScript, HTTP requests, or forecast recomputation.  Some versions
 of Streamlit's st.html sanitize inline SVG and leave the chart body blank.
@@ -53,7 +53,7 @@ def render_direction(days, direction, title):
     Each date displays two adjacent bars, EC then GFS. The bar's height maps
     scale, raw probability/100 fill opacity, and hue maps color score.
     """
-    days = list(days or [])[:5]
+    days = list(days or [])[:3]
     all_scales = []
     available = 0
     for day in days:
@@ -85,7 +85,7 @@ def render_direction(days, direction, title):
     )
 
     columns = []
-    for idx in range(5):
+    for idx in range(3):
         day = days[idx] if idx < len(days) else {}
         raw_date = str(day.get('date') or '') if isinstance(day, dict) else ''
         try:

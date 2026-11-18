@@ -248,7 +248,7 @@ def _visual_result(result, fetched_at=None, direction='evening'):
     st.markdown('<div class="bs-lite-lead">'+__import__('html').escape(verdict(result))+'</div>',unsafe_allow_html=True)
     c1,c2,c3=st.columns(3)
     vals=_triad(result)
-    for col,name,val,suffix in zip((c1,c2,c3),('常规概率','色彩分','火烧云规模'),vals,('%','/100','%')):
+    for col,name,val,suffix in zip((c1,c2,c3),('常规概率','色彩分','火烧云规模'),vals,('%','/60','%')):
         col.metric(name,_display_metric(name,val,suffix))
     st.divider()
     d1,d2=st.columns(2)
@@ -292,9 +292,9 @@ def _calibration_id(state, engine_module):
     return advanced_identity(config)+'_'+fingerprint
 
 render_hero('Burning Skies Lite','朝霞 · 晚霞')
-nav=st.segmented_control('查看', ['未来五日','单次预测'],default='未来五日',key='lite_nav',label_visibility='collapsed')
+nav=st.segmented_control('查看', ['未来三日','单次预测'],default='未来三日',key='lite_nav',label_visibility='collapsed')
 
-if nav=='未来五日':
+if nav=='未来三日':
     # Read only completed public overview files. Never dispatch GitHub Actions.
     city_list=['合肥']
     _cities=ROOT/'overview_cities.txt'
@@ -306,24 +306,24 @@ if nav=='未来五日':
     if st.button('刷新已发布数据', key='lite_overview_refresh'):
         _published.clear()
         st.rerun()
-    with st.spinner('读取五日概览…'):
+    with st.spinner('读取三日概览…'):
         overview=_published(city)
     counts=overview.get('model_counts') or {}
     st.caption(f"发布数据：{overview.get('source_name','未知')} · "
-               f"有效 {overview.get('valid_count',0)}/20 项 · "
-               f"EC {counts.get('ECMWF IFS 0.25°',0)}/10 · "
-               f"GFS {counts.get('GFS Global',0)}/10")
+               f"有效 {overview.get('valid_count',0)}/12 项 · "
+               f"EC {counts.get('ECMWF IFS 0.25°',0)}/6 · "
+               f"GFS {counts.get('GFS Global',0)}/6")
     _pub = overview.get('publication') or {}
     if _pub.get('state') == 'partial':
         _stale = _pub.get('retained_old_keys') or []
         _missing = _pub.get('missing_keys') or []
-        st.warning(f'本轮部分更新已发布：本轮有效 {_pub.get("valid_in_batch", "?")}/20 项；'
+        st.warning(f'本轮部分更新已发布：本轮有效 {_pub.get("valid_in_batch", "?")}/12 项；'
                    f'沿用旧结果 {len(_stale)} 项，缺失 {len(_missing)} 项。'
                    '旧结果仅用于相同日期/模式/朝晚霞，不代表刚刚计算成功。')
     if overview.get('checkpoint_filled'):
         st.info(f"已从当日检查点补齐 {overview['checkpoint_filled']} 项，未覆盖已发布结果。")
     if not overview['has_data']:
-        st.info('当前尚无可显示的五日预报。')
+        st.info('当前尚无可显示的三日预报。')
     else:
         for direction,label in (('morning','朝霞'),('evening','晚霞')):
             chart=render_bars(overview['days'],direction,label)

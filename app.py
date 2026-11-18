@@ -534,8 +534,8 @@ if st.session_state.get("show_multi_day_overview"):
     def _render_multi_day_overview():
         _data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
         # Load the published overview before deciding whether a status banner
-        # is trustworthy. A stale `running: 0/20` status must never hide a
-        # fully published five-day forecast.
+        # is trustworthy. A stale `running: 0/12` status must never hide a
+        # fully published three-day forecast.
         _update_status, _status_origin = _published_overview_json("overview_status.json")
         _city_cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overview_cities.txt")
         _overview_cities = []
@@ -568,9 +568,9 @@ if st.session_state.get("show_multi_day_overview"):
                 return max([str(_snapshot.get("updated_at") or "")] +
                            [str(v or "") for v in _times.values()])
 
-            # A complete five-day publication outranks a newer partial artifact.
-            # "Latest timestamp" alone is unsafe: a 10/20 checkpoint can be newer
-            # than an already completed 20/20 publication.
+            # A complete three-day publication outranks a newer partial artifact.
+            # "Latest timestamp" alone is unsafe: a 10/12 checkpoint can be newer
+            # than an already completed 20/12 publication.
             from burning_sky.overview_snapshot_guard import count_valid as _count_valid, expected_dates as _expected_dates_fn, restore_missing_only as _restore_missing_only
             from datetime import datetime as _overview_dt
             from zoneinfo import ZoneInfo as _overview_tz
@@ -585,7 +585,7 @@ if st.session_state.get("show_multi_day_overview"):
                                             _count_valid(item[1], _current_dates),
                                             _snapshot_freshness(item[1])))
                                            if _candidates else (None, None))
-            if len(_candidates) > 1 and _overview is not None and _count_valid(_overview, _current_dates) < 20:
+            if len(_candidates) > 1 and _overview is not None and _count_valid(_overview, _current_dates) < 12:
                 import copy as _copy
                 _overview = _copy.deepcopy(_overview)
                 _merged_days = {d.get("date"): d for d in _overview.get("days", []) if isinstance(d, dict)}
@@ -608,10 +608,10 @@ if st.session_state.get("show_multi_day_overview"):
                 _overview["direction_updated_at"] = _direction_times
                 _overview_source += "（按朝/晚霞独立合并）"
 
-            # Published 20/20 is authoritative, even if a 10/20 checkpoint has
+            # Published 20/12 is authoritative, even if a 10/12 checkpoint has
             # a later saved_at. Checkpoints may ONLY fill missing published rows.
             # They must never replace an existing valid EC/GFS result.
-            if _count_valid(_overview, _current_dates) < 20:
+            if _count_valid(_overview, _current_dates) < 12:
                 _cp, _cp_origin = _published_overview_json(f"overview_checkpoint_{_overview_city}.json")
                 if isinstance(_cp, dict) and _cp.get('place') == _overview_city:
                     _today_cn = _current_dates[0]
@@ -634,15 +634,17 @@ if st.session_state.get("show_multi_day_overview"):
         # for the existence of already published forecasts.
         from burning_sky.overview_status_ui import render_overview_status as _render_status_banner
         _render_status_banner(st, _update_status, _overview, city=_overview_city)
+        from burning_sky.overview_actions_control import render_overview_actions as _render_scheduled_actions
+        _render_scheduled_actions(st, _APP_DIR)
         if not _overview or not _overview.get("days"):
-            st.info(f"尚无{_overview_city}已保存的概览数据。后台完成后这里会展示未来五日EC/GFS朝霞与晚霞。")
+            st.info(f"尚无{_overview_city}已保存的概览数据。后台完成后这里会展示未来三日EC/GFS朝霞与晚霞。")
         else:
             from burning_sky.overview_visual import render_direction, MODELS
             _all_days = list(_overview.get("days") or [])
-            _visible_days = _all_days[:5]
-            st.caption(f"地点：{_overview_city} · 未来五日（含今天） · EC/GFS · 数据来源：{_overview_source} · 更新：{_overview.get('updated_at', '未知')}")
-            if len(_visible_days) < 5:
-                st.info(f"目前已发布{len(_visible_days)}日数据；后台更新为五日后将自动补齐，其余日期不会伪造。")
+            _visible_days = _all_days[:3]
+            st.caption(f"地点：{_overview_city} · 未来三日（含今天） · EC/GFS · 数据来源：{_overview_source} · 更新：{_overview.get('updated_at', '未知')}")
+            if len(_visible_days) < 3:
+                st.info(f"目前已发布{len(_visible_days)}日数据；后台更新为三日后将自动补齐，其余日期不会伪造。")
             for _direction, _name in (("morning", "朝霞"), ("evening", "晚霞")):
                 # Do not use a bare conditional expression here. Streamlit's
                 # "magic" expression renderer can display the returned
@@ -691,7 +693,7 @@ def _overview_score_color(value):
         score = float(str(value).replace("%", "").strip())
     except (TypeError, ValueError):
         return ""
-    if score < 20:
+    if score < 12:
         color = "#D6B84C"   # 淡黄
     elif score < 40:
         color = "#C99A16"   # 金色

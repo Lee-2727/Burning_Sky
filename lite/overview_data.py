@@ -137,7 +137,7 @@ def from_sources(city, sources, *, today=None):
     checkpoint_count = None
     checkpoint_filled = 0
     checkpoint = sources.get('checkpoint')
-    if (count_valid(selected, dates) < 20 and isinstance(checkpoint, dict)
+    if (count_valid(selected, dates) < 12 and isinstance(checkpoint, dict)
             and checkpoint.get('place') == city
             and checkpoint.get('batch_day') == today.isoformat()
             and checkpoint.get('dates') == dates
@@ -156,7 +156,7 @@ def from_sources(city, sources, *, today=None):
                  for model in MODELS}
     return {
         'days': selected['days'], 'updated_at': selected.get('updated_at', ''),
-        'has_data': valid_total > 0, 'valid_count': valid_total, 'total_count':20,
+        'has_data': valid_total > 0, 'valid_count': valid_total, 'total_count':12,
         'model_counts': per_model, 'checkpoint_count': checkpoint_count,
         'checkpoint_filled': checkpoint_filled, 'source_name': source_name,
         'publication': (selected.get('publication') if isinstance(selected.get('publication'), dict)
@@ -168,12 +168,12 @@ def get_overview(city, *, reader=file_data, today=None):
     today = today or china_today()
     dates = expected_dates(today)
     city_data = reader(f'overview_{city}.json')
-    # Avoid two unnecessary HTTP requests when a complete 20/20 city file exists.
-    if count_valid(city_data, dates) == 20:
+    # Avoid two unnecessary HTTP requests when a complete 12/12 city file exists.
+    if count_valid(city_data, dates) == 12:
         return from_sources(city, {'city': city_data}, today=today)
     global_data = reader('overview.json')
     tentative = from_sources(city, {'city': city_data, 'global': global_data}, today=today)
-    if tentative['valid_count'] == 20:
+    if tentative['valid_count'] == 12:
         return tentative
     checkpoint = reader(f'overview_checkpoint_{city}.json')
     return from_sources(city, {'city': city_data, 'global': global_data,

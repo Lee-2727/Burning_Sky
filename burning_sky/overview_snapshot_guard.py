@@ -1,4 +1,4 @@
-"""Non-destructive selection of public five-day overview data and checkpoints.
+"""Non-destructive selection of public three-day overview data and checkpoints.
 
 A checkpoint is working progress, not a replacement for an already complete
 published snapshot. The only permissible merge from a partial checkpoint is
@@ -31,7 +31,7 @@ def count_valid(snapshot, dates, models=MODELS):
                for day in dates for direction in DIRECTIONS for model in models)
 
 
-def expected_dates(first_day, count=5):
+def expected_dates(first_day, count=3):
     first = date.fromisoformat(str(first_day))
     return [(first + timedelta(days=i)).isoformat() for i in range(count)]
 
@@ -80,5 +80,5 @@ def restore_missing_only(published, checkpoint, dates, completed, city, models=M
                     filled += 1
     dst_days.sort(key=lambda d: str(d.get('date', '')))
     # Keep the official publication timestamp. A checkpoint cannot assert
-    # that the full 20-item batch was published at its saved_at time.
+    # that the full 12-item batch was published at its saved_at time.
     return result, filled

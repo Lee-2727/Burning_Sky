@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""预计算并保存指定城市未来五天朝霞/晚霞双模式概览。"""
+"""预计算并保存指定城市未来三天朝霞/晚霞双模式概览。"""
 from __future__ import annotations
 
 import json
@@ -36,7 +36,7 @@ RETRY_WAIT_SECONDS = 25  # Short bounded wait, never repeated 180-second waits.
 # When a quota remains exhausted, retain checkpoint and leave the task unfinished;
 # later scheduled runs will retry it without redoing completed tasks.
 
-UPDATER_BUILD_ID = 'partial-results-publish-safe-resume-20261118'
+UPDATER_BUILD_ID = 'three-day-safe-action-controls-20261118'
 
 # GitHub Actions uses Linux; cap a single stalled API/forecast task so that
 # remaining valid results can still be published. No hard kill on Windows.
@@ -303,7 +303,7 @@ def _publish_files(status, include_results=False):
         paths.extend([ROOT / 'data' / 'overview.json', OUTPUT])
     try:
         success = _publish_paths(branch, paths,
-                                 'chore: publish complete five-day overview' if include_results
+                                 'chore: publish complete three-day overview' if include_results
                                  else 'chore: publish overview checkpoint and status')
         status.pop('publish_error', None)
         print(f"Published {'complete results' if include_results else 'live status'} to {branch}", flush=True)
@@ -325,7 +325,7 @@ def main():
     now = datetime.now(TZ)
     direction = "both"
     direction_title = "朝霞及晚霞"
-    dates = [now.date() + timedelta(days=i) for i in range(5)]
+    dates = [now.date() + timedelta(days=i) for i in range(3)]
     cities = list(CITY_CONFIG)
     models = [m for m in engine.WEATHER_MODEL_CATALOG if m["label"] in ("ECMWF IFS 0.25°", "GFS Global")]
     if len(models) != 2:
@@ -376,7 +376,7 @@ def main():
     run_mode = os.environ.get('BURNING_SKY_OVERVIEW_RUN_MODE', 'resume').strip().lower()
     if run_mode not in ('resume', 'fresh'):
         raise ValueError('BURNING_SKY_OVERVIEW_RUN_MODE must be resume or fresh')
-    print(f'[overview run mode] {run_mode}; fresh recomputes the current five-day window, '
+    print(f'[overview run mode] {run_mode}; fresh recomputes the current three-day window, '
           'resume skips validated checkpoint items', flush=True)
     try:
         previous_checkpoint = json.loads(CHECKPOINT.read_text(encoding='utf-8'))
@@ -417,7 +417,7 @@ def main():
         "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
     }
     print(f"Updater version: {UPDATER_BUILD_ID}", flush=True)
-    print(f"Direction: {direction_title}; cities: {' → '.join(cities)}; models: 2; days: 5", flush=True)
+    print(f"Direction: {direction_title}; cities: {' → '.join(cities)}; models: 2; days: 3", flush=True)
     _write_json_atomic(ROOT / "data" / "overview_status.json", status)
     _publish_files(status, include_results=False)
 
@@ -479,6 +479,20 @@ def main():
                                 continue
                             checkpoint_completed.discard(task_key)
 
+                        # Hourly quota exhaustion cannot be fixed by opening more
+                        # requests in this same run. Defer all still-unfinished cells
+                        # without waiting; prepare_publication keeps old valid rows.
+                        if limit_hit:
+                            reason = '本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新'
+                            failures.append({'city': city, 'date': day.isoformat(), 'model': label,
+                                             'direction': direction, 'error': reason})
+                            task_index += 1
+                            status.update(task_progress=task_index, city_progress=city_index,
+                                          updated_at=datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S %Z'),
+                                          failure_count=len(failures), last_error=failures[-1])
+                            _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
+                            print(f'[quota deferred] {task_key} ({task_index}/{status["task_total"]})', flush=True)
+                            continue
                         if task_index and run_mode != 'resume':
                             time.sleep(REQUEST_INTERVAL_SECONDS)
                         record = None
@@ -589,7 +603,7 @@ def main():
     published_snapshots, summary = prepare_publication(
         snapshots, dates, [m['label'] for m in models], checkpoint_completed,
         failures, completed_at, now.date().isoformat())
-    # The formal five-day JSON is ALWAYS refreshed with independently valid
+    # The formal three-day JSON is ALWAYS refreshed with independently valid
     # results. A failed cell preserves an old valid record for the SAME date,
     # model and direction, otherwise remains absent/unknown.
     for city, snapshot in published_snapshots.items():
@@ -628,7 +642,7 @@ def main():
                   success_count=summary['current_valid'],
                   visible_valid_count=summary['visible_valid'],
                   failure_count=0,
-                  message='双模式五日朝霞及晚霞数据已完整发布。')
+                  message='双模式三日朝霞及晚霞数据已完整发布。')
     _write_json_atomic(ROOT / 'data' / 'overview_status.json', status)
     # Keep checkpoint until the published complete snapshot is durable.
     published = _publish_files(status, include_results=True)
@@ -639,7 +653,7 @@ def main():
     # complete formally published snapshot.
     _publish_files(status, include_results=False)
     print(f'Completed and published {direction_title}: '
-          f'{len(cities)} cities × 2 models × 5 days × 2 directions', flush=True)
+          f'{len(cities)} cities × 2 models × 3 days × 2 directions', flush=True)
 
 if __name__ == "__main__":
     main()

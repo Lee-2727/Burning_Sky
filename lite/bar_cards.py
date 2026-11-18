@@ -10,7 +10,7 @@ MODELS=(('ECMWF IFS 0.25°','EC'),('GFS Global','GFS'))
 def render(days,direction,title):
     records=[]
     peak=10.0
-    for day in list(days)[:5]:
+    for day in list(days)[:3]:
         pair=[]
         for model,label in MODELS:
             r=(day.get(direction) or {}).get(model) or {}
@@ -61,7 +61,7 @@ box-shadow:0 14px 34px rgba(8,10,20,.22);backdrop-filter:blur(22px) saturate(150
 .bs-lite-graph{display:flex;gap:10px;align-items:stretch;height:209px}
 .bs-lite-ticks{display:flex;flex-direction:column;justify-content:space-between;width:42px;color:rgba(244,246,251,.46);font-size:11px;text-align:right;padding-bottom:26px;box-sizing:border-box}
 .bs-lite-axis{flex:1;min-width:0;border-bottom:1px solid rgba(255,255,255,.10);background:repeating-linear-gradient(to bottom,rgba(255,255,255,.06) 0px,rgba(255,255,255,.06) 1px,transparent 1px,transparent 45.5px);}
-.bs-lite-days{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));height:100%;gap:4px}
+.bs-lite-days{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));height:100%;gap:4px}
 .bs-lite-day{height:100%;display:flex;flex-direction:column;align-items:center;min-width:0}
 .bs-lite-pair{height:calc(100% - 25px);display:flex;align-items:flex-end;justify-content:center;gap:5px;width:100%;border-bottom:1px solid rgba(255,255,255,.10);padding:0 6px;box-sizing:border-box}
 .bs-lite-bar{width:min(28px,37%);max-height:100%;min-height:0;border:0;border-radius:6px 6px 2px 2px;box-sizing:border-box;position:relative;overflow:hidden}
