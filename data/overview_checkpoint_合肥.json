@@ -14,10 +14,16 @@
   "completed": [
     "合肥|2026-11-18|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-18|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-18|GFS Global|evening",
+    "合肥|2026-11-18|GFS Global|morning",
     "合肥|2026-11-19|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-19|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-19|GFS Global|evening",
+    "合肥|2026-11-19|GFS Global|morning",
     "合肥|2026-11-20|ECMWF IFS 0.25°|evening",
-    "合肥|2026-11-20|ECMWF IFS 0.25°|morning"
+    "合肥|2026-11-20|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-20|GFS Global|evening",
+    "合肥|2026-11-20|GFS Global|morning"
   ],
   "snapshot": {
     "schema_version": 2,
@@ -211,5 +217,5 @@
       }
     ]
   },
-  "saved_at": "2026-11-18T10:18:41+08:00"
+  "saved_at": "2026-11-18T10:30:04+08:00"
 }
