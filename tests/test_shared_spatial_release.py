@@ -105,5 +105,8 @@ def test_original_scoring_functions_reused_after_cloud_calibration():
         for s in samples]
     calibrate_path_samples(samples,p)
     after=calculate_color_performance_score(infer_from_cloud_path(samples,.20))
-    assert (before['score'],before['color_score'])==(20,0)
-    assert (after['score'],after['color_score'])==(88,65)
+    assert before['score']==20
+    assert after['score']==88
+    # Cloud quantity affects the distinct chance/scale metrics, not the
+    # colour quality of an illuminated zone under the same atmosphere.
+    assert before['color_score']==after['color_score']

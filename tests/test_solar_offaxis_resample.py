@@ -56,8 +56,12 @@ def test_missing_resampled_point_never_counts_as_clear_air():
     with patch('burning_sky.sky_six.solar_position',side_effect=shifted):
         r=adaptive_equivalent_gaps(axis,DT,8,LAT,LON,'morning',27.52,
             source_scan_km=700,target_limit_km=25,off_axis_ray_profiles=beams)
-    assert r['off_axis_rays_missing']>=1,r
-    assert first_ray[0] in r['spatially_unverified_minutes']
+    # A missing per-bottom ray may still be reconstructed from OTHER actually
+    # measured stations. If not, it must remain explicitly unresolved.
+    assert (r['off_axis_rays_missing']>=1 or
+            r.get('bottom_unresolved_point_count',0)>=1),r
+    assert (first_ray[0] in r['spatially_unverified_minutes'] or
+            r.get('bottom_unresolved_point_count',0)>=1),r
 
 
 def test_remote_blocker_on_real_ray_rejects_a_clear_front_segment():

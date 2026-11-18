@@ -2436,8 +2436,7 @@ class FireCloudApp(tk.Tk):
                     inferred['tintable_ratio_kind'] = 'verified_profile_proxy'
                     tintable_ratio = round(100*_best_local['fraction'],1)
                     inferred['tintable_ratio_diagnostic'] = (
-                        '霞云距内中高云按云量连续加权；逐分钟逐目标严格光路'
-                        '云底逐点严格球面门控，云锋面另计；目前为剖面受光代理，不是二维可见面积')
+                        '霞云距内15km横向目标区去重计数：云底受光1区，只有严格验证云锋面受光1/3区；逐分钟独立计数，不按垂向厚度计权')
                     inferred['local_cloud_illumination'] = {
                         'potential_km':_local_light['potential_km'],
                         'target_count':_local_light['target_count'],
@@ -2506,31 +2505,61 @@ class FireCloudApp(tk.Tk):
                         for field in ("color_score", "color_score_label", "color_score_reasons", "color_score_note"):
                             if field in local_color:
                                 inferred[field] = local_color[field]
-                if _light_fractions and _total_target_weight > 0 and _peak_fraction > 0:
-                    _base_color_score = float(inferred.get('color_score') or 0)
-                    _peak_i = max(range(len(_light_fractions)),key=lambda i:_light_fractions[i])
-                    _peak_dt = datetime.fromisoformat(_light_times[_peak_i])
-                    _peak_solar_alt, _ = solar_position(_peak_dt,data['utc_offset'],data['lat'],data['lon'])
-                    # Deeper twilight tends toward red/pink; optical quality remains
-                    # governed by the original AOD/visibility model.
-                    _redness = max(0.0,min(1.0,(-_peak_solar_alt-0.5)/5.5))
-                    # Preserve baseline atmospheric color quality; timing changes hue,
-                    # while illumination fraction determines tintable area separately.
-                    inferred['color_score'] = round(max(0,min(100,_base_color_score*(0.90+0.10*_redness)))) if _peak_fraction>0 else 0
-                    if aod_source == "CAMS（垂直分布）" and _vertical_aod.get("status") == "已估算":
-                        inferred['color_score'] = round(max(0, min(100, inferred['color_score'] * _vertical_aod['factor'])))
-                        inferred['aod_vertical_diagnostic'] = _vertical_aod
-
-                    inferred['color_score_note'] = '有效受光峰值时刻的太阳高度角与原有大气色彩条件（经验估算）'
+                # The authoritative colour moment is the maximum 1 / 1/3 / 0
+                # horizontal-zone coverage minute, not the legacy weighted
+                # target list.  All targets at that minute contribute to the
+                # representative colour angle in local_illumination().
+                from burning_sky.algorithm import color_score_grade, horizontal_zone_color_peak
+                _zone_times = (_local_light.get('times') or []) if _local_light.get('available') else []
+                _peak_zone = horizontal_zone_color_peak(_local_light)
+                if _peak_zone is not None:
+                    _peak_dt = _peak_zone['datetime']
+                    _peak_solar_alt = _peak_zone.get('representative_solar_altitude_deg')
+                    if _peak_solar_alt is None:
+                        _peak_solar_alt, _ = solar_position(_peak_dt,data['utc_offset'],data['lat'],data['lon'])
+                    # Angle changes hue through the colour palette, not the
+                    # intrinsic score (orange and pink can both be excellent).
                     inferred['peak_illumination_time'] = _peak_dt.isoformat()
-                    inferred['peak_illumination_solar_altitude'] = round(_peak_solar_alt,3)
-                # A color score needs an actual validated illuminated cloud
-                # resource, not only a high raw cloud score. Never show a
-                # seemingly precise 62/100 beside 'tintable: unknown'.
-                if tintable_ratio is None:
-                    inferred['color_score']=None
-                    inferred['color_score_label']='严格受光尚未验证'
-                    inferred['color_score_note']='上游太阳光路或采样不完整；禁止确定性色彩评分'
+                    inferred['peak_illumination_solar_altitude'] = round(float(_peak_solar_alt),3)
+                    from burning_sky.algorithm import apply_verified_solar_angle_color_score
+                    _angle_applied = apply_verified_solar_angle_color_score(
+                        inferred, _adaptive.get('verified_target_bottom_points') or [],
+                        _adaptive.get('verified_ray_traces') or [])
+                    inferred['color_score_label'] = color_score_grade(inferred.get('color_score'))
+                    inferred['color_score_note'] = (
+                        '色彩质量评价AOD、能见度及严格受光光线对应的太阳高度角深度与跨度；'
+                        '不因受光面积或云量规模直接加分。'
+                        if _angle_applied else
+                        '有效受光角度不足，未额外添加太阳角度分；保持大气色彩分。')
+                    inferred['color_score_peak_method'] = 'horizontal_zone_1_1third_0'
+                    # The CAMS vertical factor is derived from the same AOD;
+                    # retain it as an uncertainty diagnostic, NOT another
+                    # multiplier on the AOD-adjusted colour score.
+                    if aod_source == "CAMS（垂直分布）" and _vertical_aod.get("status") == "已估算":
+                        inferred['aod_vertical_diagnostic'] = _vertical_aod
+                elif _local_light.get('available'):
+                    # All valid, fully checked target zones are unlit in the
+                    # queried window.  Do not display high colour potential as
+                    # a confirmed sunset result.
+                    _uncertain = any(float(r.get('bottom_unresolved_weight_fraction') or 0)>0
+                                     for r in _zone_times)
+                    if _uncertain:
+                        inferred['color_score'] = None
+                        inferred['color_score_label'] = '严格受光尚未验证'
+                        inferred['color_score_note'] = '部分采样区缺少完整受光验证，不能给确定性色彩评分'
+                    else:
+                        inferred['color_score'] = 0
+                        inferred['color_score_label'] = color_score_grade(0)
+                        inferred['color_score_note'] = '整个时间窗口内所有有云采样区均未验证出受光'
+                else:
+                    if potential_limit is not None and float(potential_limit)<=0:
+                        inferred['color_score']=0
+                        inferred['color_score_label']=color_score_grade(0)
+                        inferred['color_score_note']='霞云距为零，没有可染色云目标'
+                    else:
+                        inferred['color_score']=None
+                        inferred['color_score_label']='严格受光尚未验证'
+                        inferred['color_score_note']='缺少可用的横向采样区受光结果，禁止确定性色彩评分'
                 inferred['aod_color_quality_factor']=aod_color_quality_factor(effective_aod)
                 _color_display = (f"{inferred['color_score']}/100" if
                                   isinstance(inferred.get('color_score'),(int,float))

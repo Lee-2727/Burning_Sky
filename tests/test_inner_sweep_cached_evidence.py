@@ -73,7 +73,7 @@ def test_weak_verified_twilight_kept_but_not_major_overlay():
 def test_lit_cloud_colour_uses_real_inner_target_sun_angle_not_face_angle():
     from burning_sky.local_cloud_illumination import local_illumination
     from burning_sky.spherical_raytrace import profile_cloud_cells
-    from burning_sky.sky_six import UNDERSIDE_AREA_STRIPS
+    from burning_sky.sky_six import _bottom_sweep_strips
     profiles=[]
     for dist in [0.,25.,50.]:
         profiles.append({'distance_km':dist,'levels':[
@@ -81,9 +81,10 @@ def test_lit_cloud_colour_uses_real_inner_target_sun_angle_not_face_angle():
             {'height_agl_km':10.,'cloud_cover':0.}]})
     target=profile_cloud_cells(profiles,threshold=.000001,blur_horizontal_km=0.,blur_vertical_km=0.)[0]
     key=[round(float(target[k]),6) for k in ('start_km','end_km','bottom_km','top_km')]
-    verified=[{'minute_offset':-1,'target_key':key,'position_km':i,
+    verified=[{'minute_offset':-1,'target_key':key,'position_km':x['position_km'],
+               'area_width_km':x['area_width_km'],
                'solar_altitude_deg':-4.,'status':'verified_bottom'}
-              for i in range(UNDERSIDE_AREA_STRIPS)]
+              for x in _bottom_sweep_strips(target,50.)]
     with patch('burning_sky.local_cloud_illumination.solar_position',return_value=(-0.2,100.)):
         lit=local_illumination(profiles,DT,'morning',8.,31.8,117.2,50.,minutes=1,
                                verified_target_bands=[],verified_target_bottom_points=verified)
