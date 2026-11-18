@@ -1,86 +1,20 @@
 {
   "schema_version": 2,
-  "state": "rate_limited",
+  "state": "running",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
-  "started_at": "2026-11-18 08:52:27 CST",
-  "updated_at": "2026-11-18 09:30:31 CST",
-  "current_model": "GFS Global",
-  "model_index": 2,
+  "started_at": "2026-11-18 10:06:18 CST",
+  "updated_at": "2026-11-18 10:06:18 CST",
+  "current_model": "ECMWF IFS 0.25°",
+  "model_index": 1,
   "model_total": 2,
-  "completed_models": [
-    "ECMWF IFS 0.25°",
-    "GFS Global"
-  ],
+  "completed_models": [],
   "cities": [
     "合肥"
   ],
-  "city_progress": 1,
+  "city_progress": 0,
   "city_total": 1,
-  "task_progress": 20,
-  "task_total": 20,
-  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
-  "failure_count": 4,
-  "last_error": {
-    "city": "合肥",
-    "date": "2026-11-22",
-    "model": "GFS Global",
-    "direction": "evening",
-    "error": "HTTP 429: Open-Meteo 限速冷却中，还需约 1160 秒；本次不发起新请求"
-  },
-  "failed_at": "2026-11-18 09:30:31 CST",
-  "success_count": 16,
-  "visible_valid_count": 17,
-  "retained_old_count": 1,
-  "missing_count": 3,
-  "failures": [
-    {
-      "city": "合肥",
-      "date": "2026-11-22",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "evening",
-      "error": "预测流程返回指标不完整：probability=10.0, color_score=None, burn_scale=None"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-21",
-      "model": "GFS Global",
-      "direction": "evening",
-      "error": "Open-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请根据页面显示的冷却剩余时间再试；429可能涉及分钟额度或数据量额度。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-22",
-      "model": "GFS Global",
-      "direction": "morning",
-      "error": "HTTP 429: Open-Meteo 限速冷却中，还需约 1180 秒；本次不发起新请求"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-22",
-      "model": "GFS Global",
-      "direction": "evening",
-      "error": "HTTP 429: Open-Meteo 限速冷却中，还需约 1160 秒；本次不发起新请求"
-    }
-  ],
-  "retry_diagnostics": {
-    "合肥|2026-11-22|ECMWF IFS 0.25°|evening": {
-      "attempt": 1,
-      "reason": "预测流程返回指标不完整：probability=10.0, color_score=None, burn_scale=None"
-    },
-    "合肥|2026-11-21|GFS Global|evening": {
-      "attempt": 1,
-      "reason": "Open-Meteo 返回 HTTP 429，当前请求被限流。程序已停止重试，避免继续排队。请根据页面显示的冷却剩余时间再试；429可能涉及分钟额度或数据量额度。\n接口说明：Hourly API request limit exceeded. Please try again in the next hour."
-    },
-    "合肥|2026-11-22|GFS Global|morning": {
-      "attempt": 1,
-      "reason": "HTTP 429: Open-Meteo 限速冷却中，还需约 1180 秒；本次不发起新请求"
-    },
-    "合肥|2026-11-22|GFS Global|evening": {
-      "attempt": 1,
-      "reason": "HTTP 429: Open-Meteo 限速冷却中，还需约 1160 秒；本次不发起新请求"
-    }
-  },
-  "partial_published": true,
-  "message": "本轮有效 16/20；正式概览已发布，旧有效记录保留 1 项，缺失 3 项。失败项留待下次定时任务。"
+  "task_progress": 0,
+  "task_total": 12,
+  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞"
 }
