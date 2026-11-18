@@ -123,7 +123,7 @@ def render_profile(result, width=1400, height=760):
     # target height and face, not a shared artificial default cloud base.
     drawn=0
     for ray in verified:
-        face=float(ray['target_face_km']);alt=float(ray['solar_altitude_deg'])
+        face=float(ray.get('target_bottom_position_km',ray['target_face_km']));alt=float(ray['solar_altitude_deg'])
         cloud_h=float(ray['target_height_km'])
         far=min(plotdist,float(ray.get('source_check_km',plotdist)))
         if not (0<=face<far and 0<cloud_h<=maxh):continue

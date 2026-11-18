@@ -296,7 +296,7 @@ def render_fusion_profile_figure(result,*,model='未知',origin_name='',om_run=N
     verified=(inferred.get('verified_primary_ray_traces') or [])
     def line_one(trace,*,strict):
         try:
-            face=float(trace['target_face_km']);h0=float(trace['target_height_km']);alt=float(trace['solar_altitude_deg'])
+            face=float(trace.get('target_bottom_position_km',trace['target_face_km'])) if strict else float(trace['target_face_km']);h0=float(trace['target_height_km']);alt=float(trace['solar_altitude_deg'])
             end=float(trace.get('source_check_km',xmax)) if strict else xmax
             end=min(xmax,end)
             if end<=face:return False

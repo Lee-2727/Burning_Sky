@@ -37,6 +37,21 @@ def _intersects(target_h, sun_alt, cell, target_d, max_d):
     hs=[target_ray_height(target_h,sun_alt,v) for v in (local_a,local_b,critical)]
     return min(hs)<=cell['top_km'] and max(hs)>=cell['bottom_km']
 
+def _sun_ray_earth_occluded(target_height_km, solar_alt_deg):
+    """Exact Earth occultation along the COMPLETE straight ray toward the Sun.
+
+    Unlike a sampled-cloud end-height gate, this is an actual intersection
+    with the spherical Earth: for a below-horizon solar direction, the
+    outward ray's impact parameter is (R+h)*cos(altitude). No cloud-height
+    prediction or arbitrary source-distance cutoff is involved.
+    """
+    alt=math.radians(float(solar_alt_deg))
+    if alt>=0.0:
+        return False
+    return ((EARTH_RADIUS_KM+float(target_height_km))*math.cos(alt)
+            < EARTH_RADIUS_KM-1e-8)
+
+
 def _earth_blocked(target_h, sun_alt, max_upstream_km):
     if sun_alt>=0:return False
     closest=min(max_upstream_km,-math.radians(sun_alt)*EARTH_RADIUS_KM)
@@ -322,6 +337,245 @@ def materialize_off_axis_rays(plan, extra_profiles):
     return out
 
 
+def _bottom_samples(target, count=5):
+    """Cell-strip midpoint quadrature over *horizontal cloud-bottom area*.
+
+    Cloud length, not a face-height fraction, is the area dimension.  Each
+    point owns an equal sub-strip of this sampled 1-D cloud footprint.
+    """
+    start=float(target['start_km']); end=float(target['end_km'])
+    if end<=start:return []
+    return [start+(end-start)*(i+.5)/count for i in range(count)]
+
+
+def _cloud_ray_intersects_bottom(target_d, base_height_km, solar_alt_deg, cell,
+                                 source_end_km):
+    """Exact interior interception of a spherical ray by a cloud rectangle.
+
+    Touching the lower surface at the ray origin is NOT self-obstruction.
+    A solar beam arriving from *below* can light the underside, even if it
+    never hits the sun-facing cloud front.  Interior intersections are blocked.
+    """
+    from .spherical_raytrace import _ray_height_km, EARTH_RADIUS_KM
+    a=max(target_d+1e-5,float(cell['start_km']))
+    b=min(source_end_km,float(cell['end_km']))
+    if b<=a:return False
+    angle=math.radians(solar_alt_deg)
+    tangent=-angle*EARTH_RADIUS_KM
+    distances=(a-target_d,b-target_d)
+    values=[_ray_height_km(base_height_km,solar_alt_deg,d) for d in distances]
+    if distances[0] < tangent < distances[1]:
+        values.append(_ray_height_km(base_height_km,solar_alt_deg,tangent))
+    # Require positive-volume intersection; a tangent contact at the cloud
+    # bottom, including the target's own underside, is not a solid blocker.
+    return (min(values)<float(cell['top_km'])-1e-6 and
+            max(values)>float(cell['bottom_km'])+1e-6)
+
+
+def _offaxis_ray_supports_bottom(ray, target_lat, target_lon, solar_az, target_d,
+                                  face, horizon, radius_km=9.0):
+    """An existing measured face ray may be reused ONLY if its real positions
+    also coincide with the new underside beam (no fictitious extrapolation).
+    """
+    if not ray or len(ray)<2:return False
+    ds=[float(x['distance_km']) for x in ray]
+    if (ds[0]-(ds[1]-ds[0])/2>face+1e-5 or
+        ds[-1]+(ds[-1]-ds[-2])/2<horizon-1e-5 or
+        any(b-a>55. for a,b in zip(ds,ds[1:]))):return False
+    for row in ray:
+        if not row.get('levels') or row.get('lat') is None or row.get('lon') is None:
+            return False
+        d=float(row['distance_km'])
+        if d<face or d>horizon:continue
+        expected=destination(target_lat,target_lon,solar_az,d-target_d)
+        if _great_circle_km(*expected,float(row['lat']),float(row['lon']))>radius_km:
+            return False
+    return True
+
+
+
+# Conservative upper bound of the ordinary cloud-bearing atmosphere. This is
+# a ray EXIT ALTITUDE, never a forced height at 700 km. A ray must be sampled
+# at every upstream cloud column until it crosses this bound while ascending.
+DEFAULT_CLOUD_ATMOSPHERE_TOP_KM = 20.0
+
+
+def _solar_cloud_exit_travel_km(target_height_km, solar_alt_deg,
+                                cloud_atmosphere_top_km=DEFAULT_CLOUD_ATMOSPHERE_TOP_KM):
+    """Exact spherical straight-sun-ray distance to CLOUD-FREE upper atmosphere.
+
+    It is the FARTHER / ASCENDING intersection of a solar ray with the sphere
+    R+cloud_atmosphere_top_km. An earlier downward crossing is NOT a source
+    exit. A real Earth intersection is rejected separately. No forecast
+    outside this upper atmospheric bound is claimed.
+
+    None means Earth blocking or nonphysical input. Return 0 only when the ray
+    is already and will remain outside the cloud-bearing sphere.
+    """
+    try:
+        h=float(target_height_km)
+        alt=float(solar_alt_deg)
+        ceiling=float(cloud_atmosphere_top_km)
+    except (TypeError,ValueError):
+        return None
+    if (not all(map(math.isfinite,(h,alt,ceiling))) or
+        h<0 or ceiling<=0 or not (-90.<alt<90.)):
+        return None
+    if _sun_ray_earth_occluded(h,alt):
+        return None
+    angle=math.radians(alt)
+    # The minimum Earth-centred radius along the forward half-ray.
+    tangent_radius=(EARTH_RADIUS_KM+h)*(math.cos(angle) if angle<0 else 1.)
+    if tangent_radius>=EARTH_RADIUS_KM+ceiling:
+        return 0.0
+    ratio=(EARTH_RADIUS_KM+h)*math.cos(angle)/(EARTH_RADIUS_KM+ceiling)
+    if not 0. <= ratio <= 1.:
+        return None
+    travel=EARTH_RADIUS_KM*(math.acos(max(-1.,min(1.,ratio)))-angle)
+    return max(0.0,travel)
+
+
+def dynamic_solar_source_horizon(profiles, event_dt, utc_offset, lat, lon,
+                                 direction, reach_km, target_limit_km=None,
+                                 min_scan_km=700., extension_factor=1.3,
+                                 atmosphere_top_km=DEFAULT_CLOUD_ATMOSPHERE_TOP_KM):
+    """Plan upstream cloud samples using REAL target and minute solar altitude.
+
+    This is a conservative PLAN, not proof: the caller MUST fetch the samples
+    and the strict tracer MUST validate their actual cloud intersections.
+    Invalid targets/angles do not fabricate a clear ray.
+    """
+    cells=profile_cloud_cells(profiles or (),threshold=0.000001,
+                              blur_horizontal_km=0.,blur_vertical_km=0.)
+    reach=max(0.,float(reach_km or 0.))
+    limit=(min(reach,max(0.,float(target_limit_km)))
+           if target_limit_km is not None else reach)
+    base=max(float(min_scan_km),reach*max(1.01,float(extension_factor)))
+    event_az=solar_position(event_dt,utc_offset,lat,lon)[1]
+    minutes=range(-30,1) if direction=='morning' else range(0,31)
+    max_required=base
+    worst=None
+    eligible=0
+    # Each bottom is checked at the same five horizontal positions as the
+    # strict underside tracer. The frontal target includes the lowest height
+    # that can physically see over Earth's limb, not just a random midpoint.
+    for cell in cells:
+        if float(cell['start_km'])>=limit-1e-8 or float(cell['top_km'])<=1.5:
+            continue
+        target=dict(cell)
+        target['end_km']=min(float(cell['end_km']),limit)
+        face=float(target['end_km'])
+        if face<=float(target['start_km']):continue
+        for minute in minutes:
+            dt=event_dt+timedelta(minutes=minute)
+            for pos in list(_bottom_samples(target)) + [face]:
+                tlat,tlon=destination(lat,lon,event_az,pos)
+                alt,_=solar_position(dt,utc_offset,tlat,tlon)
+                heights=[float(target['bottom_km'])]
+                if abs(pos-face)<1e-8:
+                    # For the SUNWARD FACE, the most demanding *visible*
+                    # height is usually the Earth-limb boundary.
+                    floor=(EARTH_RADIUS_KM/math.cos(math.radians(alt))-EARTH_RADIUS_KM
+                           if alt<0 else float(target['bottom_km']))
+                    heights.append(max(float(target['bottom_km']),floor+0.00001))
+                for height in heights:
+                    if height>float(target['top_km'])+1e-8:continue
+                    travel=_solar_cloud_exit_travel_km(height,alt,atmosphere_top_km)
+                    if travel is None:continue
+                    eligible+=1
+                    requested=pos+travel
+                    if requested>max_required:
+                        max_required=requested
+                        worst={'minute_offset':minute,'position_km':round(pos,2),
+                               'target_height_km':round(height,4),
+                               'sun_altitude_deg':round(alt,4),
+                               'cloud_exit_distance_km':round(requested,2)}
+    # Small geometric tolerance and 50-km provider grid. No 700-km MAXIMUM.
+    end=float(math.ceil((max_required+0.1)/50.)*50.)
+    return {'required_source_km':end,'raw_required_km':round(max_required,2),
+            'minimum_source_km':round(base,2), 'atmosphere_ceiling_km':atmosphere_top_km,
+            'eligible_ray_count':eligible,'limiting_ray':worst,
+            'method':'minute_target_cloud_bottom_and_face_spherical_sunray_exit'}
+
+
+def _validated_cloud_bottom(target, minute, dt, event_az, lat, lon, utc_offset,
+                            required, axis_cells, axis_profiles, off_axis_profiles,
+                            use_horizontal_fusion, target_pressure_by_distance,
+                            sample_count=5):
+    """Strict spherical/cloud-occlusion test at every sampled *cloud bottom*.
+
+    Returns individual area-strip observations; inconclusive off-axis paths
+    are UNKNOWN, never quietly counted as unblocked or as zero illumination.
+    """
+    from .spherical_raytrace import (_earth_occluded,_ray_height_km,
+                                     profile_cloud_cells, EARTH_RADIUS_KM)
+    from .spatial_ray_fusion import (check_horizontal_ray_consistency,
+                                     check_horizontal_target_support)
+    face=float(target['end_km']); bottom=float(target['bottom_km'])
+    key=[round(float(target[k]),6) for k in
+         ('start_km','end_km','bottom_km','top_km')]
+    outcome=[]
+    for pos in _bottom_samples(target,sample_count):
+        tlat,tlon=destination(lat,lon,event_az,pos)
+        alt,az=solar_position(dt,utc_offset,tlat,tlon)
+        covered=_solar_corridor_coverage(event_az,lat,lon,pos,az,required)
+        ray=None
+        if not covered['covered']:
+            ray=(off_axis_profiles or {}).get((minute,round(face,5)))
+            if not _offaxis_ray_supports_bottom(ray,tlat,tlon,az,pos,face,required):
+                outcome.append({'status':'unresolved_off_axis','position_km':pos,
+                                'solar_altitude_deg':alt,'target_key':key});continue
+            ray_cells=profile_cloud_cells(ray,threshold=25.,
+                                          blur_horizontal_km=0.,blur_vertical_km=0.)
+            # Real main-axis samples bridge bottom -> face; measured off-axis
+            # samples then cover the face -> 700km source segment.
+            obstacles=[c for c in axis_cells if
+                       float(c['end_km'])>pos and float(c['start_km'])<face]
+            obstacles += [c for c in ray_cells if float(c['end_km'])>face]
+            horizontal_profiles=(ray if use_horizontal_fusion else [])
+        else:
+            obstacles=[c for c in axis_cells if float(c['end_km'])>pos and
+                       float(c['start_km'])<required]
+            horizontal_profiles=axis_profiles if use_horizontal_fusion else []
+        travel=required-pos
+        if travel<=0:
+            outcome.append({'status':'unresolved_source_boundary','position_km':pos,
+                            'solar_altitude_deg':alt,'target_key':key,
+                            'reason':'target beyond sampled upper horizon'});continue
+        # Strict solar geometry, independent of the length of weather samples.
+        if _sun_ray_earth_occluded(bottom,alt):
+            outcome.append({'status':'earth_or_source_horizon','position_km':pos,
+                            'solar_altitude_deg':alt,'target_key':key});continue
+        # A gap near the observer NEVER bypasses cloud obstacles farther away.
+        # Every measured upstream rectangle is checked at the ray's real height.
+        if any(_cloud_ray_intersects_bottom(pos,bottom,alt,c,required)
+               for c in obstacles):
+            outcome.append({'status':'cloud_blocked','position_km':pos,
+                            'solar_altitude_deg':alt,'target_key':key});continue
+        exit_travel=_solar_cloud_exit_travel_km(bottom,alt,
+                                               DEFAULT_CLOUD_ATMOSPHERE_TOP_KM)
+        if exit_travel is None:
+            outcome.append({'status':'earth_or_source_horizon','position_km':pos,
+                            'solar_altitude_deg':alt,'target_key':key});continue
+        if travel+1e-5<exit_travel:
+            outcome.append({'status':'unresolved_source_boundary','position_km':pos,
+                            'solar_altitude_deg':alt,'target_key':key,
+                            'required_source_km':round(pos+exit_travel,2)});continue
+        target_sample=target_pressure_by_distance.get(
+            round(float(target.get('sample_distance_km',0)),5))
+        support=(check_horizontal_target_support(target_sample,bottom)
+                 if use_horizontal_fusion else {'unresolved':False})
+        horizontal=(check_horizontal_ray_consistency(horizontal_profiles,pos,bottom,alt,required)
+                    if use_horizontal_fusion else {'unresolved':False})
+        if support['unresolved'] or horizontal['unresolved']:
+            outcome.append({'status':'unresolved_horizontal','position_km':pos,
+                            'solar_altitude_deg':alt,'target_key':key});continue
+        outcome.append({'status':'verified_bottom','position_km':pos,
+                        'solar_altitude_deg':alt,'target_key':key,
+                        'source_boundary_altitude_km':round(_ray_height_km(bottom,alt,travel),3)})
+    return outcome
+
+
 def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction,
                              reach_km, min_width_km=15.0, extension_factor=1.3,
                              target_limit_km=None, source_scan_km=None,
@@ -343,10 +597,15 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                     isinstance(p.get('distance_km'), (int, float))),
                    key=lambda p: float(p['distance_km']))
     reach = max(0.0, float(reach_km or 0.0))
-    # 700 km is the default *data collection horizon*, not a cloud-hole target.
-    # Large physical reaches may require an even longer sampled path.
-    required = max(reach * max(1.01, float(extension_factor)),
-                   700.0 if source_scan_km is None else max(0., float(source_scan_km)))
+    # The source must be sampled until the *actual solar beam* has escaped
+    # the ordinary cloud-bearing atmosphere on its ascending branch. Never
+    # convert the old 700-km request horizon into a hard sunlight cutoff.
+    source_plan=dynamic_solar_source_horizon(
+        valid,event_dt,utc_offset,lat,lon,direction,reach,
+        target_limit_km=target_limit_km,min_scan_km=(700. if source_scan_km is None
+                                                     else max(0.,float(source_scan_km))),
+        extension_factor=extension_factor)
+    required=source_plan['required_source_km']
     available = max((float(p['distance_km']) for p in valid), default=0.0)
     # Never confuse a missing 50-km profile with an observed clear corridor.
     all_samples = sorted((p for p in (profiles or []) if isinstance(p.get('distance_km'), (int,float))),
@@ -361,7 +620,7 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
         return {'gaps': [], 'status': 'unresolved_data', 'evaluations': 0, 'verified_ray_traces': [], 'verified_target_bands': [],
                 'required_profile_km':round(required,2),'available_profile_km':round(available,2),
                 'missing_profile_distances_km':missing,
-                'note':'上游气压层未完整覆盖完整太阳光路检查范围（通常700km），或剖面缺失；不得把未采样区域当作晴空。'}
+                'note':'上游气压层未覆盖太阳角度决定的完整云层遮挡检查范围，或有剖面缺失；未采样区域不得当作晴空。', 'dynamic_source_horizon':source_plan}
     # Separate low-cover targets from the conservative obstacle screen.
     # Never treat the nonzero target cloud as a completely opaque blocker
     # merely because it contributes some fractional cloud coverage.
@@ -385,6 +644,9 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                 'note':'霞云距内没有满足剖面条件的中高云目标'}
     verified=[]; evaluations=0; confirmed_faces=set(); by_minute={}
     verified_target_bands=[]
+    verified_target_bottom_points=[]
+    bottom_unknown_count=0
+    bottom_verified_count=0
     event_az = solar_position(event_dt,utc_offset,lat,lon)[1]
     uncovered_minutes=set(); coverage_debug=[]
     source_boundary_unresolved_minutes=set()
@@ -398,10 +660,10 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
     from .spatial_ray_fusion import (check_horizontal_ray_consistency,
                                      check_horizontal_target_support)
     target_pressure_by_distance = {round(float(p['distance_km']),5):p for p in valid}
-    # Conservative atmospheric clearance condition beyond the last sampled point.
-    # This is NOT a fixed sky-clear gap; it only certifies that the ray is above
-    # the cloud-bearing model atmosphere and rising when sampling stops.
-    cloud_top_ceiling_km=max(20.0, max((float(c['top_km']) for c in cells), default=0.0)+2.0)
+    # A valid model-domain ray requires sampled profiles throughout the full
+    # upstream window, exact solar/Earth non-intersection and NO actual cloud
+    # intersections. Neither an arbitrary 20-km endpoint threshold nor a
+    # forecast of post-700km minimum altitude is an optical obstruction.
     minutes=range(-30,1) if direction=='morning' else range(0,31)
     for minute in minutes:
         dt=event_dt+timedelta(minutes=minute)
@@ -449,18 +711,32 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
             bands=analyze_target_face(target,upstream,alt,
                                       max_distance_km=required).get('possible_face_height_bands_km',[])
             evaluations+=1
-            for low,high in bands:
+            for original_low,high in bands:
+                if high-original_low<1e-6 or required<=face:continue
+                # The sun-facing height interval may straddle the solar limb.
+                # Clip rather than midpoint-vote the entire face as valid.
+                a=math.radians(alt)
+                limb=(EARTH_RADIUS_KM/max(1e-9,math.cos(a))-EARTH_RADIUS_KM
+                      if alt<0 else -float('inf'))
+                low=max(original_low,limb+1e-6)
+                if high-low<1e-6:continue
+                # Require the ascending ray to have passed out of cloud-bearing
+                # altitudes by the END OF THE MEASURED SOURCE CORRIDOR.
+                # The corresponding height floor comes from the exact spherical
+                # height function; no arbitrary '700 km = enough' assumption.
+                u=required-face
+                theta=u/EARTH_RADIUS_KM
+                if math.cos(a+theta)<=0:continue
+                source_height_floor=(
+                    (EARTH_RADIUS_KM+DEFAULT_CLOUD_ATMOSPHERE_TOP_KM)*
+                    math.cos(a+theta)/max(1e-9,math.cos(a))-EARTH_RADIUS_KM)
+                low=max(low,source_height_floor+1e-6)
                 if high-low<1e-6:continue
                 h=(low+high)/2.0
-                if _earth_occluded(h,alt,required-face):continue
-                # A locally unobstructed segment is not proof of full sunlight.
-                # At the sampled horizon the solar ray must already be moving
-                # away from Earth and above all plausible meteorological clouds.
-                end_arc=required-face
-                if (end_arc<=0 or math.radians(alt)+end_arc/EARTH_RADIUS_KM <= 0
-                    or _ray_height_km(h,alt,end_arc) < cloud_top_ceiling_km):
-                    source_boundary_unresolved_minutes.add(minute)
+                exit_distance=_solar_cloud_exit_travel_km(h,alt)
+                if (exit_distance is None or required-face+1e-5<exit_distance):
                     continue
+                # All measured intermediate cloud obstacles remain mandatory.
                 # Independent ray-position cross-check at every exact cell.
                 def intersects(cell):
                     a=max(face+1e-7,float(cell['start_km']))
@@ -511,9 +787,9 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                            'profile_corridor_radius_km':(9.0 if not coverage['covered'] else coverage['corridor_radius_km']),
                            'source_check_km':round(required,2),
                            'clear_face_band_km':[round(low,6),round(high,6)],
-                           'status':'verified_full_upstream_to_cloud_top_clearance',
+                           'status':'verified_sunward_face_full_sampled_corridor',
                            'source_boundary_altitude_km':round(_ray_height_km(h,alt,required-face),3),
-                           'cloud_top_clearance_km':round(cloud_top_ceiling_km,3),
+                           'verification_scope':'sampled_upstream_clouds_and_global_earth_geometry',
                            'weight':weight}
                 # Record EVERY verified target, not only the winner of this minute.
                 # Downstream area weighting must never illuminate other targets
@@ -525,6 +801,40 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                     'height_band_km': [round(low,6),round(high,6)],
                     'solar_altitude_deg': round(alt,7),
                 })
+                if winner is None or candidate['weight']>winner['weight']:
+                    winner=candidate
+        # Independent underside illumination: each strip has its OWN target
+        # coordinate, Sun altitude and full 700km spherical obstruction test.
+        # A dark SUNWARD FACE is not evidence of a dark cloud bottom.
+        for target in targets:
+            underside=_validated_cloud_bottom(
+                target,minute,dt,event_az,lat,lon,utc_offset,required,
+                cells,valid,off_axis_ray_profiles,use_horizontal_fusion,
+                target_pressure_by_distance)
+            verified_target_bottom_points.extend(
+                {'minute_offset':minute,**point} for point in underside)
+            for point in underside:
+                if point['status'].startswith('unresolved'):
+                    bottom_unknown_count+=1
+                    if point['status']=='unresolved_source_boundary':
+                        source_boundary_unresolved_minutes.add(minute)
+                    else:
+                        minute_uncovered=True
+                if point['status']!='verified_bottom':continue
+                bottom_verified_count+=1
+                face=float(target['end_km'])
+                candidate={'minute_offset':minute,'time':dt.isoformat(),
+                    'target_face_km':round(face,3),
+                    'target_bottom_position_km':round(point['position_km'],3),
+                    'target_height_km':round(float(target['bottom_km']),6),
+                    'solar_altitude_deg':round(point['solar_altitude_deg'],7),
+                    'source_check_km':round(required,2),
+                    'status':'verified_cloud_bottom_spherical',
+                    'surface':'cloud_bottom',
+                    'source_boundary_altitude_km':point['source_boundary_altitude_km'],
+                    # area-strip rather than vertical face-height weighting
+                    'weight':float(target.get('cloud_cover',0))*(
+                        float(target['end_km'])-float(target['start_km']))/5.}
                 if winner is None or candidate['weight']>winner['weight']:
                     winner=candidate
         if minute_uncovered:
@@ -539,6 +849,10 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
             'evaluations':evaluations,'illuminated_target_count':len(confirmed_faces),
             'verified_minutes':sorted(by_minute),
             'verified_target_bands':verified_target_bands,
+            'verified_target_bottom_points':verified_target_bottom_points,
+            'bottom_verified_point_count':bottom_verified_count,
+            'bottom_unresolved_point_count':bottom_unknown_count,
+            'target_surface_methods':['cloud_bottom','sunward_face'],
             'spatially_unverified_minutes':sorted(uncovered_minutes),
             'source_boundary_unresolved_minutes':sorted(source_boundary_unresolved_minutes),
             'horizontal_conflict_unresolved_minutes':sorted(horizontal_conflict_minutes),
@@ -552,14 +866,16 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
 
             'off_axis_rays_measured':len(off_axis_used),
             'off_axis_rays_missing':len(off_axis_missing),
-            'cloud_top_clearance_km':round(cloud_top_ceiling_km,3),
+            'cloud_top_clearance_km':DEFAULT_CLOUD_ATMOSPHERE_TOP_KM,  # source sampling altitude, NOT fixed 700km veto
+            'source_termination_rule':'dynamic_solar_ascending_escape_plus_full_cloud_intersections',
+            'dynamic_source_horizon':source_plan,
             'spatial_coverage_diagnostics':coverage_debug,
             'corridor_radius_km':15.0,
             'verified_ray_traces':[
                 {k:v for k,v in row.items() if k!='weight'} for row in verified],
             'required_profile_km':round(required,2), 'available_profile_km':round(available,2),
             'target_limit_km':round(limit,2),
-            'note':'本地霞云距只筛选目标云，不再截断上游验证。逐分钟检查真实太阳高度角/方位角、地球遮挡、完整采样区间云块；到采样末端还需达到云顶上方且持续远离地球，否则标未验证。原剖面轴外超过15km仍不能推断晴空；云量网格仅为粗分辨率代理。'}
+            'note':'上游验证距离按每分钟、每个目标云底与云锋面的太阳高度角动态计算；700km仅是基础采样距离。沿完整实际采样光线逐段验证云层遮挡，直至光线在上升段脱离普通云层高度范围。若所需距离未覆盖或偏轴气压层缺失，返回未验证而非假定晴空。20km是普通气象云层的保守垂直模型上界，不是700km终点达标门槛。'}
 
 def grid_points(origin_lat,origin_lon,bearing,radius_km):
     """Three angular columns x three distances + local; 10 locations maximum."""

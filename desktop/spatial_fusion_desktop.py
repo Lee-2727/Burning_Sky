@@ -15,6 +15,7 @@ from pathlib import Path
 from copy import deepcopy
 import threading
 import queue
+import zipfile
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -132,6 +133,16 @@ class SpatialDesktopMixin:
         if not bool(getattr(self,'_spatial_enabled_snapshot',False)):
             return pressure
         self.spatial_fetch_log=getattr(self,'spatial_fetch_log',[])
+        # An explicitly replayed case must NEVER trigger OM network downloads.
+        # Reuse archived spatial values only if coordinates, model and time match.
+        import engine as runtime_engine
+        replay_ctx = getattr(runtime_engine, '_CASE_REQUEST_CONTEXT', None)
+        if isinstance(replay_ctx, dict) and replay_ctx.get('mode') == 'replay':
+            from desktop.gfs_om_archive_replay import bind_saved_horizontal
+            diag = bind_saved_horizontal(pressure, getattr(self,'loaded_case_state',None), sunset_utc, model_id)
+            self.spatial_fetch_log.append({**diag,'model':model_id,'source_mode':'archive_case_replay',
+                                           'distance_count':len(distances)})
+            return pressure
         try:
             horizontal,mode,snapshot_path=fetch_desktop_horizontal(
                 coords,distances,sunset_utc,model_id,
@@ -191,6 +202,7 @@ def collect_report(app):
             'burn_scale_label':inferred.get('burn_scale_label'),
             'strict_primary_path_diagnostic':inferred.get('strict_primary_path_diagnostic'),
             'off_axis_resampling':inferred.get('off_axis_resampling'),
+            'spatial_calibration':inferred.get('spatial_calibration'),
         }
     return _safe_value({
         'mode':'OM_HORIZONTAL_FUSION_DESKTOP' if getattr(app,'_spatial_enabled_snapshot',False) else 'BASELINE_POINT_API',
@@ -392,7 +404,7 @@ class DesktopSpatialApp(SpatialDesktopMixin, FireCloudApp):
         self._national_result_queue=queue.Queue()
         self._national_busy=False
         super().__init__()
-        self.title('Burning Sky · Desktop OM 空间光路融合试验（不影响 Pro/Lite）')
+        self.title('Burning Sky V2.2.0 · Desktop GFS/EC OM 诊断')
 
     def _build_ui(self):
         super()._build_ui()
@@ -401,14 +413,18 @@ class DesktopSpatialApp(SpatialDesktopMixin, FireCloudApp):
         header=container.winfo_children()[0]
         panel=ttk.Frame(container,style='Card.TFrame',padding=10)
         panel.pack(fill='x',before=header,pady=(0,9))
-        self.spatial_toggle=tk.BooleanVar(value=False)
+        self.spatial_toggle=tk.BooleanVar(value=True)
         self.spatial_replay=tk.BooleanVar(value=False)
         ttk.Checkbutton(panel,text='开启 OM 二维云场 + API 垂直剖面融合（实验）',
                         variable=self.spatial_toggle).pack(anchor='w')
         ttk.Checkbutton(panel,text='只重放本地已保存的 OM 快照（不联网请求 OM）',
                         variable=self.spatial_replay).pack(anchor='w')
-        self.spatial_message=tk.StringVar(value='默认关闭：与原桌面算法一致；开启后只在 OM 数据有效时参与光路复核。')
+        self.spatial_message=tk.StringVar(value='默认开启：GFS 主 API 云量优先；案例 ZIP 可离线审计。仅点击查询才联网。')
         ttk.Label(panel,textvariable=self.spatial_message,style='Card.TLabel',wraplength=850).pack(anchor='w',pady=3)
+        case_row=ttk.Frame(panel,style='Card.TFrame');case_row.pack(fill='x',pady=(3,4))
+        ttk.Button(case_row,text='导入案例 ZIP 并离线核对云量',command=self.open_case_zip_audit).pack(side='left',padx=(0,9))
+        ttk.Label(case_row,text='读取保存的 API / OM 数值，不调用天气 API；可选导入用于本地缓存重算。',
+                  style='Card.TLabel',wraplength=620).pack(side='left',anchor='center')
         buttons=ttk.Frame(panel,style='Card.TFrame');buttons.pack(fill='x',pady=3)
         ttk.Button(buttons,text='保存空间光路诊断 JSON',command=self.export_spatial_report).pack(side='left',padx=(0,8))
         ttk.Button(buttons,text='查看本次冲突概要',command=self.show_spatial_summary).pack(side='left',padx=(0,8))
@@ -430,6 +446,98 @@ class DesktopSpatialApp(SpatialDesktopMixin, FireCloudApp):
         ttk.Label(panel,text='建议相同日期、模型分别关闭/开启融合查询；需要离线复测时复用原案例 API 缓存 + OM 快照。',
                   style='Card.TLabel',wraplength=850).pack(anchor='w')
 
+    def open_case_zip_audit(self):
+        """Audit an exported case ZIP without requiring API or extracting its huge request cache."""
+        chosen=filedialog.askopenfilename(title='选择 Burning Sky 历史案例 ZIP',
+                         filetypes=[('案例 ZIP','*.zip')])
+        if not chosen:return
+        try:
+            from desktop.gfs_om_case_audit import audit_case_zip,format_summary,export_csv
+            result=audit_case_zip(chosen)
+            win=tk.Toplevel(self)
+            win.title('GFS OM 云量冲突核对 · 离线')
+            win.geometry('1200x660');win.minsize(800,420)
+            host=ttk.Frame(win,padding=12);host.pack(fill='both',expand=True)
+            ttk.Label(host,text=format_summary(result),wraplength=1120,justify='left').pack(fill='x',anchor='w',pady=(0,8))
+            grid=ttk.Frame(host);grid.pack(fill='both',expand=True)
+            cols=('direction','distance','layer','api','om','before','after','delta','decision')
+            tree=ttk.Treeview(grid,columns=cols,show='headings',height=20)
+            heads=('方向','公里','云层','原生 API %','OM 原值 %','旧计算值 %','新有效值 %','差值 pp','来源/决定')
+            widths=(70,70,60,105,105,105,105,95,285)
+            for col,head,width in zip(cols,heads,widths):
+                tree.heading(col,text=head);tree.column(col,width=width,anchor='center',stretch=col=='decision')
+            sy=ttk.Scrollbar(grid,orient='vertical',command=tree.yview)
+            sx=ttk.Scrollbar(grid,orient='horizontal',command=tree.xview)
+            tree.configure(yscrollcommand=sy.set,xscrollcommand=sx.set)
+            tree.grid(row=0,column=0,sticky='nsew');sy.grid(row=0,column=1,sticky='ns');sx.grid(row=1,column=0,sticky='ew')
+            grid.columnconfigure(0,weight=1);grid.rowconfigure(0,weight=1)
+            def fmt(n):return '—' if n is None else '%.2f'%n
+            for i,r in enumerate(result.get('rows') or []):
+                vals=('朝霞' if r['direction']=='morning' else '晚霞',
+                      r['distance_km'],r['layer'],fmt(r['native_api_pct']),fmt(r['raw_om_pct']),
+                      fmt(r['old_calculation_pct']),fmt(r['current_effective_pct']),fmt(r['delta_pp']),r['decision'])
+                tag='conflict' if r.get('delta_pp') is not None and r['delta_pp']>25 else ''
+                tree.insert('', 'end', iid=str(i),values=vals,tags=(tag,) if tag else ())
+            tree.tag_configure('conflict',background='#fff0e6')
+            actions=ttk.Frame(host);actions.pack(fill='x',pady=(10,0))
+            def save_csv():
+                path=filedialog.asksaveasfilename(title='导出离线云量核对 CSV',defaultextension='.csv',
+                    initialfile='GFS_OM_云量对照.csv',filetypes=[('CSV','*.csv')])
+                if path:
+                    export_csv(result,path)
+                    messagebox.showinfo('已导出','云量对照已保存：'+path)
+            def save_json():
+                path=filedialog.asksaveasfilename(title='导出离线诊断 JSON',defaultextension='.json',
+                    initialfile='GFS_OM_云量核对.json',filetypes=[('JSON','*.json')])
+                if path:
+                    Path(path).write_text(json.dumps(result,ensure_ascii=False,indent=2,default=str),encoding='utf-8')
+                    messagebox.showinfo('已导出','诊断报告已保存：'+path)
+            ttk.Button(actions,text='导出 CSV',command=save_csv).pack(side='left',padx=(0,8))
+            ttk.Button(actions,text='导出 JSON',command=save_json).pack(side='left',padx=(0,8))
+            ttk.Button(actions,text='导入案例到桌面供缓存复算',command=lambda:self.import_case_zip(chosen)).pack(side='left',padx=(0,8))
+            ttk.Button(actions,text='关闭',command=win.destroy).pack(side='right')
+            win.transient(self);win.lift()
+            self.spatial_message.set('已离线核对案例 '+Path(chosen).name+'；未联网。')
+        except Exception as exc:
+            messagebox.showerror('案例离线核对失败',f'{type(exc).__name__}: {exc}')
+
+    def import_case_zip(self, path):
+        """Safely unpack an exported case to a private folder, then display it via core GUI.
+
+        Any future recomputation remains an explicit user action via the existing
+        '从案例缓存读取' checkbox and query controls.
+        """
+        try:
+            import shutil
+            key=hashlib.sha256(Path(path).read_bytes()).hexdigest()[:16]
+            dest=ROOT/'imported_cases'/key
+            dest.mkdir(parents=True,exist_ok=True)
+            with zipfile.ZipFile(path) as z:
+                files=[m for m in z.infolist() if not m.is_dir()]
+                if sum(m.file_size for m in files)>350*1024*1024:
+                    raise ValueError('解压后体积超过 350 MB，拒绝导入')
+                seen=set()
+                for m in files:
+                    # Flatten any case root directory. Never trust ZIP paths.
+                    parts=Path(m.filename.replace('\\','/')).parts
+                    if '..' in parts or not parts:raise ValueError('ZIP 含不安全路径')
+                    if parts[0].endswith(':') or m.filename.startswith(('/', '\\')):raise ValueError('ZIP 含绝对路径')
+                    name=parts[-1]
+                    if name in seen:raise ValueError('ZIP 中存在重复文件名：'+name)
+                    seen.add(name)
+                    target=dest/name
+                    with z.open(m) as src, target.open('wb') as output:
+                        shutil.copyfileobj(src,output,1024*1024)
+            if not (dest/'analysis_state.json').is_file():
+                raise ValueError('案例缺少 analysis_state.json')
+            super().load_case(str(dest))
+            if hasattr(self,'case_cache_var'):
+                self.case_cache_var.set(True)
+            self.spatial_toggle.set(True)
+            self.spatial_message.set('已导入本地案例 '+Path(path).name+'。勾选从案例缓存读取后，再手动选择同模型/日期/方向重算；绝不联网补 OM。')
+        except Exception as exc:
+            messagebox.showerror('案例导入失败',f'{type(exc).__name__}: {exc}')
+
     def fetch_weather(self,direction_key='both'):
         # Called from Tk main thread, snapshot flags before background work.
         self._spatial_requested_direction=direction_key
@@ -442,8 +550,8 @@ class DesktopSpatialApp(SpatialDesktopMixin, FireCloudApp):
 
     def _finish_fetch_weather(self,preserve_status=False):
         super()._finish_fetch_weather(preserve_status=preserve_status)
-        successes=sum(x.get('status')=='spatial_horizontal_used_vertical_api' for x in self.spatial_fetch_log)
-        misses=sum(x.get('status')=='point_api_fallback' for x in self.spatial_fetch_log)
+        successes=sum(x.get('status') in ('spatial_horizontal_used_vertical_api','archive_om_used') for x in self.spatial_fetch_log)
+        misses=sum(x.get('status') in ('point_api_fallback','archive_no_matching_om') for x in self.spatial_fetch_log)
         status=('已完成：OM 融合 %s 批；回退 API %s 批。' % (successes,misses)) if self._spatial_enabled_snapshot else '已完成原版对照，不使用 OM 数据。'
         if self._spatial_enabled_snapshot and misses:
             failures=[row.get('reason') or '无错误详情' for row in self.spatial_fetch_log if row.get('status')=='point_api_fallback']
@@ -819,6 +927,16 @@ class DesktopSpatialApp(SpatialDesktopMixin, FireCloudApp):
                 d.get('horizontal_evaluated_nodes',0),
                 d.get('horizontal_conflict_count',0),
                 d.get('horizontal_target_conflict_count',0)))
+        for direction,result in (getattr(self,'direction_results',{}) or {}).items():
+            calibr=(result.get('inferred') or {}).get('spatial_calibration') or {}
+            out.append('%s · 校准：%s；GFS proxy 点 %s；原生优先层 %s；>25pp 冲突 %s'%(
+                '朝霞' if direction=='morning' else '晚霞',
+                calibr.get('status','缺失'),calibr.get('gfs_proxy_points','?'),
+                calibr.get('gfs_native_priority_layers','?'),calibr.get('conflict_count','?')))
+            for item in (calibr.get('conflicts') or [])[:12]:
+                out.append('  距离 %s km，%s：API %s%% / OM %s%%，差 %s pp → 保留 API'%(
+                    item.get('distance_km'),item.get('field'),item.get('api_pct'),
+                    item.get('om_proxy_pct'),item.get('delta_pp')))
         if self.spatial_fetch_log:
             out.append('数据源最近一批：%s'%self.spatial_fetch_log[-1].get('status','?'))
             for idx,row in enumerate(self.spatial_fetch_log,1):

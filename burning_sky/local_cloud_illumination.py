@@ -19,7 +19,7 @@ def _clip(v, lo=0., hi=1.):
 
 def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
                        potential_km, minutes=30, samples_per_face=32,
-                       verified_target_bands=None):
+                       verified_target_bands=None, verified_target_bottom_points=None):
     if not profiles or not event_dt or potential_km is None or potential_km <= 0:
         return {'available': False, 'reason': '缺少剖面、时间或有效霞云距', 'times': []}
     # No smoothing across exact user-edited clear corridors.
@@ -33,6 +33,13 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
         for record in verified_target_bands:
             key=(int(record['minute_offset']), tuple(round(float(x),6) for x in record['target_key']))
             verified_index.setdefault(key,[]).append(tuple(record['height_band_km']))
+    # A face-height band does not quantify the illuminated CLOUD BOTTOM.
+    # The strict scanner now sends distinct verified underside area strips.
+    bottom_index={}
+    if verified_target_bottom_points is not None:
+        for record in verified_target_bottom_points:
+            key=(int(record['minute_offset']),tuple(round(float(x),6) for x in record['target_key']))
+            bottom_index.setdefault(key,[]).append(record)
     event_az=solar_position(event_dt,utc_offset,lat,lon)[1]
     limit=float(potential_km)
     # Keep the original cell identity.  In the previous integrated build the
@@ -61,6 +68,7 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
         # Cloud targets stay at the original geographic sampled axis.
         az=event_az
         numerator=0.; strict_numerator=0.; possible_numerator=0.
+        face_numerator=0.; unknown_bottom_weight=0.
         biggest=None; biggest_possible=None
         for target in targets:
             face=target['end_km']
@@ -92,13 +100,32 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
                 # Verified full-corridor target band is the hard gate; local
                 # analytic interval can only reduce it, never create light.
                 fraction=min(fraction,_clip(total/max(1e-12,b-a)))
+            # Keep face illumination as a SEPARATE diagnostic.  Never use
+            # its vertical band fraction as the cloud bottom's area fraction.
+            face_fraction=fraction
+            if verified_target_bottom_points is not None:
+                target_key=tuple(round(float(target[k]),6) for k in
+                                 ('start_km','end_km','bottom_km','top_km'))
+                points=bottom_index.get((m,target_key),[])
+                # All five sampled strips must be accounted for; unresolved
+                # solar corridors are reported separately, not called clear.
+                lit_count=sum(p['status']=='verified_bottom' for p in points)
+                missing_count=max(0,5-len(points))
+                unresolved_count=missing_count+sum(p['status'].startswith('unresolved') for p in points)
+                fraction=_clip(lit_count/5.0)
+                unknown_bottom_weight+=target['target_weight']*_clip(unresolved_count/5.0)
             strict_fraction=fraction
+            face_numerator+=target['target_weight']*face_fraction
             # Diagnostic upper bound: only fully overcast upstream cells are
             # assumed to be definite opaque obstacles; not a probability.
             hard=[c for c in blocker_cells if float(c['end_km'])>face+1e-7 and float(c['cloud_cover'])>=99.999]
             possible_fraction=_clip(analyze_target_face(target,hard,solar_alt).get('possible_face_height_fraction_proxy',0.))
             if verified_target_bands is not None:
-                possible_fraction=min(possible_fraction,fraction)
+                possible_fraction=min(possible_fraction,face_fraction)
+            if verified_target_bottom_points is not None:
+                # Underside upper bound: unresolved strips MAY be illuminated.
+                # Sun-facing height bands are a separate physical surface.
+                possible_fraction=_clip(fraction+unresolved_count/5.0)
             possible_dominance=target['target_weight']*possible_fraction
             if biggest_possible is None or possible_dominance>biggest_possible['dominance']:
                 biggest_possible={'dominance':possible_dominance,'face_km':face,
@@ -114,11 +141,13 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
         frac=_clip(numerator/den); lower=_clip(strict_numerator/den); upper=_clip(possible_numerator/den)
         result.append({'datetime':dt,'minutes_from_event':m,'fraction':frac,
                        'strict_fraction':lower,'possible_fraction':upper,
+                       'front_face_fraction':_clip(face_numerator/den),
+                       'bottom_unresolved_weight_fraction':_clip(unknown_bottom_weight/den),
                        'dominant':biggest if biggest and biggest['dominance']>1e-9 else None,
                        'possible_dominant':biggest_possible if biggest_possible and biggest_possible['dominance']>1e-9 else None})
     return {'available':True,'potential_km':limit,'target_count':len(targets),
-            'target_weight':den,'times':result,'method':'continuous_cloud_cover_strict_target_minute_gate',
-            'caveat':'目标云量连续加权、逐分钟逐目标受光高度门控；遮挡云仍采用25%保守阈值；非二维可见面积实测值'}
+            'target_weight':den,'times':result,'method':'spherical_bottom_surface_area_strict_target_minute_gate',
+            'caveat':'云底水平面积条带逐点严格球面受光；云锋面单独诊断不代替云底；25%云量遮挡假设；离线剖面非实测二维云面积'}
 
 
 def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
@@ -162,7 +191,7 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
                 'target_face_km': round(float(dominant['face_km']), 2),
                 'height_band_km': [round(float(v), 2) for v in dominant['height_km']],
                 'target_solar_altitude_deg': round(float(dominant['solar_altitude_deg']), 3),
-                'target_illuminated_height_fraction': round(float(dominant['illumination_fraction']), 4),
+                'target_illuminated_area_strip_fraction': round(float(dominant['illumination_fraction']), 4),
             }
         else:
             point['cloud_color_source'] = None
@@ -190,6 +219,8 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
         point['local_cloud_illumination_fraction']=round(frac,6)
         point['local_cloud_strict_fraction']=round(row['strict_fraction'],6) if row else 0.
         point['local_cloud_possible_fraction']=round(row['possible_fraction'],6) if row else 0.
+        point['sunward_face_illumination_fraction']=round(row['front_face_fraction'],6) if row else 0.
+        point['cloud_bottom_unresolved_fraction']=round(row['bottom_unresolved_weight_fraction'],6) if row else 0.
     # Keep the legacy 3%-of-peak colored-area visibility floor. This prevents
     # isolated sub-percent geometric slivers from producing a misleading
     # second twilight interval after the main cloud-color episode.
@@ -216,10 +247,12 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
         return (s,p['tintable_cloud_area'],p['brightness'])
     curve['peak']=max(candidates,key=peak_key) if candidates else None
     curve['raw_peak_brightness']=round(peak_b,1)
-    curve['geometry_gate_diagnostic']={'mode':'continuous_local_target_faces',
+    curve['geometry_gate_diagnostic']={'mode':'spherical_cloud_bottom_area_plus_independent_sunward_face',
+        'front_face_peak_fraction':max((p.get('front_face_fraction',0.) for p in illumination['times']),default=0.),
+        'bottom_area_unresolved_peak_fraction':max((p.get('bottom_unresolved_weight_fraction',0.) for p in illumination['times']),default=0.),
         'target_count':illumination['target_count'],'potential_range_km':illumination['potential_km'],
         'peak_fraction':peak_fraction,'target_cover_pct':round(target_cloud_cover_pct,3),'peak_colored_area_pct':round(max((p.get('colored_cloud_area_pct',0.) for p in original),default=0.),3),'strict_peak':max(p['strict_fraction'] for p in illumination['times']),
         'possible_peak':max(p['possible_fraction'] for p in illumination['times']),
         'caveat':illumination['caveat']}
-    curve['note']='球面连续目标云面解析光路；无部分云量透射；颜色由主导显色云太阳高度角及大气通透度决定，纵轴为严格受光的采样云面积代理（不是受光云占比）。'
+    curve['note']='严格球面逐点云底受光为主，云锋面独立诊断；无部分云量透射，纵轴为抽样云底受光面积代理（非真实二维云面积）。'
     return curve
