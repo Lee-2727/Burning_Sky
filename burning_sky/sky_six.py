@@ -262,58 +262,78 @@ def _solar_corridor_coverage(event_azimuth, origin_lat, origin_lon,
 def plan_off_axis_rays(profiles, event_dt, utc_offset, lat, lon, direction,
                        reach_km, target_limit_km, source_scan_km=700.0,
                        existing_radius_km=9.0, dedupe_radius_km=9.0, step_km=50.0):
-    """Plan pressure-level measurements along the *actual* minute solar bearings.
+    """Fetch catalogue for the SAME cloud-bottom points validated by the solver.
 
-    A solar beam can leave the fixed sunrise bearing by >15 km near 700 km.
-    Never use the old one-dimensional section as evidence at such a location.
-    Returns a coordinate catalogue and per-minute/per-target ray node references.
-    The caller must fetch every new coordinate; a failed fetch stays unresolved.
+    Previous versions planned only sun-facing cloud fronts, while the solver
+    inspected cloud-bottom points every 15 km.  Those rays could never match.
+    A (minute, position_km) key now identifies each actual target beam.
+    Existing pressure-level stations are reused; additional positions are
+    deduplicated and must be measured before being accepted as evidence.
     """
     from .spherical_raytrace import destination, profile_cloud_cells
-    base = [p for p in profiles if p.get('levels') and
-            isinstance(p.get('lat'), (int,float)) and isinstance(p.get('lon'), (int,float))]
-    eaz = solar_position(event_dt,utc_offset,lat,lon)[1]
-    limit = min(max(0.,float(reach_km or 0.)), max(0.,float(target_limit_km or 0.)))
-    valid = profile_cloud_cells(profiles, threshold=.000001,blur_horizontal_km=0.,blur_vertical_km=0.)
-    faces = sorted(set(round(min(float(c['end_km']),limit), 5) for c in valid
-                       if float(c['start_km']) < limit-1e-8 and float(c['top_km'])>1.5
-                       and float(c['end_km'])<source_scan_km-15.))
-    new_coords=[]; rays={}
+    base=[p for p in profiles if p.get('levels') and
+          isinstance(p.get('lat'),(int,float)) and isinstance(p.get('lon'),(int,float))]
+    eaz=solar_position(event_dt,utc_offset,lat,lon)[1]
+    limit=min(max(0.,float(reach_km or 0.)),max(0.,float(target_limit_km or 0.)))
+    cells=profile_cloud_cells(profiles,threshold=.000001,
+                              blur_horizontal_km=0.,blur_vertical_km=0.)
+    targets=[]
+    for c in cells:
+        if (float(c['start_km'])>=limit or float(c['top_km'])<=1.5 or
+                float(c['end_km'])>=source_scan_km-15.):
+            continue
+        t=dict(c)
+        t['end_km']=min(float(c['end_km']),limit)
+        if t['end_km']>float(t['start_km']): targets.append(t)
+    probes={}
+    for t in targets:
+        for strip in _bottom_sweep_strips(t,limit):
+            pos=round(float(strip['position_km']),5)
+            probes.setdefault(pos,[]).append(float(t['bottom_km']))
+    # Face validation is still a separate required path: plan it as well.
+    for t in targets:
+        face=round(float(t['end_km']),5)
+        probes.setdefault(face,[]).extend((float(t['bottom_km']),float(t['top_km'])))
+    new_coords=[];rays={}
     base_positions=[(float(p['lat']),float(p['lon'])) for p in base]
     mins=range(-30,1) if direction=='morning' else range(0,31)
     for minute in mins:
         dt=event_dt+timedelta(minutes=minute)
-        for face in faces:
-            plat,plon=destination(lat,lon,eaz,face)
-            _alt,saz=solar_position(dt,utc_offset,plat,plon)
-            cover=_solar_corridor_coverage(eaz,lat,lon,face,saz,source_scan_km)
-            if cover['covered']: continue
-            span=source_scan_km-face
+        for pos,heights in sorted(probes.items()):
+            plat,plon=destination(lat,lon,eaz,pos)
+            alt,saz=solar_position(dt,utc_offset,plat,plon)
+            # If the Earth itself blocks the beam for all candidate cloud
+            # heights, extra meteorological requests cannot make it valid.
+            if all(_sun_ray_earth_occluded(h,alt) for h in heights):continue
+            cover=_solar_corridor_coverage(eaz,lat,lon,pos,saz,source_scan_km)
+            if cover['covered']:continue
+            span=source_scan_km-pos
             count=max(2,math.ceil(span/max(5.,step_km)))
             step=span/count
             ray=[]
             for i in range(count):
                 u=step*(i+.5)
                 pt=destination(plat,plon,saz,u)
-                nearest=None; nearest_d=float('inf')
-                for j,p in enumerate(base_positions):
-                    d=_great_circle_km(pt[0],pt[1],p[0],p[1])
+                nearest=None;nearest_d=float('inf')
+                for j,p0 in enumerate(base_positions):
+                    d=_great_circle_km(pt[0],pt[1],p0[0],p0[1])
                     if d<nearest_d:nearest=j;nearest_d=d
                 if nearest_d<=existing_radius_km:
-                    ray.append({'distance_km':face+u,'source':'base','index':nearest,
+                    ray.append({'distance_km':pos+u,'source':'base','index':nearest,
                                 'offset_km':round(nearest_d,2)})
                     continue
                 nearest=None;nearest_d=float('inf')
-                for j,p in enumerate(new_coords):
-                    d=_great_circle_km(pt[0],pt[1],p[0],p[1])
+                for j,p0 in enumerate(new_coords):
+                    d=_great_circle_km(pt[0],pt[1],p0[0],p0[1])
                     if d<nearest_d:nearest=j;nearest_d=d
                 if nearest_d>dedupe_radius_km:
                     nearest=len(new_coords);new_coords.append(pt);nearest_d=0.
-                ray.append({'distance_km':face+u,'source':'extra','index':nearest,
+                ray.append({'distance_km':pos+u,'source':'extra','index':nearest,
                             'offset_km':round(nearest_d,2)})
-            rays[(minute,face)]=ray
+            rays[(minute,pos)]=ray
     return {'coordinates':new_coords,'rays':rays,'base_profiles':base,
-            'faces':faces,'step_km':step_km,'source_scan_km':source_scan_km}
+            'bottom_positions':sorted(probes),'step_km':step_km,
+            'source_scan_km':source_scan_km}
 
 
 def materialize_off_axis_rays(plan, extra_profiles):
@@ -629,40 +649,14 @@ def _validated_cloud_bottom(target, minute, dt, event_az, lat, lon, utc_offset,
         width=float(strip['area_width_km'])
         tlat,tlon=destination(lat,lon,event_az,pos)
         alt,az=solar_position(dt,utc_offset,tlat,tlon)
-        covered=_solar_corridor_coverage(event_az,lat,lon,pos,az,required)
-        ray=None
-        if not covered['covered']:
-            ray=(off_axis_profiles or {}).get((minute,round(face,5)))
-            # A face-anchored measured ray is NOT automatically the ray from
-            # an interior cloud-bottom point. Reproject all already measured
-            # station positions onto this point's own Sun direction first.
-            # If an actual station is missing, retain UNKNOWN (never CLEAR).
-            measured=_reproject_measured_ray(measured_index,tlat,tlon,az,pos,required) if measured_index else None
-            reused_face_ray=False
-            if measured is None and _offaxis_ray_supports_bottom(ray,tlat,tlon,az,pos,face,required):
-                measured=ray
-                reused_face_ray=True
-            if measured is None:
-                outcome.append({'status':'unresolved_off_axis','position_km':pos,
-                                'solar_altitude_deg':alt,'target_key':key});continue
-            ray=measured
-            ray_cells=profile_cloud_cells(ray,threshold=25.,
-                                          blur_horizontal_km=0.,blur_vertical_km=0.)
-            # Reprojected stations cover the WHOLE corridor including cloud
-            # interior.  A reused face ray starts at the face and therefore
-            # needs the real main-axis cells between this bottom point and
-            # the face (otherwise own-cloud interception would be skipped).
-            if reused_face_ray:
-                obstacles=[c for c in axis_cells if
-                           float(c['end_km'])>pos and float(c['start_km'])<face]
-                obstacles += [c for c in ray_cells if float(c['end_km'])>face]
-            else:
-                obstacles=[c for c in ray_cells if float(c['end_km'])>pos]
-            horizontal_profiles=(ray if use_horizontal_fusion else [])
-        else:
-            obstacles=[c for c in axis_cells if float(c['end_km'])>pos and
-                       float(c['start_km'])<required]
-            horizontal_profiles=axis_profiles if use_horizontal_fusion else []
+        # Use the SAME effective profile cloud field for both the visible
+        # cross-section and the blocker test. Do not invent hidden blockers
+        # from a second unseen cloud set.
+        if _sun_ray_earth_occluded(bottom,alt):
+            outcome.append({'status':'earth_or_source_horizon','position_km':pos,
+                            'solar_altitude_deg':alt,'target_key':key});continue
+        obstacles=[c for c in axis_cells if float(c['end_km'])>pos and
+                   float(c['start_km'])<required]
         travel=required-pos
         if travel<=0:
             outcome.append({'status':'unresolved_source_boundary','position_km':pos,
@@ -687,15 +681,6 @@ def _validated_cloud_bottom(target, minute, dt, event_az, lat, lon, utc_offset,
             outcome.append({'status':'unresolved_source_boundary','position_km':pos,
                             'solar_altitude_deg':alt,'target_key':key,
                             'required_source_km':round(pos+exit_travel,2)});continue
-        target_sample=target_pressure_by_distance.get(
-            round(float(target.get('sample_distance_km',0)),5))
-        support=(check_horizontal_target_support(target_sample,bottom)
-                 if use_horizontal_fusion else {'unresolved':False})
-        horizontal=(check_horizontal_ray_consistency(horizontal_profiles,pos,bottom,alt,required)
-                    if use_horizontal_fusion else {'unresolved':False})
-        if support['unresolved'] or horizontal['unresolved']:
-            outcome.append({'status':'unresolved_horizontal','position_km':pos,
-                            'solar_altitude_deg':alt,'target_key':key});continue
         outcome.append({'status':'verified_bottom','position_km':pos,
                         'solar_altitude_deg':alt,'target_key':key,
                         'source_boundary_altitude_km':round(_ray_height_km(bottom,alt,travel),3)})
@@ -771,6 +756,7 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                 'required_profile_km':round(required,2), 'available_profile_km':round(available,2),
                 'note':'霞云距内没有满足剖面条件的中高云目标'}
     verified=[]; evaluations=0; confirmed_faces=set(); by_minute={}
+    # Per-minute verification collects every target; no selection of a winner.
     verified_target_bands=[]
     verified_target_bottom_points=[]
     bottom_unknown_count=0
@@ -796,7 +782,7 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
     minutes=range(-30,1) if direction=='morning' else range(0,31)
     for minute in minutes:
         dt=event_dt+timedelta(minutes=minute)
-        winner=None
+        minute_verified=[]
         minute_uncovered=False
         for target in targets:
             face=float(target['end_km'])
@@ -930,8 +916,7 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                     'height_band_km': [round(low,6),round(high,6)],
                     'solar_altitude_deg': round(alt,7),
                 })
-                if winner is None or candidate['weight']>winner['weight']:
-                    winner=candidate
+                minute_verified.append(candidate)
         # Uniform 15-km cloud-bottom target grid from the observer.
         # <15 km: one representative sample. Do not increase sampling for
         # short ranges; this pass reuses existing weather profiles.
@@ -964,14 +949,13 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                     'surface':'cloud_bottom',
                     'source_boundary_altitude_km':point['source_boundary_altitude_km'],
                     'weight':float(target.get('cloud_cover',0))*point['area_width_km']}
-                if winner is None or candidate['weight']>winner['weight']:
-                    winner=candidate
+                minute_verified.append(candidate)
         if minute_uncovered:
             uncovered_minutes.add(minute)
-        if winner is not None:
-            verified.append(winner)
-            by_minute[minute]=winner
-            confirmed_faces.add(winner['target_face_km'])
+        if minute_verified:
+            verified.extend(minute_verified)
+            by_minute[minute]=len(minute_verified)
+            confirmed_faces.update(v['target_face_km'] for v in minute_verified)
     return {'gaps':[], 'status':('local_targets_verified' if verified else
                                   'unresolved_data' if (uncovered_minutes or source_boundary_unresolved_minutes or horizontal_conflict_minutes)
                                   else 'no_verified_source'),

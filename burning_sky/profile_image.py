@@ -78,6 +78,32 @@ def render_profile(result, width=1400, height=760):
         if isinstance(base,(int,float)) and 0<=base<=maxh:
             xx=x(p["distance_km"]);yy=y(base)
             d.ellipse((xx-3,yy-3,xx+3,yy+3),fill="#d83c3c",outline="white")
+    # Mark every cloud-bottom sampling strip that was ever verified as lit.
+    underside = inferred.get('verified_bottom_sample_traces') or []
+    lit_bottom_segments={}
+    for row in underside:
+        if row.get('status')!='verified_bottom':
+            continue
+        key=row.get('target_key') or []
+        if len(key)<4:
+            continue
+        try:
+            pos=float(row['position_km'])
+            width=float(row.get('area_width_km') or 0.0)
+            bottom_km=float(key[2])
+        except (TypeError,ValueError,KeyError,IndexError):
+            continue
+        if width<=0:
+            continue
+        # Clip to this actual cloud's horizontal footprint. No red over
+        # empty space and no side/top edges: underside only.
+        cloud_start=float(key[0]); cloud_end=float(key[1])
+        seg=(max(0.0,cloud_start,pos-width/2.0),
+             min(plotdist,cloud_end,pos+width/2.0), bottom_km)
+        lit_bottom_segments[seg]=True
+    for start_km,end_km,bottom_km in sorted(lit_bottom_segments):
+        if 0<=bottom_km<=maxh and end_km>start_km:
+            d.line((x(start_km),y(bottom_km),x(end_km),y(bottom_km)),fill='#e11d48',width=4)
     def draw_curve(alt):
         coords=[]
         for dist,h,blocked in sample_ray_curve(target,alt,plotdist,1201):
@@ -152,11 +178,11 @@ def render_profile(result, width=1400, height=760):
     underside_rays(blocked,'#e2893b',14)
     underside_rays(accepted,'#7034a8',18)
     d.text((left+pw*.5,top+7),
-           f'Cloud-bottom sweep: verified {len(accepted)} / blocked {len(blocked)} / unresolved {len(unknown)}',
+           f'Cloud-bottom sweep: verified {len(accepted)} / blocked {len(blocked)} / unresolved {len(unknown)} · red bottom edge = lit sample strip',
            fill='#524265')
     # Real accepted rays after OM conflict review. Plot each at ITS OWN cloud
     # target height and face, not a shared artificial default cloud base.
-    drawn=0
+    # Plot every verified origin; do not discard later minutes or near-side regions.
     for ray in verified:
         face=float(ray.get('target_bottom_position_km',ray['target_face_km']));alt=float(ray['solar_altitude_deg'])
         cloud_h=float(ray['target_height_km'])
@@ -176,8 +202,7 @@ def render_profile(result, width=1400, height=760):
                 if len(coords)>1:d.line(coords,fill='#7434ac',width=3)
                 coords=[]
         if len(coords)>1:d.line(coords,fill='#7434ac',width=3)
-        drawn+=1
-        if drawn>=18:break  # Avoid hiding the cloud cells under 60 lines.
+
     # Bounded logged conflict samples are placed at their actual face-axis
     # distances and ray heights (not at guessed cloud-bottom positions).
     conflicts = gate.get('horizontal_conflict_examples') or []

@@ -313,7 +313,33 @@ def render_fusion_profile_figure(result,*,model='未知',origin_name='',om_run=N
             return True
         except (KeyError,ValueError,TypeError):return False
     for t in candidate[::max(1,len(candidate)//15)]: line_one(t,strict=False)
-    for t in verified[::max(1,len(verified)//12)]: line_one(t,strict=True)
+    # All verified regions and minutes must be shown, not a first-N slice.
+    # Each 15-km origin region has a stable hue; changing minutes are rendered
+    # with partial opacity. LineCollection keeps large space-time plots fast.
+    from matplotlib.collections import LineCollection
+    from matplotlib import colormaps
+    groups={}
+    for trace in verified:
+        try:
+            origin=float(trace.get('target_bottom_position_km',trace['target_face_km']))
+            h0=float(trace['target_height_km'])
+            alt=float(trace['solar_altitude_deg'])
+            far=min(xmax,float(trace.get('source_check_km',xmax)))
+            if not (0<=origin<far and h0>0): continue
+            ds=np.linspace(origin,far,105)
+            hs=[_ray_height_km(h0,alt,float(d-origin))
+                if not _earth_occluded(h0,alt,float(d-origin)) else float('nan') for d in ds]
+            # A verified path should be represented by its own actual origin.
+            segment=np.column_stack((ds,np.array(hs,dtype=float)))
+            groups.setdefault(round(origin/15),[]).append(segment)
+        except (TypeError,ValueError,KeyError): continue
+    palette=colormaps['plasma']
+    for gid,segments in sorted(groups.items()):
+        hue=palette((gid*0.6180339887498949)%1)
+        col=LineCollection(segments,colors=[hue],alpha=.24,linewidths=1.0,zorder=5)
+        ax.add_collection(col)
+    ax.plot([],[],color='#6926a6',lw=2,label='所有已验证区域的逐分钟光路（按区域着色）')
+
     examples=diag.get('horizontal_conflict_examples') or []
     xs=[];ys=[]
     for e in examples:
@@ -322,7 +348,7 @@ def render_fusion_profile_figure(result,*,model='未知',origin_name='',om_run=N
             if 0<=x<=xmax and 0<=y<=ymax:xs.append(x);ys.append(y)
         except (KeyError,ValueError,TypeError):pass
     if xs:ax.scatter(xs,ys,marker='x',s=68,linewidths=2.0,c='#f97316',label='OM 与垂直数据冲突示例',zorder=8)
-    ax.plot([],[],color='#6926a6',lw=2,label='融合后仍已严格验证的光路')
+
     ax.plot([],[],color='#b275ce',ls='--',lw=1,label='仅球面几何候选（未验证）')
     ax.set(xlim=(0,xmax),ylim=(0,ymax),xlabel='沿原采样中心线距离 (km)',ylabel='相对地表高度 (km)')
     ax.grid(color='#d1d5db',alpha=.36)

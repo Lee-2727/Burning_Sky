@@ -132,8 +132,8 @@ def verdict(result):
         return '当前预测信息尚不完整。'
     p = '高概率' if prob > 75 else ('有一定概率' if prob >= 45 else ('小概率' if prob >= 20 else '几乎不烧'))
     q = str(inf.get('color_score_label') or '').strip()
-    if q not in ('平平无奇','普通','绚烂','史诗','世纪'):
-        q = '世纪' if quality >= 90 else ('史诗' if quality >= 70 else ('绚烂' if quality >= 50 else ('普通' if quality >= 30 else '平平无奇')))
+    if q not in ('平平','普通','绚烂','史诗','世纪'):
+        q = '世纪' if quality >= 90 else ('史诗' if quality >= 70 else ('绚烂' if quality >= 50 else ('普通' if quality >= 30 else '平平')))
     grade = '大烧' if scale >= 60 else ('中烧' if scale >= 30 else ('小烧' if scale >= 10 else ('微烧' if scale > 0 else '不烧')))
     if special == '低云上烧':
         return f'可能出现低云上烧，预计{p}、{q}的{grade}。'

@@ -17,155 +17,118 @@ def _clip(v, lo=0., hi=1.):
     return max(lo, min(hi, v))
 
 
+def projection_zone_illumination(cloud_cells, potential_km, bottom_rows, face_rows,
+                                 minute_offsets, step_km=15.0):
+    """One count per horizontal mid/high cloud zone, independent of layers.
+
+    One lit underside: 1; only verified sun-facing surface: 1/3; else 0.
+    A genuinely unknown bottom point is retained as unknown evidence and is
+    not silently promoted to lit. For repeated layers, take MAX, never SUM.
+    """
+    limit=float(potential_km)
+    if limit<=0: return {'zones':[], 'minute_weights':{},'unknown_counts':{}}
+    zones=[]
+    # Distance bins have no artificial duplication at the potential-range end.
+    count=max(1,int(math.ceil(limit / step_km - 1e-10)))
+    for i in range(count):
+        lo=i*step_km; hi=min(limit,(i+1)*step_km)
+        if hi<=lo:continue
+        members=[c for c in cloud_cells
+                 if c.get('top_km',0)>1.5 and c.get('cloud_cover',0)>0
+                 and float(c['start_km'])<hi-1e-7
+                 and float(c['end_km'])>lo+1e-7]
+        if members:
+            zones.append({'index':i,'start_km':lo,'end_km':hi})
+    weights={}; unknown_counts={}
+    # The bottom sampler returns the geographical position and its represented
+    # width; a verified point lights its own horizontal zone, not all layers.
+    for m in minute_offsets:
+        values={z['index']:0.0 for z in zones}
+        unresolved=set()
+        for row in face_rows or ():
+            if int(row.get('minute_offset',-999)) != m:continue
+            key=row.get('target_key') or ()
+            if len(key)<4 or not row.get('height_band_km'):continue
+            if float(row['height_band_km'][1])<=float(row['height_band_km'][0]):continue
+            lo,hi=float(key[0]),float(key[1])
+            for zone in zones:
+                if lo<zone['end_km']-1e-7 and hi>zone['start_km']+1e-7:
+                    values[zone['index']]=max(values[zone['index']],1.0/3.0)
+        for row in bottom_rows or ():
+            if int(row.get('minute_offset',-999)) != m:continue
+            pos=float(row.get('position_km',-999))
+            status=str(row.get('status',''))
+            width=max(0.,float(row.get('area_width_km') or 0.))
+            key=row.get('target_key') or ()
+            # A sampled region may lie on a zone boundary. Anchor to the
+            # representative target position, not a neighboring cloud layer.
+            # The last zone is inclusive at the far endpoint.
+            for zone in zones:
+                in_zone=(zone['start_km']-1e-7<=pos<zone['end_km']-1e-7 or
+                         (abs(pos-limit)<1e-7 and abs(zone['end_km']-limit)<1e-7))
+                if not in_zone:continue
+                # Check this record really describes a cloud in this zone.
+                if len(key)>=2 and not (float(key[0])<zone['end_km'] and
+                                         float(key[1])>zone['start_km']):continue
+                if status=='verified_bottom':
+                    values[zone['index']]=1.0
+                elif status.startswith('unresolved'):
+                    unresolved.add(zone['index'])
+        weights[m]=values
+        unknown_counts[m]=len([i for i in unresolved if values[i]<1.0])
+    return {'zones':zones,'minute_weights':weights,'unknown_counts':unknown_counts}
+
+
 def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
                        potential_km, minutes=30, samples_per_face=32,
                        verified_target_bands=None, verified_target_bottom_points=None):
-    if not profiles or not event_dt or potential_km is None or potential_km <= 0:
-        return {'available': False, 'reason': '缺少剖面、时间或有效霞云距', 'times': []}
-    # No smoothing across exact user-edited clear corridors.
-    cells=profile_cloud_cells(profiles,threshold=0.000001,blur_horizontal_km=0.,blur_vertical_km=0.)
-    blocker_cells=profile_cloud_cells(profiles,threshold=25.0,blur_horizontal_km=0.,blur_vertical_km=0.)
-    # Explicit verified face bands: missing entries mean NO validated light.
-    # The legacy 25% cloud threshold is retained only for obstruction testing,
-    # not for deciding whether thin target clouds exist or count as area.
-    verified_index={}
-    if verified_target_bands is not None:
-        for record in verified_target_bands:
-            key=(int(record['minute_offset']), tuple(round(float(x),6) for x in record['target_key']))
-            verified_index.setdefault(key,[]).append(tuple(record['height_band_km']))
-    # A face-height band does not quantify the illuminated CLOUD BOTTOM.
-    # The strict scanner now sends distinct verified underside area strips.
-    bottom_index={}
-    if verified_target_bottom_points is not None:
-        for record in verified_target_bottom_points:
-            key=(int(record['minute_offset']),tuple(round(float(x),6) for x in record['target_key']))
-            bottom_index.setdefault(key,[]).append(record)
-    event_az=solar_position(event_dt,utc_offset,lat,lon)[1]
-    limit=float(potential_km)
-    # Keep the original cell identity.  In the previous integrated build the
-    # target was copied to a new dict, so `c is target` was always false and
-    # the target cloud was incorrectly treated as its own upstream blocker.
-    # Use the original continuous-face experiment's threshold/height selection.
-    targets=[]
-    for cell in cells:
-        a=max(0.,float(cell['start_km'])); b=float(cell['end_km'])
-        if a>=limit-1e-7 or b<=a or float(cell['top_km'])<=1.5 or float(cell['cloud_cover'])<=0.:
-            continue
-        low=float(cell['bottom_km']); high=float(cell['top_km'])
-        if high<=low: continue
-        # Preserve the original upstream obstacle; clip only the target face.
-        # A cell crossing potential_km is partly a valid local cloud target.
-        target=dict(cell)
-        target['_original_cell']=cell
-        target['end_km']=min(b,limit)
-        target['target_weight']=(target['end_km']-a)*_clip(float(cell['cloud_cover'])/100.)
-        targets.append(target)
-    den=sum(t['target_weight'] for t in targets)
-    if den<=0: return {'available':False,'reason':'霞云距内没有满足连续云面实验条件的中高云剖面','times':[]}
+    if not profiles or not event_dt or potential_km is None or potential_km<=0:
+        return {'available':False,'reason':'缺少剖面、时间或有效霞云距','times':[]}
+    cells=profile_cloud_cells(profiles,threshold=0.000001,
+                              blur_horizontal_km=0.,blur_vertical_km=0.)
+    # Every 15 km zone with at least one mid/high target counts ONCE in the
+    # denominator. Multiple cloud layers at the same position never double it.
+    minute_offsets=list(range(-minutes,1) if direction=='morning' else range(0,minutes+1))
+    projection=projection_zone_illumination(cells,potential_km,
+        verified_target_bottom_points,verified_target_bands,minute_offsets)
+    zones=projection['zones']
+    if not zones:
+        return {'available':False,'reason':'霞云距内没有满足条件的中高云采样区','times':[]}
     result=[]
-    for m in range(-minutes,1) if direction=='morning' else range(0,minutes+1):
-        dt=event_dt+timedelta(minutes=m)
-        # Cloud targets stay at the original geographic sampled axis.
-        az=event_az
-        numerator=0.; strict_numerator=0.; possible_numerator=0.
-        face_numerator=0.; unknown_bottom_weight=0.
-        biggest=None; biggest_possible=None
-        colored_solar_alt_weight=0.0; colored_solar_alt_sum=0.0
-        for target in targets:
-            face=target['end_km']
-            p_lat,p_lon=destination(lat,lon,az,face)
-            solar_alt,_=solar_position(dt,utc_offset,p_lat,p_lon)
-            # Each target's illuminated face is sampled over its continuous
-            # vertical extent, not replaced by a single pressure-level point.
-            a=target['bottom_km'];b=target['top_km']; N=samples_per_face
-            # Original analytic continuous-face interval subtraction.  The
-            # target itself is excluded by identity, and only upstream cells
-            # can shade the sun-facing target face.  Cloud-cover is NEVER a
-            # light-transmission coefficient.
-            analysis=analyze_target_face(target,[c for c in blocker_cells if float(c['end_km'])>face+1e-7],solar_alt)
-            fraction=_clip(analysis.get('possible_face_height_fraction_proxy',0.))
-            if verified_target_bands is not None:
-                target_key=tuple(round(float(target[k]),6) for k in
-                                 ('start_km','end_km','bottom_km','top_km'))
-                bands=verified_index.get((m,target_key),[])
-                # Union the actual height intervals (a target may have several).
-                bounded=sorted((max(a,float(lo)),min(b,float(hi))) for lo,hi in bands
-                               if min(b,float(hi))>max(a,float(lo)))
-                total=0.; last=None
-                for lo,hi in bounded:
-                    if last is None: last=[lo,hi]
-                    elif lo<=last[1]: last[1]=max(last[1],hi)
-                    else:
-                        total+=last[1]-last[0];last=[lo,hi]
-                if last is not None: total+=last[1]-last[0]
-                # Verified full-corridor target band is the hard gate; local
-                # analytic interval can only reduce it, never create light.
-                fraction=min(fraction,_clip(total/max(1e-12,b-a)))
-            # Keep face illumination as a SEPARATE diagnostic.  Never use
-            # its vertical band fraction as the cloud bottom's area fraction.
-            face_fraction=fraction
-            # Cloud colour must follow the SUN AT THE ACTUALLY ILLUMINATED
-            # UNDERSIDE POSITION.  The old version assigned the far-face Sun
-            # angle to every strip, making local clouds jump to unrelated hues.
-            effective_solar_alt=solar_alt
-            if verified_target_bottom_points is not None:
-                target_key=tuple(round(float(target[k]),6) for k in
-                                 ('start_km','end_km','bottom_km','top_km'))
-                points=bottom_index.get((m,target_key),[])
-                # Strict cloud-bottom observations carry the real horizontal
-                # interval they represent. Never normalize by a fixed count.
-                total_width=max(1e-12,float(target['end_km'])-float(target['start_km']))
-                verified_points=[p for p in points if p['status']=='verified_bottom']
-                lit_width=sum(float(p.get('area_width_km',0.)) for p in verified_points)
-                unknown_width=sum(float(p.get('area_width_km',0.))
-                                  for p in points if p['status'].startswith('unresolved'))
-                if verified_points and lit_width>0:
-                    effective_solar_alt=sum(float(p['solar_altitude_deg'])*float(p.get('area_width_km',0.))
-                                            for p in verified_points)/lit_width
-                # Missing samples remain unknown rather than silently dark.
-                represented=sum(float(p.get('area_width_km',0.)) for p in points)
-                unknown_width+=max(0.,total_width-represented)
-                fraction=_clip(lit_width/total_width)
-                unresolved_fraction=_clip(unknown_width/total_width)
-                unknown_bottom_weight+=target['target_weight']*unresolved_fraction
-            strict_fraction=fraction
-            face_numerator+=target['target_weight']*face_fraction
-            # Diagnostic upper bound: only fully overcast upstream cells are
-            # assumed to be definite opaque obstacles; not a probability.
-            hard=[c for c in blocker_cells if float(c['end_km'])>face+1e-7 and float(c['cloud_cover'])>=99.999]
-            possible_fraction=_clip(analyze_target_face(target,hard,solar_alt).get('possible_face_height_fraction_proxy',0.))
-            if verified_target_bands is not None:
-                possible_fraction=min(possible_fraction,face_fraction)
-            if verified_target_bottom_points is not None:
-                # Underside upper bound: unresolved strips MAY be illuminated.
-                # Sun-facing height bands are a separate physical surface.
-                possible_fraction=_clip(fraction+unresolved_fraction)
-            possible_dominance=target['target_weight']*possible_fraction
-            if biggest_possible is None or possible_dominance>biggest_possible['dominance']:
-                biggest_possible={'dominance':possible_dominance,'face_km':face,
-                                  'solar_altitude_deg':solar_alt,'height_km':(a,b),
-                                  'illumination_fraction':possible_fraction}
-            w=target['target_weight']; numerator+=w*fraction
-            strict_numerator+=w*strict_fraction; possible_numerator+=w*possible_fraction
-            dominance=w*fraction
-            if dominance>0:
-                colored_solar_alt_sum+=dominance*effective_solar_alt
-                colored_solar_alt_weight+=dominance
-            if biggest is None or dominance>biggest['dominance']:
-                biggest={'dominance':dominance,'face_km':face,'solar_altitude_deg':effective_solar_alt,
-                         'height_km':(a,b),'illumination_fraction':fraction,
-                         'cloud_cover_pct':100*target['cloud_cover']/100 if False else target['cloud_cover']}
-        frac=_clip(numerator/den); lower=_clip(strict_numerator/den); upper=_clip(possible_numerator/den)
-        result.append({'datetime':dt,'minutes_from_event':m,'fraction':frac,
-                       'strict_fraction':lower,'possible_fraction':upper,
-                       'front_face_fraction':_clip(face_numerator/den),
-                       'bottom_unresolved_weight_fraction':_clip(unknown_bottom_weight/den),
-                       'dominant':biggest if biggest and biggest['dominance']>1e-9 else None,
-                       'representative_solar_altitude_deg':(colored_solar_alt_sum/colored_solar_alt_weight if colored_solar_alt_weight>0 else None),
-                       'possible_dominant':biggest_possible if biggest_possible and biggest_possible['dominance']>1e-9 else None})
-    return {'available':True,'potential_km':limit,'target_count':len(targets),
-            'target_weight':den,'times':result,'method':'spherical_bottom_surface_area_strict_target_minute_gate',
-            'caveat':'云底水平面积条带逐点严格球面受光；云锋面单独诊断不代替云底；25%云量遮挡假设；离线剖面非实测二维云面积'}
+    for m in minute_offsets:
+        values=projection['minute_weights'][m]
+        # The denominator is the NUMBER of eligible horizontal zones.
+        frac=_clip(sum(values.values())/len(zones))
+        full_bottom=sum(1 for v in values.values() if v>=1.-1e-9)
+        partial_face=sum(1 for v in values.values() if 0<v<1.-1e-9)
+        unknown_count=projection['unknown_counts'][m]
+        # Area-weighted Sun angle is ONLY for color. The color calculation
+        # never changes the zone weights or the strict geometry result.
+        valid_bottom=[r for r in (verified_target_bottom_points or [])
+                      if int(r.get('minute_offset',-999))==m
+                      and r.get('status')=='verified_bottom']
+        solar_angle=(sum(float(r['solar_altitude_deg']) for r in valid_bottom)/len(valid_bottom)
+                     if valid_bottom else None)
+        if solar_angle is None:
+            valid_face=[r for r in (verified_target_bands or [])
+                        if int(r.get('minute_offset',-999))==m]
+            solar_angle=(sum(float(r['solar_altitude_deg']) for r in valid_face)/len(valid_face)
+                         if valid_face else None)
+        result.append({'datetime':event_dt+timedelta(minutes=m),
+            'minutes_from_event':m,'fraction':frac,'strict_fraction':frac,
+            'possible_fraction':_clip((sum(values.values())+unknown_count)/len(zones)),
+            'front_face_fraction':(partial_face/len(zones))/3.,
+            'bottom_unresolved_weight_fraction':unknown_count/len(zones),
+            'bottom_lit_zone_count':full_bottom,'face_only_zone_count':partial_face,
+            'eligible_zone_count':len(zones),
+            'dominant':None,
+            'representative_solar_altitude_deg':solar_angle,
+            'possible_dominant':None})
+    return {'available':True,'potential_km':float(potential_km),
+        'target_count':len(zones),'target_weight':sum(z['end_km']-z['start_km'] for z in zones),
+        'eligible_zones':zones,'times':result,'direction':direction,
+        'method':'horizontal_15km_zone_fraction_bottom_1_face_only_one_third',
+        'caveat':'同一水平采样区只计一次：云底受光=1，仅已严格验证的云锋面受光=1/3，否则=0；未知另外记录。云顶受光当前没有独立严格验证记录，不能据此虚增1/3。'}
 
 
 def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
@@ -185,8 +148,7 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
     peak_fraction=max((p['fraction'] for p in illumination['times']),default=0.)
     if target_cloud_cover_pct is None:
         # Backwards-compatible estimate if a caller has no main-line cover.
-        # The target weights are distance(km) times cover(0-1), accumulated
-        # across eligible altitude bands; clamp overlapping bands at 100%.
+        # Fallback uses eligible horizontal reach only; do not count layers twice.
         reach=max(1e-9,float(illumination.get('potential_km') or 0.))
         target_cloud_cover_pct=100.0*float(illumination.get('target_weight') or 0.)/reach
     target_cloud_cover_pct=max(0.0,min(100.0,float(target_cloud_cover_pct)))
@@ -201,25 +163,16 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
         # timeline, peak selection, and the 5% foreground cutoff.
         absolute_area_pct=frac*target_cloud_cover_pct if active else 0.0
         point['tintable_cloud_area']=round(absolute_area_pct,6)
-        dominant=row.get('dominant') if row else None
-        # Passive diagnostics: trace which target cloud supplied the minute's
-        # hue. Does not change probability, tint area, or RGB computation.
-        if dominant and active:
-            point['cloud_color_source'] = {
-                'target_face_km': round(float(dominant['face_km']), 2),
-                'height_band_km': [round(float(v), 2) for v in dominant['height_km']],
-                'target_solar_altitude_deg': round(float(dominant['solar_altitude_deg']), 3),
-                'target_illuminated_area_strip_fraction': round(float(dominant['illumination_fraction']), 4),
-            }
-        else:
-            point['cloud_color_source'] = None
-        if dominant and active:
-            # Brightness represents the dominant illuminated cloud's light,
-            # NOT the total colored-cloud area. Atmospheric transmission
-            # is an independent brightness/colour adjustment.
-            point['brightness']=round(_clip(dominant['illumination_fraction']*atmospheric_factor,0.,1.)*100.,1)
-            if color_fn:
-                base=color_fn(row.get('representative_solar_altitude_deg') if row.get('representative_solar_altitude_deg') is not None else dominant['solar_altitude_deg'])
+        # Per-minute color belongs to the full set of lit zones; do not let
+        # one dominant cloud redefine the area, peak or tint hue.
+        solar_alt=(row.get('representative_solar_altitude_deg') if row else None)
+        point['cloud_color_source'] = ({'method':'all_verified_lit_zones',
+                                        'representative_solar_altitude_deg':round(float(solar_alt),3)}
+                                       if active and frac>0 and solar_alt is not None else None)
+        if active and frac>0:
+            point['brightness']=round(_clip(frac*atmospheric_factor,0.,1.)*100.,1)
+            if color_fn and solar_alt is not None:
+                base=color_fn(solar_alt)
                 rr,gg,bb=[v/255. for v in base]
                 h,l,s=colorsys.rgb_to_hls(rr,gg,bb)
                 r,g,b=colorsys.hls_to_rgb(h,l,_clip(s*(0.08+0.92*aod_color_quality)))

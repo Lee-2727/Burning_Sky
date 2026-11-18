@@ -1677,61 +1677,95 @@ def apply_low_cloud_overburn_exception(inferred, tintable_ratio,
     return inferred
 
 
+def color_score_grade(score):
+    """The agreed five-tier colour-quality scale (not a cloud-area score)."""
+    if score is None:
+        return "暂不可估"
+    score = float(score)
+    if score < 30: return "平平"
+    if score < 50: return "普通"
+    if score < 70: return "绚烂"
+    if score < 90: return "史诗"
+    return "世纪"
+
+
+def horizontal_zone_color_peak(illumination):
+    """Pick colour-reference minute from the verified horizontal-zone fractions.
+
+    The single displayed colour moment must follow the same 1 / 1/3 / 0
+    zone coverage used by the time series; no legacy per-cloud weighting.
+    """
+    if not isinstance(illumination, dict) or not illumination.get('available'):
+        return None
+    rows = [row for row in (illumination.get('times') or [])
+            if isinstance(row.get('fraction'), (int, float))
+            and math.isfinite(float(row['fraction'])) and row['fraction'] > 0]
+    return max(rows, key=lambda row: float(row['fraction'])) if rows else None
+
+
+def apply_verified_solar_angle_color_score(inferred, bottom_rows, face_traces):
+    """Apply one geometry-quality adjustment AFTER the existing AOD/visibility score.
+
+    Only actually verified target illumination can supply angles. The number
+    of illuminated zones is never a score multiplier; that belongs to scale.
+    Returns False without changing the score if evidence is not available.
+    """
+    angles_by_minute = {}
+    for row in bottom_rows or ():
+        if row.get('status') != 'verified_bottom':
+            continue
+        a = row.get('solar_altitude_deg')
+        m = row.get('minute_offset')
+        if isinstance(a, (int,float)) and math.isfinite(a) and isinstance(m, (int,float)):
+            angles_by_minute.setdefault(int(m), []).append(float(a))
+    for row in face_traces or ():
+        if row.get('status') != 'verified_sunward_face_full_sampled_corridor':
+            continue
+        a = row.get('solar_altitude_deg')
+        m = row.get('minute_offset')
+        if isinstance(a, (int,float)) and math.isfinite(a) and isinstance(m, (int,float)):
+            angles_by_minute.setdefault(int(m), []).append(float(a))
+    if not angles_by_minute or not isinstance(inferred.get('color_score'), (float,int)):
+        return False
+    # Minute-wise effective solar angles prevent a single densely sampled
+    # time slice from dominating the angular-range evaluation.
+    minute_angles = [sum(rows)/len(rows) for rows in angles_by_minute.values()]
+    lowest = min(minute_angles)
+    highest = max(minute_angles)
+    span = highest - lowest
+    # Low-angle benefit is bounded: this is colour potential, not a claim that
+    # arbitrarily deep twilight can illuminate targets. Geometry already gates.
+    depth = clamp(-lowest / 8.0, 0.0, 1.0)
+    variety = clamp(span / 6.0, 0.0, 1.0)
+    angular_quality = 0.60*depth + 0.40*variety
+    # Keep AOD/visibility score authoritative: only adjust colour quality
+    # for actually verified depth and angle diversity, never for cloud area.
+    factor = 0.65 + 0.35*angular_quality
+    original = float(inferred['color_score'])
+    score = int(round(clamp(original*factor, 0, 100)))
+    inferred['color_score'] = score
+    inferred['color_score_label'] = color_score_grade(score)
+    inferred.setdefault('color_score_reasons', []).append(
+        f'经严格验证的受光角度 {lowest:.2f}°～{highest:.2f}°；跨度 {span:.2f}°；角度质量系数 {factor:.3f}')
+    inferred['color_angle_diagnostic'] = {
+        'method':'verified_minute_solar_angle_depth_span_v1',
+        'verified_minutes':len(minute_angles),
+        'min_deg':round(lowest,3),'max_deg':round(highest,3),
+        'span_deg':round(span,3),'factor':round(factor,4),
+        'atmospheric_base_score':round(original,2),
+    }
+    return True
+
+
 def calculate_color_performance_score(inferred):
     """独立估算色彩表现潜力；这是经验指数，不是光谱/辐射传输模拟。"""
-    low, mid, high, total = (inferred.get(k) for k in ("low", "mid", "high", "total"))
+    # The amount of cloud and number/size of clear gaps belong to the
+    # independent tintable-fraction / burn-scale and light-path estimates.
+    # Colour quality is judged from the atmosphere, not from the area lit.
     vis = inferred.get("visibility_m")
     aod = inferred.get("aod")
-    score = 35.0
-    reasons = []
-
-    layers = [v for v in (mid, high) if isinstance(v, (int, float))]
-    target = sum(layers) / len(layers) if layers else None
-    if target is None:
-        score -= 10
-        reasons.append("中高云分层缺测，色彩潜力判断不确定")
-    elif target < 10:
-        score -= 28
-        reasons.append("中高云偏少，可被染色的云体不足")
-    elif target < 25:
-        score -= 12
-        reasons.append("中高云偏少，可能只有局部显色")
-    elif target <= 70:
-        score += 20
-        reasons.append("中高云量处于较有利的显色区间")
-    elif target <= 85:
-        score += 10
-        reasons.append("中高云较多，色彩覆盖可能较大但层次有不确定性")
-    else:
-        score -= 8
-        reasons.append("中高云覆盖很高，厚云/重叠可能压低色彩层次")
-
-    if isinstance(high, (int, float)):
-        if 20 <= high <= 65:
-            score += 6
-            reasons.append("高云有一定占比，可能增加高空染色范围")
-        elif high > 85:
-            score -= 4
-
-    if isinstance(low, (int, float)):
-        if low >= 85:
-            score -= 22
-            reasons.append("低云覆盖很高，可能压缩可见暖色区域")
-        elif low >= 65:
-            score -= 14
-            reasons.append("低云较多，近地平线和远景显色可能受限")
-        elif low <= 25:
-            score += 4
-
-    if isinstance(total, (int, float)):
-        if total < 15:
-            score -= 8
-            reasons.append("总云量偏少，天空整体显色面积可能有限")
-        elif 25 <= total <= 80:
-            score += 4
-        elif total >= 95:
-            score -= 8
-            reasons.append("总云量接近全覆盖，需警惕厚云和光线被削弱")
+    score = 86.0
+    reasons = ["色彩质量与云量面积、云洞数量及可染色占比独立计算"]
 
     if isinstance(vis, (int, float)):
         if vis < 5000:
@@ -1741,16 +1775,6 @@ def calculate_color_performance_score(inferred):
             score += 4
             reasons.append("预报能见度较好，有利于保持远景反差")
 
-    # 云洞色彩贡献不再只看第一个晴空间隔：多个有效云洞及较大的总晴空跨度，
-    # 可增加远近云层同时参与显色的潜力；加分封顶，避免仅凭云洞数量虚高。
-    gap_count = int(inferred.get("clear_gap_count", 0) or 0)
-    largest_gap = float(inferred.get("largest_gap_size_km", 0) or 0)
-    gap_fraction = float(inferred.get("gap_fraction_of_reach", 0) or 0)
-    if gap_count > 0:
-        gap_bonus = min(12.0, min(6.0, max(0.0, largest_gap) / 25.0) +
-                        min(4.0, max(0, gap_count - 1) * 2.0) + min(2.0, gap_fraction * 4.0))
-        score += gap_bonus
-        reasons.append(f"极限云距内识别到 {gap_count} 个有效云洞，最大约 {largest_gap:.0f} km；多个云洞共同增加远近云层显色潜力（加分 {gap_bonus:.0f}）。")
     # Use the SAME continuous AOD response as the rendered cloud colors.
     # The old -14 at AOD >= 0.50 could still produce score 62, even though
     # aod_color_quality_factor(0.50)==0.30 strongly desaturates the swatch.
@@ -1763,25 +1787,10 @@ def calculate_color_performance_score(inferred):
     else:
         reasons.append("AOD缺测，色彩评分没有大气消光可信度；请结合数据缺测提示")
 
-    # 与发生评分分离，但把低云屏障对色彩的直接影响带入色彩评分。
-    factor = inferred.get("low_cloud_color_factor", 1.0)
-    try:
-        factor = max(0.0, min(1.0, float(factor)))
-    except (TypeError, ValueError):
-        factor = 1.0
-    score = score * (0.55 + 0.45 * factor)
-    if factor < 0.5:
-        reasons.append("太阳光路低云屏障明显压低暖色受光潜力")
-
+    # Visibility of the cloud is evaluated separately; low-cloud amount and
+    # low-cloud barrier must not discount intrinsic colour quality a second time.
     score = int(round(max(0, min(100, score))))
-    if score >= 75:
-        label = "色彩潜力较好"
-    elif score >= 55:
-        label = "色彩潜力中等偏好"
-    elif score >= 35:
-        label = "色彩潜力一般"
-    else:
-        label = "色彩潜力偏弱"
+    label = color_score_grade(score)
     inferred["color_score"] = score
     inferred["color_score_label"] = label
     inferred["color_score_reasons"] = reasons
