@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Shared, fail-open OM horizontal calibration for Pro, Lite, Actions and Desktop.
+"""Model-specific OM horizontal-cloud policy shared by Pro, Lite and Actions.
 
-One shared source path keeps the core physics engine intact.  Atmospheric
-height evidence always comes from the existing profile API.  Horizontal OM
-coverage is an additional spatial input, never an invented opaque 3-D cloud.
+EC retains its existing native OM horizontal-layer calibration. GFS OM
+horizontal low/mid/high cloud fields are disabled in forecast calculations;
+GFS uses only its native point-API pressure-level profile.
 """
 from __future__ import annotations
 import math
@@ -20,8 +20,14 @@ _MAX_CACHED_BATCHES = 24
 _OM_COOLDOWN: dict[str,float] = {}  # request-limit cooldown, per model
 
 
+def _is_gfs_model(model_id):
+    return 'gfs' in str(model_id or '').strip().lower()
+
+
 def supported(model_id):
-    return str(model_id) in ('ecmwf_ifs025', 'ncep_gfs_global')
+    # OM horizontal-cloud fusion is intentionally retained for EC only.
+    # GFS uses its native point-API pressure-level cloud profile exclusively.
+    return str(model_id) == 'ecmwf_ifs025'
 
 
 def _key(coords, event_utc, model_id):
@@ -37,16 +43,33 @@ def fetch_with_spatial(owner, fallback, coords, distances, event_utc, model_id,
     fallback. Replay/offline restores must not start an unrequested OM download.
     """
     out=fallback(coords,distances,event_utc,model_id,local_ground_elevation_m=local_ground_elevation_m)
+    # GFS OM horizontal low/mid/high cloud fields are disabled at the source:
+    # do not download, bind, replay, calibrate, or use them as ray vetoes.
+    # This is deliberately model-specific; EC keeps its existing OM workflow.
+    if _is_gfs_model(model_id):
+        if getattr(owner, 'spatial_enabled', False):
+            logs=getattr(owner,'spatial_fetch_log',None)
+            if logs is None:
+                logs=[]; owner.spatial_fetch_log=logs
+            logs.append({'status':'gfs_om_horizontal_disabled_native_pressure_only',
+                         'model':model_id,'distance_count':len(distances),
+                         'reason':'GFS OM 水平低/中/高云场已停用；仅使用 GFS 原生 API 气压层剖面'})
+        return out
     if not getattr(owner,'spatial_enabled',False) or not supported(model_id):
         return out
     logs=getattr(owner,'spatial_fetch_log',None)
     if logs is None:
         logs=[]; owner.spatial_fetch_log=logs
+    ctx=None
     try:
         import engine as runtime_engine
         ctx=getattr(runtime_engine,'_CASE_REQUEST_CONTEXT',None)
         if isinstance(ctx,dict) and ctx.get('mode')=='replay':
             logs.append({'status':'spatial_skipped_replay','model':model_id})
+            return out
+        if isinstance(ctx,dict) and (ctx.get('cloud_overrides') or ctx.get('satellite_recompute')):
+            logs.append({'status':'spatial_skipped_manual_overrides','model':model_id,
+                         'reason':'卫星/人工云图修正优先，使用缓存气压剖面与已确认修正，不额外请求 OM 水平云场'})
             return out
     except ImportError:
         pass
@@ -66,6 +89,11 @@ def fetch_with_spatial(owner, fallback, coords, distances, event_utc, model_id,
                 _BATCH_CACHE.popitem(last=False)
         else:
             _BATCH_CACHE.move_to_end(key)
+        # Persist the exact auxiliary horizontal cloud evidence alongside the
+        # normal URL response cache so same-day replay/calibration retains every
+        # source actually used by the forecast.
+        if isinstance(ctx,dict) and ctx.get('mode')=='capture' and isinstance(ctx.get('cache'),dict):
+            ctx['cache'].setdefault('__burning_sky_spatial__',{})[key]=horizontal
         attached=bind_horizontal_profiles(out.get('samples',[]),horizontal)
         info=horizontal.get('spatial_source') or {}
         used=bool(attached.get('attached'))
@@ -96,25 +124,69 @@ class HybridSpatialMixin:
                                   local_ground_elevation_m)
 
 
-# The API's native 9-point layer cover is authoritative over a GFS OM
-# pressure-level *proxy*.  The two quantities have different footprints, so
-# 25 percentage points is a conservative discrepancy flag, NOT a proof that
-# either product is physically incorrect.
-GFS_PROXY_CONFLICT_DELTA_PP = 25.0
+def _strip_gfs_horizontal_evidence(samples, profiles, *, manual=False):
+    """Remove all legacy GFS OM-horizontal evidence from forecast inputs.
 
-
-def calibrate_path_samples(samples, profiles, *, manual=False):
-    """Apply spatial layer data without letting GFS proxies erase native cover.
-
-    EC native OM layers retain their previous treatment.  A GFS OM pressure-
-    level approximation never overrides a valid native point-API cloud layer.
-    Differences above 25 percentage points are flagged as strong conflicts;
-    smaller ones keep the native layer too because the proxy and the 9-point
-    native area mean are not interchangeable measurements. The OM raw values
-    remain available for diagnostics.  Profile pressure levels and the original total cover
-    are never rewritten. This function is safe to call again after upstream
-    sample extension; preserved API values remain the reference.
+    When a pre-change case/cache already contains OM-calibrated area fields,
+    restore the saved point-API baseline. If the baseline is absent, mark the
+    affected layer unknown rather than silently retaining a possibly OM-edited
+    value. User/manual edits remain authoritative.
     """
+    fields = ('cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high')
+    restored = 0
+    unknowned = 0
+    stripped_profiles = 0
+    for sample in samples or []:
+        if not isinstance(sample, dict):
+            continue
+        had_spatial_calibration = bool(sample.get('spatial_calibration')) or any(
+            str(k).startswith('spatial_horizontal_') for k in sample)
+        if not manual:
+            for field in fields:
+                baseline_key = 'point_api_area_' + field
+                baseline = sample.get(baseline_key)
+                if isinstance(baseline, (int, float)) and math.isfinite(float(baseline)):
+                    sample[field] = float(baseline)
+                    restored += 1
+                elif had_spatial_calibration:
+                    sample[field] = None
+                    unknowned += 1
+        for key in list(sample):
+            if str(key).startswith('spatial_horizontal_') or key in (
+                'spatial_calibration', 'spatial_calibration_run_unproven',
+                'spatial_calibration_conflicts'):
+                sample.pop(key, None)
+    for profile in profiles or []:
+        if not isinstance(profile, dict):
+            continue
+        keys = [k for k in profile if str(k).startswith('spatial_horizontal_')]
+        if keys:
+            stripped_profiles += 1
+            for key in keys:
+                profile.pop(key, None)
+    return {'status':'gfs_om_horizontal_disabled',
+            'restored_point_api_layers':restored,
+            'unknowned_legacy_layers':unknowned,
+            'stripped_profile_count':stripped_profiles,
+            'manual_values_preserved':bool(manual)}
+
+
+def calibrate_path_samples(samples, profiles, *, manual=False, model_id=None):
+    """Apply horizontal OM cloud calibration for EC only.
+
+    GFS is intentionally excluded: its OM 2-D low/mid/high cloud product is
+    not used anywhere in the single-direction forecast cloud field. GFS keeps
+    only its native point-API pressure-level profile. EC retains the existing
+    OM native-layer calibration unchanged. This function is idempotent after
+    upstream profile extension.
+    """
+    is_gfs = _is_gfs_model(model_id) or any(
+        isinstance(p, dict) and (
+            p.get('spatial_horizontal_model_domain') == 'ncep_gfs025' or
+            p.get('spatial_horizontal_layer_origin') == 'pressure_layer_proxy')
+        for p in (profiles or []))
+    if is_gfs:
+        return _strip_gfs_horizontal_evidence(samples, profiles, manual=manual)
     if manual:
         # Prevent downstream horizontal 2D cross-checks from quietly using raw
         # OM evidence after a user cloud/satellite override has taken priority.
@@ -130,8 +202,6 @@ def calibrate_path_samples(samples, profiles, *, manual=False):
     corrected = []
     changes = []
     conflicts = []
-    proxy_points = 0
-    native_priority_layers = 0
     for sample in samples:
         if not isinstance(sample, dict):
             continue
@@ -155,18 +225,9 @@ def calibrate_path_samples(samples, profiles, *, manual=False):
                     for k in fields)
         if not valid:
             continue
-        # Only the GFS pressure-level-derived approximation is subject to the
-        # native/proxy discrepancy gate. Native 2D OM layer data are not the
-        # same weak reconstructed product.
-        is_proxy = (p.get('spatial_horizontal_layer_origin') == 'pressure_layer_proxy'
-                    and p.get('spatial_horizontal_model_domain') == 'ncep_gfs025')
-        if is_proxy:
-            proxy_points += 1
         row_changes = {}
-        rejected = {}
         effective = dict(vals)
-        effective_sources = {field: 'om_native' if not is_proxy else 'gfs_om_pressure_proxy'
-                             for field in fields}
+        effective_sources = {field: 'om_native' for field in fields}
         for field in fields:
             original_key = 'point_api_area_' + field
             old = sample.get(original_key, sample.get(field))
@@ -176,55 +237,23 @@ def calibrate_path_samples(samples, profiles, *, manual=False):
             else:
                 old = None
             new = float(vals[field])
-            if is_proxy and old is not None and 0 <= old <= 100:
-                # A maximum over sparse 25-km pressure levels is NOT the same
-                # variable as native low/mid/high cloud area cover.  Preserve
-                # the native GFS013/025 point-API mean even for small deltas:
-                # a 10pp change can cross the strict 15%-clear threshold.
-                sample[field] = old
-                effective[field] = old
-                effective_sources[field] = 'native_point_api_gfs_proxy_reference'
-                native_priority_layers += 1
-                if abs(old - new) > GFS_PROXY_CONFLICT_DELTA_PP:
-                    row = {'distance_km': dist, 'field': field, 'api_pct': old,
-                           'om_proxy_pct': new, 'delta_pp': round(abs(old-new), 3),
-                           'decision': 'retain_native_api'}
-                    rejected[field] = row
-                    conflicts.append(row)
-                row_changes[field] = (old, old)
-            else:
-                sample[field] = new
-                row_changes[field] = (old, new)
+            sample[field] = new
+            row_changes[field] = (old, new)
         # The original OM data remain separately inspectable.  These are the
         # values the later horizontal consistency / target checks must use.
         p['spatial_horizontal_effective'] = effective
         p['spatial_horizontal_effective_sources'] = effective_sources
-        if rejected:
-            p['spatial_horizontal_conflict_layers'] = rejected
-            sample['spatial_calibration_conflicts'] = rejected
-        else:
-            p.pop('spatial_horizontal_conflict_layers', None)
-            sample.pop('spatial_calibration_conflicts', None)
-        sample['spatial_calibration'] = ('gfs_proxy_conflict_native_fallback'
-                                         if rejected else 'gfs_proxy_native_priority' if is_proxy
-                                         else 'om_horizontal_layer_25km_cell')
+        p.pop('spatial_horizontal_conflict_layers', None)
+        sample.pop('spatial_calibration_conflicts', None)
+        sample['spatial_calibration'] = 'om_horizontal_layer_25km_cell'
         sample['spatial_calibration_run_unproven'] = True
         corrected.append(dist)
-        changes.append({'distance_km': dist, 'layers': row_changes,
-                        'rejected_proxy_layers': list(rejected)})
+        changes.append({'distance_km': dist, 'layers': row_changes, 'rejected_proxy_layers': []})
     return {
         'status': 'applied' if corrected else 'not_available',
         'corrected_distances': corrected,
         'changes': changes[:30],
-        'gfs_proxy_points': proxy_points,
-        'gfs_native_priority_layers': native_priority_layers,
-        'conflict_count': len(conflicts),
-        'conflicts': conflicts[:40],
-        'conflict_threshold_pp': GFS_PROXY_CONFLICT_DELTA_PP,
-        'caveat': ('EC native 2D layers retain original calibration behavior. '
-                   'GFS OM pressure-derived proxy never replaces available '
-                   'native API low/mid/high cover; discrepancies >25 pp are '
-                   'flagged. Raw OM and pressure levels remain diagnostic. '
-                   'Horizontal ray checks use the effective native cover. '
-                   '25-km cell and 9-point area means differ in footprint; '
-                   'the API/OM forecast-run identity remains unverified.')}
+        'conflict_count': 0,
+        'conflicts': [],
+        'caveat': ('EC native OM horizontal layers retain the existing calibration behavior. '
+                   'GFS OM horizontal cloud fields are disabled and are not used in forecast calculations.')}

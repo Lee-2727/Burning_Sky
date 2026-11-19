@@ -123,6 +123,12 @@ def render_profile(result, width=1600, height=900):
 
     # Bottom samples: red only for verified cloud-bottom illumination.
     bottom_rows = inferred.get('verified_bottom_sample_traces') or []
+    try:
+        from burning_sky.sky_six import filter_bottom_sample_traces_to_single_vertical_target
+        bottom_rows=filter_bottom_sample_traces_to_single_vertical_target(bottom_rows,profiles)
+    except Exception:
+        # Keep the diagnostic render usable for older/offline case bundles.
+        pass
     lit_segments = set()
     marker_rows = {}
     for row in bottom_rows:

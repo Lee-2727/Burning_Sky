@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 CN = timezone(timedelta(hours=8))
 MODELS = ('ECMWF IFS 0.25°', 'GFS Global')
 DIRECTIONS = ('morning', 'evening')
-FIELDS = ('probability', 'color_score', 'burn_scale')
+FIELDS = ('probability', 'color_score', 'burn_scale', 'visual_burn_scale')
 
 
 def _date(value):

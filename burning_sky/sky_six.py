@@ -387,58 +387,167 @@ def _cloud_bottom_sweep_grid(limit_km):
 
 
 def _exposed_cloud_target_cells(target_cells, support_cells=None, vertical_touch_km=0.15):
-    """Remove vertically stacked upper cells from the *target* list only.
+    """Keep exactly ONE target cloud in every vertical column.
 
-    A lower cloud block supports an upper block when it overlaps horizontally,
-    reaches the upper block's lower boundary (within ``vertical_touch_km``),
-    and has at least the same 25% cover threshold used by the optical blocker
-    field.  Covered portions of an upper cell are subtracted; uncovered
-    horizontal portions remain eligible targets.  The original cells are not
-    mutated and must remain in the blocker field.
+    The target is the lowest meaningful cloud cell at each horizontal interval.
+    If one or more >=25% support cells exist, the lowest of those is preferred;
+    otherwise the lowest non-zero target cell is retained.  Upper layers remain
+    in the original cloud field and continue to block incoming rays, but they
+    are not counted again as independent illuminated target areas.
+
+    This is deliberately stricter than the old touching-only stack filter:
+    vertically separated layers in the same sampled column are still one
+    target column, as required by the cloud-bottom area definition.
     """
-    source=list(target_cells or [])
-    supports=list(support_cells if support_cells is not None else source)
-    out=[]
-    removed_width=0.0
-    split_count=0
+    source=[]
+    for raw in (target_cells or []):
+        try:
+            a=float(raw.get('start_km',0)); b=float(raw.get('end_km',0))
+            lo=float(raw.get('bottom_km',0)); hi=float(raw.get('top_km',0))
+            if b>a and hi>lo:
+                source.append(dict(raw))
+        except (TypeError,ValueError):
+            continue
+    if not source:
+        return [], {'input_target_cells':0,'retained_target_cells':0,
+                    'vertical_columns':0,'removed_stacked_horizontal_km':0.0,
+                    'removed_stacked_cell_km':0.0,
+                    'target_rule':'one_lowest_cloud_target_per_vertical_column'}
+
+    support=[]
+    for raw in (support_cells if support_cells is not None else source):
+        try:
+            if (float(raw.get('end_km',0))>float(raw.get('start_km',0)) and
+                float(raw.get('top_km',0))>float(raw.get('bottom_km',0)) and
+                float(raw.get('cloud_cover',0) or 0)>=25.0):
+                support.append(raw)
+        except (TypeError,ValueError):
+            continue
+
+    boundaries=sorted({float(c[k]) for c in source for k in ('start_km','end_km')})
+    pieces=[]
+    removed_horizontal=0.0
+    removed_cell_km=0.0
+    vertical_columns=0
     eps=1e-8
-    for upper in sorted(source,key=lambda c:(float(c.get('bottom_km',0)),
-                                             float(c.get('start_km',0)),
-                                             float(c.get('top_km',0)))):
-        ua=float(upper.get('start_km',0)); ub=float(upper.get('end_km',0))
-        ubase=float(upper.get('bottom_km',0))
-        if ub<=ua: continue
-        cuts=[]
-        for lower in supports:
-            lb=float(lower.get('bottom_km',0)); lt=float(lower.get('top_km',0))
-            if lb>=ubase-eps: continue
-            if lt < ubase-float(vertical_touch_km)-eps: continue
-            if float(lower.get('cloud_cover',0) or 0)<25.0: continue
-            a=max(ua,float(lower.get('start_km',ua)))
-            b=min(ub,float(lower.get('end_km',ub)))
-            if b>a+eps: cuts.append((a,b))
-        if not cuts:
-            out.append(dict(upper)); continue
-        cuts.sort(); merged=[]
-        for a,b in cuts:
-            if not merged or a>merged[-1][1]+eps: merged.append([a,b])
-            else: merged[-1][1]=max(merged[-1][1],b)
-        pieces=[]; cursor=ua
-        for a,b in merged:
-            if a>cursor+eps: pieces.append((cursor,a))
-            cursor=max(cursor,b)
-        if cursor<ub-eps: pieces.append((cursor,ub))
-        removed_width += (ub-ua)-sum(b-a for a,b in pieces)
-        if len(pieces)>1: split_count+=1
-        for a,b in pieces:
-            row=dict(upper);row['start_km']=a;row['end_km']=b
-            row['stacked_upper_target_piece']=True
-            out.append(row)
-    return out, {'input_target_cells':len(source),'retained_target_cells':len(out),
-                 'removed_stacked_horizontal_km':round(removed_width,3),
-                 'split_upper_cells':split_count,
-                 'vertical_touch_tolerance_km':float(vertical_touch_km),
-                 'support_cloud_cover_threshold_pct':25.0}
+
+    def identity(c):
+        return (round(float(c.get('bottom_km',0)),6),
+                round(float(c.get('top_km',0)),6),
+                round(float(c.get('sample_distance_km',-1)),6),
+                str(c.get('pressure_hpa','')),
+                round(float(c.get('cloud_cover',0) or 0),4),
+                bool(c.get('reconstructed_cloud',False)))
+
+    for left,right in zip(boundaries,boundaries[1:]):
+        if right<=left+eps:
+            continue
+        mid=(left+right)*.5
+        active=[c for c in source
+                if float(c['start_km'])-eps<=mid<float(c['end_km'])-eps]
+        if not active:
+            continue
+        active_support=[c for c in support
+                        if float(c['start_km'])-eps<=mid<float(c['end_km'])-eps]
+        # Prefer the lowest cloud with meaningful coverage. If none reaches
+        # the blocker threshold, retain one lowest non-zero cloud only.
+        candidates=active_support if active_support else active
+        chosen=min(candidates,key=lambda c:(float(c['bottom_km']),
+                                              float(c['top_km']),
+                                              -float(c.get('cloud_cover',0) or 0)))
+        vertical_columns+=1
+        removed_horizontal += max(0,len(active)-1)*(right-left)
+        removed_cell_km += max(0,len(active)-1)*(right-left)
+        row=dict(chosen);row['start_km']=left;row['end_km']=right
+        row['single_vertical_target_column']=True
+        row['stacked_target_layers_removed']=max(0,len(active)-1)
+        key=identity(chosen)
+        if pieces and pieces[-1]['_identity']==key and abs(float(pieces[-1]['end_km'])-left)<=eps:
+            pieces[-1]['end_km']=right
+            pieces[-1]['stacked_target_layers_removed']=max(
+                pieces[-1].get('stacked_target_layers_removed',0),
+                row['stacked_target_layers_removed'])
+        else:
+            row['_identity']=key
+            pieces.append(row)
+
+    for row in pieces:
+        row.pop('_identity',None)
+    return pieces, {
+        'input_target_cells':len(source),
+        'retained_target_cells':len(pieces),
+        'vertical_columns':vertical_columns,
+        'removed_stacked_horizontal_km':round(removed_horizontal,3),
+        'removed_stacked_cell_km':round(removed_cell_km,3),
+        'vertical_touch_tolerance_km_legacy_unused':float(vertical_touch_km),
+        'support_cloud_cover_threshold_pct':25.0,
+        'target_rule':'one_lowest_cloud_target_per_vertical_column',
+    }
+
+
+def filter_bottom_sample_traces_to_single_vertical_target(rows, profiles):
+    """Visual/cache guard: show red only on the one selected target per column.
+
+    New calculations already use the same target filter. This second guard
+    prevents an older cached result (created before vertical-column dedup) from
+    displaying red marks on several stacked cloud bottoms after an upgrade.
+    It does not modify the saved evidence or any forecast score.
+    """
+    rows=list(rows or [])
+    valid=[p for p in (profiles or []) if isinstance(p,dict) and p.get('levels')]
+    if not rows or not valid:
+        return rows
+    from .spherical_raytrace import profile_cloud_cells
+    all_cells=profile_cloud_cells(valid,threshold=0.000001,
+                                  blur_horizontal_km=0.,blur_vertical_km=0.)
+    support=profile_cloud_cells(valid,threshold=25.,
+                                blur_horizontal_km=0.,blur_vertical_km=0.)
+    targets,_=_exposed_cloud_target_cells(all_cells,support)
+    if not targets:
+        return []
+    filtered=[]
+    eps=1e-5
+    for row in rows:
+        if not isinstance(row,dict):
+            continue
+        key=row.get('target_key') or []
+        if len(key)<4:
+            continue
+        try:
+            zone_a,zone_b,base=float(key[0]),float(key[1]),float(key[2])
+            pos=float(row['position_km'])
+            width=float(row.get('area_width_km') or 0.)
+        except (TypeError,ValueError,KeyError,IndexError):
+            continue
+        if width<=0:
+            continue
+        strip_a=max(zone_a,pos-width/2.)
+        strip_b=min(zone_b,pos+width/2.)
+        for target in targets:
+            if abs(float(target['bottom_km'])-base)>0.03:
+                continue
+            a=max(strip_a,float(target['start_km']))
+            b=min(strip_b,float(target['end_km']))
+            if b<=a+eps:
+                continue
+            clipped=dict(row)
+            clipped['target_key']=[float(target['start_km']),float(target['end_km']),
+                                   float(target['bottom_km']),float(target['top_km'])]
+            clipped['position_km']=(a+b)/2.
+            clipped['area_width_km']=b-a
+            filtered.append(clipped)
+    # Exact duplicate rows can occur when adjacent profile intervals share a
+    # boundary; retain one representation only.
+    unique={}
+    for row in filtered:
+        k=(int(row.get('minute_offset',0)),round(float(row['position_km']),4),
+           round(float(row['area_width_km']),4),round(float(row['target_key'][2]),4))
+        unique[k]=row
+    return list(unique.values())
+
+
+# Backward-compatible private alias used by earlier diagnostic renderers.
+filter_verified_bottom_traces_to_single_vertical_target = filter_bottom_sample_traces_to_single_vertical_target
 
 
 def _bottom_sweep_strips(target, limit_km, refine_points=()):

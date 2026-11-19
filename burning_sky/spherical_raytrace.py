@@ -56,31 +56,6 @@ def _earth_occluded(target_base_km, solar_alt_deg, surface_distance_km):
                           EARTH_RADIUS_KM * min_theta) < -1e-8
 
 
-def _gfs_native_cover_cap(profile, layer_height_km):
-    """Return the *native* GFS layer cover used as a geometric cover cap.
-
-    OM pressure-level cover is still preserved as a vertical-evidence proxy,
-    but a pressure-layer 25%-40% value must not become a solid ray blocker when
-    the matching native GFS low/mid/high layer has only 0%-5% cloud cover.
-    Applies ONLY when the profile was explicitly calibrated against native
-    GFS 2D cover: EC, unknown-model and manual-edited profiles are unchanged.
-    """
-    if profile.get('spatial_horizontal_model_domain') != 'ncep_gfs025':
-        return None
-    if profile.get('spatial_horizontal_layer_origin') != 'pressure_layer_proxy':
-        return None
-    h = float(layer_height_km)
-    field = ('cloud_cover_low' if h < 2.0 else
-             'cloud_cover_mid' if h < 6.0 else 'cloud_cover_high')
-    source = (profile.get('spatial_horizontal_effective_sources') or {}).get(field, '')
-    if not str(source).startswith('native_point_api_gfs'):
-        return None
-    cover = (profile.get('spatial_horizontal_effective') or {}).get(field)
-    if not isinstance(cover, (int, float)) or not math.isfinite(float(cover)):
-        return None
-    return max(0.0, min(100.0, float(cover)))
-
-
 def profile_cloud_cells(profiles, threshold=25.0, blur_horizontal_km=10.0, blur_vertical_km=0.2):
     """Use EXACTLY the cell rectangles drawn by the Tkinter pressure-profile view.
 
@@ -134,13 +109,10 @@ def profile_cloud_cells(profiles, threshold=25.0, blur_horizontal_km=10.0, blur_
             effective = softened_cover(d, h, float(cc)) if isinstance(cc, (int,float)) else None
             if effective is None:
                 continue
-            # GFS 0.13-degree native horizontal layer cover is authoritative
-            # for *coverage*; 0.25-degree pressure-level cover locates the
-            # possible altitude only. Keep original evidence and diagnostics.
-            # Never cap manually edited segments.
-            native_cap = None if intervals else _gfs_native_cover_cap(prof, h)
-            if native_cap is not None:
-                effective = min(effective, native_cap)
+            # GFS OM horizontal cloud fields are no longer used to cap or
+            # reshape pressure-layer blockers. The cloud_cover value in this
+            # native profile is the sole cloud-amount input here.
+            native_cap = None
             bottom=(float(levels[j-1]['height_agl_km'])+h)/2 if j else max(0.,h-.35)
             top=(h+float(levels[j+1]['height_agl_km']))/2 if j+1<len(levels) else h+.35
             # Split each display cell at every manual interval boundary.

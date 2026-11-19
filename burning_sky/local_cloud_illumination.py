@@ -17,33 +17,142 @@ def _clip(v, lo=0., hi=1.):
     return max(lo, min(hi, v))
 
 
+def _convex_hull(points):
+    points=sorted(set(points))
+    if len(points)<=2:
+        return points
+    def cross(o,a,b):
+        return (a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0])
+    lower=[]
+    for point in points:
+        while len(lower)>=2 and cross(lower[-2],lower[-1],point)<=1e-14:
+            lower.pop()
+        lower.append(point)
+    upper=[]
+    for point in reversed(points):
+        while len(upper)>=2 and cross(upper[-2],upper[-1],point)<=1e-14:
+            upper.pop()
+        upper.append(point)
+    return lower[:-1]+upper[:-1]
+
+
+def _apparent_patch_solid_angle(start_km, end_km, bottom_km, top_km,
+                                transverse_width_km):
+    """Solid angle of a rectangular cloud patch, in steradians.
+
+    The centreline profile does not provide a measured cross-track cloud
+    boundary. The patch width is therefore the 15-km sampling width. Its
+    vertices are projected to (azimuth, sin(apparent elevation)); polygon area
+    in this coordinate system is solid angle. Spherical-Earth elevation is
+    used so distant clouds are not projected with a flat-Earth horizon.
+    """
+    from .sky_six import apparent_elevation
+    a=max(0.0,float(start_km)); b=max(a,float(end_km))
+    bottom=max(0.0,float(bottom_km)); top=max(bottom,float(top_km))
+    half=max(0.0,float(transverse_width_km))/2.0
+    if b<=a or top<=bottom or half<=0:
+        return 0.0
+    points=[]
+    for x in (a,b):
+        for y in (-half,0.0,half):
+            horizontal=math.hypot(x,y)
+            azimuth=math.atan2(y,x) if horizontal>1e-12 else 0.0
+            for height in (bottom,top):
+                elevation=apparent_elevation(horizontal,height)
+                points.append((azimuth,math.sin(math.radians(elevation))))
+    hull=_convex_hull(points)
+    if len(hull)<3:
+        return 0.0
+    area=abs(sum(hull[i][0]*hull[(i+1)%len(hull)][1]-
+                 hull[(i+1)%len(hull)][0]*hull[i][1]
+                 for i in range(len(hull)))*0.5)
+    return max(0.0,float(area))
+
+
+def _unique_vertical_targets(cloud_cells):
+    """Select one lowest meaningful mid/high target per horizontal column.
+
+    Upper stacked layers remain in the complete cloud field for ray blocking;
+    they are not additional target clouds or additional visual-area entries.
+    """
+    from .sky_six import _exposed_cloud_target_cells
+    all_targets=[dict(c) for c in (cloud_cells or [])
+                 if float(c.get('top_km',0) or 0)>1.5
+                 and float(c.get('cloud_cover',0) or 0)>0]
+    support=[c for c in all_targets if float(c.get('cloud_cover',0) or 0)>=25.0]
+    return _exposed_cloud_target_cells(all_targets,support)
+
+
 def projection_zone_illumination(cloud_cells, potential_km, bottom_rows, face_rows,
                                  minute_offsets, step_km=15.0, include_faces=False):
     """One count per horizontal mid/high cloud zone, independent of layers.
 
-    Primary fire-cloud mode is bottom-only: a verified underside is 1; all
-    face/top evidence is diagnostic only and contributes zero. The optional
-    include_faces mode is reserved for a separately selected anti-solar view.
-    A genuinely unknown bottom point remains unknown, never promoted to lit.
-    For repeated layers, take MAX, never SUM.
+    Standard sunrise/sunset is bottom-only: a strictly verified cloud bottom
+    contributes 1; side/top/front-face evidence contributes zero. A vertical
+    column is represented by its one lowest meaningful target cloud. The
+    visual weight is the apparent solid angle of that target patch, estimated
+    from its distance, vertical extent, cloud cover, and a 15-km cross-track
+    width. It is a view-angle proxy, not a reconstructed 3-D cloud footprint.
     """
     limit=float(potential_km)
-    if limit<=0: return {'zones':[], 'minute_weights':{},'unknown_counts':{}}
+    if limit<=0:
+        return {'zones':[], 'minute_weights':{}, 'unknown_counts':{},
+                'event_geometric_fraction':0.0,'event_visual_fraction':0.0}
+    targets,stacking_diag=_unique_vertical_targets(cloud_cells)
+    targets=[c for c in targets if float(c.get('top_km',0) or 0)>1.5
+             and float(c.get('start_km',0) or 0)<limit-1e-7]
+    count=max(1,int(math.ceil(limit/step_km-1e-10)))
     zones=[]
-    # Distance bins have no artificial duplication at the potential-range end.
-    count=max(1,int(math.ceil(limit / step_km - 1e-10)))
     for i in range(count):
         lo=i*step_km; hi=min(limit,(i+1)*step_km)
-        if hi<=lo:continue
-        members=[c for c in cloud_cells
-                 if c.get('top_km',0)>1.5 and c.get('cloud_cover',0)>0
-                 and float(c['start_km'])<hi-1e-7
-                 and float(c['end_km'])>lo+1e-7]
-        if members:
-            zones.append({'index':i,'start_km':lo,'end_km':hi})
+        if hi<=lo:
+            continue
+        pieces=[]
+        covered_area_km=0.0
+        weighted_center=weighted_bottom=weighted_top=weight_sum=0.0
+        for cell in targets:
+            a=max(lo,float(cell['start_km']))
+            b=min(hi,limit,float(cell['end_km']))
+            if b<=a+1e-8:
+                continue
+            cover=_clip(float(cell.get('cloud_cover',0) or 0)/100.0)
+            if cover<=0:
+                continue
+            length=b-a
+            area_weight=length*cover
+            pieces.append({'start_km':a,'end_km':b,
+                'bottom_km':float(cell['bottom_km']),'top_km':float(cell['top_km']),
+                'cloud_cover_pct':round(cover*100.0,3)})
+            covered_area_km+=area_weight
+            weighted_center+=((a+b)*0.5)*area_weight
+            weighted_bottom+=float(cell['bottom_km'])*area_weight
+            weighted_top+=float(cell['top_km'])*area_weight
+            weight_sum+=area_weight
+        if pieces and weight_sum>0:
+            # Convert fractional cloud occupancy to a compact equivalent patch:
+            # its horizontal footprint area equals (zone area × cloud fraction).
+            # This makes a sparse cloud physically smaller instead of applying a
+            # second arbitrary distance multiplier to its angular area.
+            zone_span=hi-lo
+            coverage_fraction=_clip(covered_area_km/max(zone_span,1e-9))
+            linear_scale=math.sqrt(coverage_fraction)
+            center=weighted_center/weight_sum
+            radial_length=zone_span*linear_scale
+            radial_a=max(lo,center-radial_length/2.0)
+            radial_b=min(hi,center+radial_length/2.0)
+            transverse_width=step_km*linear_scale
+            mean_bottom=weighted_bottom/weight_sum
+            mean_top=weighted_top/weight_sum
+            visual_weight=_apparent_patch_solid_angle(
+                radial_a,radial_b,mean_bottom,mean_top,transverse_width)
+            zones.append({'index':i,'start_km':lo,'end_km':hi,
+                'target_pieces':pieces,'target_cover_pct':round(coverage_fraction*100.0,3),
+                'visual_weight_sr':visual_weight,
+                'visual_weight_deg2':visual_weight*(180.0/math.pi)**2,
+                'visual_patch_radial_km':[round(radial_a,4),round(radial_b,4)],
+                'visual_patch_transverse_width_km':round(transverse_width,4),
+                'visual_patch_bottom_top_km':[round(mean_bottom,4),round(mean_top,4)]})
     weights={}; unknown_counts={}; bottom_lit_counts={}; face_only_counts={}
-    # The bottom sampler returns the geographical position and its represented
-    # width; a verified point lights its own horizontal zone, not all layers.
     for m in minute_offsets:
         values={z['index']:0.0 for z in zones}
         unresolved=set(); face_zones=set()
@@ -62,18 +171,14 @@ def projection_zone_illumination(cloud_cells, potential_km, bottom_rows, face_ro
             if int(row.get('minute_offset',-999)) != m:continue
             pos=float(row.get('position_km',-999))
             status=str(row.get('status',''))
-            width=max(0.,float(row.get('area_width_km') or 0.))
             key=row.get('target_key') or ()
-            # A sampled region may lie on a zone boundary. Anchor to the
-            # representative target position, not a neighboring cloud layer.
-            # The last zone is inclusive at the far endpoint.
             for zone in zones:
                 in_zone=(zone['start_km']-1e-7<=pos<zone['end_km']-1e-7 or
                          (abs(pos-limit)<1e-7 and abs(zone['end_km']-limit)<1e-7))
                 if not in_zone:continue
-                # Check this record really describes a cloud in this zone.
                 if len(key)>=2 and not (float(key[0])<zone['end_km'] and
-                                         float(key[1])>zone['start_km']):continue
+                                         float(key[1])>zone['start_km']):
+                    continue
                 if status=='verified_bottom':
                     values[zone['index']]=1.0
                 elif status.startswith('unresolved'):
@@ -82,8 +187,52 @@ def projection_zone_illumination(cloud_cells, potential_km, bottom_rows, face_ro
         unknown_counts[m]=len([i for i in unresolved if values[i]<1.0])
         bottom_lit_counts[m]=sum(1 for v in values.values() if v>=1.0-1e-9)
         face_only_counts[m]=len([i for i in face_zones if values.get(i,0.0)<1.0-1e-9])
+
+    # Event-wide accumulation: a horizontal zone counts once if its cloud
+    # bottom was strictly verified at ANY minute in the complete dawn/dusk
+    # window. This is intentionally separate from the per-minute peak.
+    ever_values={z['index']:0.0 for z in zones}
+    ever_unknown=set()
+    for m,values in weights.items():
+        for idx,value in values.items():
+            ever_values[idx]=max(ever_values.get(idx,0.0),float(value))
+        for idx in range(len(zones)):
+            if unknown_counts.get(m,0):
+                # The exact unresolved IDs are retained below in the per-zone
+                # state; unknown_counts remains the compact minute diagnostic.
+                pass
+    # Rebuild the unresolved-zone union directly from source rows so that a
+    # zone unknown at one time is not silently described as a proven zero.
+    for row in bottom_rows or ():
+        if str(row.get('status','')).startswith('unresolved'):
+            try:
+                pos=float(row.get('position_km',-999))
+            except (TypeError,ValueError):
+                continue
+            for zone in zones:
+                if zone['start_km']-1e-7<=pos<zone['end_km']-1e-7:
+                    ever_unknown.add(zone['index'])
+    lit_ids={i for i,v in ever_values.items() if v>1e-8}
+    total_visual=sum(float(z.get('visual_weight_sr',0.0)) for z in zones)
+    lit_visual=sum(float(z.get('visual_weight_sr',0.0))*ever_values.get(z['index'],0.0)
+                   for z in zones)
+    event_geometric=len(lit_ids)/len(zones) if zones else 0.0
+    event_visual=lit_visual/total_visual if total_visual>1e-15 else event_geometric
+    event_possible_ids=lit_ids | ever_unknown
+    event_possible_visual=sum(float(z.get('visual_weight_sr',0.0))
+                               for z in zones if z['index'] in event_possible_ids)
+    event_possible_geometric=len(event_possible_ids)/len(zones) if zones else 0.0
+    event_possible_visual=event_possible_visual/total_visual if total_visual>1e-15 else event_possible_geometric
     return {'zones':zones,'minute_weights':weights,'unknown_counts':unknown_counts,
             'bottom_lit_counts':bottom_lit_counts,'face_only_counts':face_only_counts,
+            'stacking_diagnostic':stacking_diag,'event_zone_values':ever_values,
+            'event_lit_zone_count':len(lit_ids),'event_unknown_zone_count':len(ever_unknown-lit_ids),
+            'event_geometric_fraction':_clip(event_geometric),
+            'event_visual_fraction':_clip(event_visual),
+            'event_possible_geometric_fraction':_clip(event_possible_geometric),
+            'event_possible_visual_fraction':_clip(event_possible_visual),
+            'visual_total_solid_angle_sr':total_visual,
+            'visual_lit_solid_angle_sr':lit_visual,
             'include_faces':bool(include_faces)}
 
 
@@ -95,8 +244,6 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
         return {'available':False,'reason':'缺少剖面、时间或有效霞云距','times':[]}
     cells=profile_cloud_cells(profiles,threshold=0.000001,
                               blur_horizontal_km=0.,blur_vertical_km=0.)
-    # Every 15 km zone with at least one mid/high target counts ONCE in the
-    # denominator. Multiple cloud layers at the same position never double it.
     minute_offsets=list(range(-minutes,1) if direction=='morning' else range(0,minutes+1))
     projection=projection_zone_illumination(cells,potential_km,
         verified_target_bottom_points,verified_target_bands,minute_offsets,
@@ -104,16 +251,17 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
     zones=projection['zones']
     if not zones:
         return {'available':False,'reason':'霞云距内没有满足条件的中高云采样区','times':[]}
+    total_visual=sum(float(z.get('visual_weight_sr',0.0)) for z in zones)
     result=[]
     for m in minute_offsets:
         values=projection['minute_weights'][m]
-        # The denominator is the NUMBER of eligible horizontal zones.
         frac=_clip(sum(values.values())/len(zones))
+        visual_lit=sum(float(z.get('visual_weight_sr',0.0))*values.get(z['index'],0.0)
+                       for z in zones)
+        visual_frac=_clip(visual_lit/total_visual) if total_visual>1e-15 else frac
         full_bottom=projection['bottom_lit_counts'].get(m,0)
         partial_face=projection['face_only_counts'].get(m,0)
         unknown_count=projection['unknown_counts'][m]
-        # Area-weighted Sun angle is ONLY for color. The color calculation
-        # never changes the zone weights or the strict geometry result.
         valid_bottom=[r for r in (verified_target_bottom_points or [])
                       if int(r.get('minute_offset',-999))==m
                       and r.get('status')=='verified_bottom']
@@ -126,24 +274,36 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
                          if valid_face else None)
         result.append({'datetime':event_dt+timedelta(minutes=m),
             'minutes_from_event':m,'fraction':frac,'strict_fraction':frac,
+            'visual_fraction':visual_frac,
             'possible_fraction':_clip((sum(values.values())+unknown_count)/len(zones)),
             'front_face_fraction':(partial_face/len(zones))/3.,
             'bottom_unresolved_weight_fraction':unknown_count/len(zones),
             'bottom_lit_zone_count':full_bottom,'face_only_zone_count':partial_face,
             'face_contributes_to_fraction':bool(include_faces),
             'eligible_zone_count':len(zones),
-            'dominant':None,
-            'representative_solar_altitude_deg':solar_angle,
+            'visual_lit_solid_angle_sr':visual_lit,
+            'visual_total_solid_angle_sr':total_visual,
+            'dominant':None,'representative_solar_altitude_deg':solar_angle,
             'possible_dominant':None})
     return {'available':True,'potential_km':float(potential_km),
         'target_count':len(zones),'target_weight':sum(z['end_km']-z['start_km'] for z in zones),
         'eligible_zones':zones,'times':result,'direction':direction,
+        'event_geometric_fraction':projection['event_geometric_fraction'],
+        'event_visual_fraction':projection['event_visual_fraction'],
+        'event_zone_values':projection.get('event_zone_values',{}),
+        'event_possible_geometric_fraction':projection['event_possible_geometric_fraction'],
+        'event_possible_visual_fraction':projection['event_possible_visual_fraction'],
+        'event_lit_zone_count':projection['event_lit_zone_count'],
+        'event_unknown_zone_count':projection['event_unknown_zone_count'],
+        'visual_total_solid_angle_sr':projection['visual_total_solid_angle_sr'],
+        'visual_lit_solid_angle_sr':projection['visual_lit_solid_angle_sr'],
+        'stacking_diagnostic':projection.get('stacking_diagnostic'),
         'method':('horizontal_15km_zone_fraction_bottom_1_face_1third' if include_faces
                   else 'horizontal_15km_zone_fraction_bottom_only'),
+        'visual_method':'spherical_projected_solid_angle_compact_equivalent_cloud_patch',
         'include_faces':bool(include_faces),
-        'caveat':('同一水平采样区只计一次：云底受光=1，只有严格验证云锋面受光=1/3；未知另外记录。'
-                  if include_faces else
-                  '常规朝霞/晚霞只统计严格验证的云底受光：云底=1；云锋面、侧面和顶部不计入占比。未知另外记录。')}
+        'caveat':('同一水平采样区只计一次；标准逆光只接受云底严格受光；视觉权重按球面视角面积估算。'
+                  '剖面只有一维，横向宽度暂按15km采样宽度近似；云量比例用于缩放等效云块的水平足迹，云层高度来自气压层网格。')}
 
 
 def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
@@ -200,6 +360,8 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
         point['strict_light_window']=bool(active and frac > 1e-8)
         point['colored_cloud_area_pct']=round(absolute_area_pct,3)
         point['illuminated_target_fraction_pct']=round(100.0*frac,3) if active else 0.0
+        point['visual_illuminated_target_fraction_pct']=round(100.0*float(row.get('visual_fraction',0.0)),3) if active else 0.0
+        point['visual_colored_cloud_area_pct']=round(float(row.get('visual_fraction',0.0))*target_cloud_cover_pct,3) if active else 0.0
         point['major_coloration_valid']=bool(point['strict_light_window'] and
                                               point['colored_cloud_area_pct'] >= 5.0)
         point['local_cloud_illumination_fraction']=round(frac,6)

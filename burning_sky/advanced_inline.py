@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Independent one-direction advanced satellite evidence editor.
 
-Two 24-hour snapshots per identity: unaltered baseline and latest accepted
-correction. Never promote infrared palette categories to measured cloud cover.
+Per China-local day, keep an unaltered baseline and latest accepted correction.
+Never promote infrared palette categories to measured cloud cover.
 """
 import os
 import sys
@@ -26,14 +26,27 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
 import engine
 from burning_sky.satellite_calibration import CITIES, _fit_affine, _avg_patch, compare_samples, _patch_evidence
+from burning_sky.spatial_pipeline import HybridSpatialMixin
 from burning_sky.satellite_auto_vision import recognize_cities, auto_cloud_references
+from burning_sky.satellite_model_selection import choose_cached_model
 from burning_sky.spherical_raytrace import destination
 from burning_sky.web_color_curve import draw_dynamic_color_curve
 from burning_sky.profile_image import render_profile
 from burning_sky.api_rate_limit import set_request_profile, reset_request_profile, cooldown_remaining
 
 CACHE = ROOT/'data'/'advanced_analysis_cache'
-TTL_SECONDS = 24*3600
+from zoneinfo import ZoneInfo
+LOCAL_TZ=ZoneInfo('Asia/Shanghai')
+
+def _today(): return datetime.now(LOCAL_TZ).date().isoformat()
+def _now_local(): return datetime.now(LOCAL_TZ).isoformat(timespec='seconds')
+def _stamp_day(value, fallback_path):
+    try:
+        dt=datetime.fromisoformat(str(value))
+        if dt.tzinfo is None: dt=dt.replace(tzinfo=ZoneInfo('UTC'))
+        return dt.astimezone(LOCAL_TZ).date().isoformat()
+    except (ValueError,TypeError):
+        return datetime.fromtimestamp(fallback_path.stat().st_mtime,LOCAL_TZ).date().isoformat()
 MODELS={'EC':'ECMWF IFS 0.25°','GFS':'GFS Global'}
 DIRS={'朝霞':'morning','晚霞':'evening'}
 
@@ -41,13 +54,45 @@ def _key(place,lat,lon,elev,day,model,direction):
     raw=json.dumps([place,round(lat,5),round(lon,5),round(elev,1),day,model,direction],ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()[:26]
 
+def _satellite_fit_score(rows):
+    """Weighted qualitative fit to IR appearance; not a cloud-cover retrieval."""
+    valid=[]
+    for row in rows or []:
+        if row.get('satellite_interpolated_prior'):
+            continue
+        confidence=row.get('confidence');predicted=row.get('predicted_mid_high');reference=row.get('reference_level')
+        purity=row.get('class_purity')
+        if not isinstance(confidence,(int,float)) or confidence<.62:
+            continue
+        if not isinstance(predicted,(int,float)) or not isinstance(reference,(int,float)):
+            continue
+        weight=max(.05,float(confidence))*max(.05,float(purity) if isinstance(purity,(int,float)) else float(confidence))
+        valid.append((abs(float(predicted)-float(reference)),weight,float(confidence)))
+    if len(valid)<4:return {'score':None,'points':len(valid),'mean_confidence':None}
+    total=sum(w for _,w,_ in valid)
+    return {'score':round(sum(e*w for e,w,_ in valid)/max(total,1e-9),3),
+            'points':len(valid),'mean_confidence':round(sum(c for _,_,c in valid)/len(valid),3)}
+
 def _prune():
     CACHE.mkdir(parents=True,exist_ok=True)
-    now=time.time()
+    today=_today()
     for p in list(CACHE.glob('*.json'))+list(CACHE.glob('*.jpg')):
         try:
-            if now-p.stat().st_mtime>TTL_SECONDS:p.unlink()
-        except OSError:pass
+            if p.suffix=='.json':
+                obj=json.loads(p.read_text('utf-8'))
+                stamp=str(obj.get('saved_at') or obj.get('started_at') or '')
+                day=_stamp_day(stamp,p)
+            else:
+                sibling=p.with_suffix('.json')
+                if sibling.exists():
+                    obj=json.loads(sibling.read_text('utf-8'))
+                    stamp=str(obj.get('saved_at') or obj.get('started_at') or '')
+                    day=_stamp_day(stamp,p)
+                else: day=datetime.fromtimestamp(p.stat().st_mtime,LOCAL_TZ).date().isoformat()
+            if day!=today:p.unlink(missing_ok=True)
+        except (OSError,ValueError,TypeError):
+            try:p.unlink(missing_ok=True)
+            except OSError:pass
 
 def _write(name,payload):
     _prune()
@@ -69,7 +114,7 @@ class _V:
     def set(self,v):self.v=str(v)
 class _Label:
     def configure(self,**kwargs):pass
-class Runner(engine.FireCloudApp):
+class Runner(HybridSpatialMixin, engine.FireCloudApp):
     def _set_main_progress(self, percent, status=None):
         reporter=getattr(self,'_adv_progress_reporter',None)
         if reporter:
@@ -87,6 +132,7 @@ def _runner(place,lat,lon,elev,day,model):
             'morning_aod':'','evening_aod':'','aod_source':'CAMS'}
     r.vars={k:_V(v) for k,v in values.items()}
     r.direction_results={};r.last_report='';r.last_fetch_time=None
+    r.spatial_experiment=True;r.spatial_enabled=True;r.spatial_fetch_log=[]
     r.aod_manual_override=False;r._setting_aod_programmatically=False
     r.web_aod_value=None;r.web_aod_valid_time=None;r.aod_path_values=[]
     r.cloud_path_samples=[];r.cloud_path_result=None;r.fetch_in_progress=False
@@ -135,8 +181,8 @@ def _make_progress(job_key, config, mode, request_cache, checkpoint_key=None):
     """
     previous=_load(job_key) or {}
     state={'config':config,'mode':mode,'state':'running',
-           'started_at':datetime.now().isoformat(timespec='seconds'),
-           'updated_at':datetime.now().isoformat(timespec='seconds'),
+           'started_at':_now_local(),
+           'updated_at':_now_local(),
            'stage_percent':0,'stage':'准备计算',
            'request_attempts':0,'request_completed':0,'cache_hits':0,
            'batch_number':0,'batch_total':0,'points_completed':0,'points_total':0,
@@ -146,7 +192,7 @@ def _make_progress(job_key, config, mode, request_cache, checkpoint_key=None):
     bar=st.progress(0,text='准备计算')
     counters=st.empty()
     def publish():
-        state['updated_at']=datetime.now().isoformat(timespec='seconds')
+        state['updated_at']=_now_local()
         state['cached_request_count']=len(request_cache)
         _write(job_key,state)
         bar.progress(min(99,max(0,int(state['stage_percent']))),
@@ -197,7 +243,7 @@ def _make_progress(job_key, config, mode, request_cache, checkpoint_key=None):
         state['stage_percent']=100 if ok else state['stage_percent']
         state['stage']='完整重算成功' if ok else '中断：'+str(error)[:180]
         state['error']='' if ok else str(error)[:550]
-        state['cooldown_seconds']=cooldown_remaining()
+        state['cooldown_seconds']=cooldown_remaining('satellite_advanced')
         publish()
     publish()
     return observe, finish
@@ -233,12 +279,13 @@ def _fig(result,direction):
 def _summary(result):
     inf=result.get('inferred') or {}
     return { '常规概率':inf.get('regular_score'), '色彩分':inf.get('color_score'),
-             '可染色云占比':inf.get('tintable_ratio'), '火烧云规模':inf.get('burn_scale_index') }
+             '可染色云占比':inf.get('tintable_ratio'), '几何规模':inf.get('geometric_burn_scale_index',inf.get('burn_scale_index')),
+             '视觉规模':inf.get('visual_burn_scale_index') }
 
 def _show(result,direction,label):
     st.subheader(label)
     summary=_summary(result)
-    cols=st.columns(4)
+    cols=st.columns(5)
     for col,(name,v) in zip(cols,summary.items()):
         col.metric(name,'—' if v is None else f'{v}'+('' if name=='色彩分' else '%'))
     st.caption(result.get('summary') or '')
@@ -320,6 +367,8 @@ def render_inline(runtime_engine=None):
         return
     st.markdown('#### 🛰️ 当前结果 · 卫星实况校准')
     st.caption(f"{place} · {day} · {model} · {'朝霞' if direction=='morning' else '晚霞'}；使用本次基础结果及请求缓存")
+    _auto_notice=st.session_state.pop('bs_adv_auto_model_notice',None)
+    if _auto_notice: st.success(_auto_notice)
     base_key=ident+'_base'; corrected_key=ident+'_corrected'
     partial_key=ident+'_supplement_cache'
     progress_key=ident+'_progress'
@@ -328,10 +377,10 @@ def render_inline(runtime_engine=None):
     if not base:
         st.error('原始预测缓存已失效或服务器重启。请返回上方单次结果，重新点击卫星校准以恢复交接。')
         return
-    remaining=cooldown_remaining()
+    remaining=cooldown_remaining('satellite_advanced')
     if remaining:
         st.warning(f'Open-Meteo 冷却中，约剩余 {remaining} 秒。已保存的预测仍可查看；期间不要重复点击重算。')
-    st.caption('卫星补采使用专用慢速档：真实HTTP请求至少间隔15.5秒，最多每分钟4次。缓存命中不占额度；遇到429后全局暂停20分钟，保留已成功补采。')
+    st.caption('卫星补采使用专用慢速档：真实HTTP请求至少间隔15.5秒，最多每分钟4次。缓存命中不占额度；遇到429后仅暂停卫星校准（至少20分钟、最多60分钟），单次查询不继承该冷却；保留已成功补采。')
 
     col1,col2,col3=st.columns([1,1,2])
     col1.caption('✅ 当前单次结果已继承')
@@ -363,7 +412,7 @@ def render_inline(runtime_engine=None):
                     saved_rainbow=base['result'].get('rainbow'),progress_observer=observe)
                 _write(corrected_key,{'config':config,'result':new_result,'request_cache':updated_cache,
                     'edits':pending['segments'],'observation_time':pending.get('observation_time'),
-                    'saved_at':datetime.now().isoformat(),'registration_quality':pending.get('registration_quality'),
+                    'saved_at':_now_local(),'registration_quality':pending.get('registration_quality'),
                     'satellite_screenshot':f'{corrected_key}.jpg' if (CACHE/f'{corrected_key}.jpg').exists() else None})
                 (CACHE/f'{partial_key}.json').unlink(missing_ok=True)
                 pending_image=CACHE/f'{pending_key}.jpg'
@@ -375,7 +424,7 @@ def render_inline(runtime_engine=None):
             except Exception as exc:
                 if attempt_cache:
                     _write(partial_key,{'config':config,'request_cache':attempt_cache,
-                        'saved_at':datetime.now().isoformat()})
+                        'saved_at':_now_local()})
                 finish(False,exc)
                 st.error('续跑暂停，已保存进度：'+str(exc))
         if forget_col.button('放弃这次待续跑任务',use_container_width=True):
@@ -387,7 +436,7 @@ def render_inline(runtime_engine=None):
         try:
             result,cache=_compute(config,direction,cache=request_cache,progress_observer=observe)
             finish(True)
-            payload={'config':config,'result':result,'request_cache':cache,'saved_at':datetime.now().isoformat()}
+            payload={'config':config,'result':result,'request_cache':cache,'saved_at':_now_local()}
             _write(base_key,payload)
             (CACHE/f'{corrected_key}.json').unlink(missing_ok=True)
             (CACHE/f'{partial_key}.json').unlink(missing_ok=True)
@@ -504,6 +553,46 @@ def render_inline(runtime_engine=None):
                     rgb={name:_avg_patch(image,*xy,r=5) for name,xy in references.items()}
                     if any(v is None for v in rgb.values()):raise ValueError('云区参考点过于靠近图像边界')
                     rows=compare_samples(image,landmarks,rgb['cold'],rgb['warm'],base['result'],band_rgb=rgb['band'])
+                    # If both same-day model baselines exist, compare the same
+                    # screenshot against both and automatically switch to the
+                    # lower-error baseline before applying any correction.
+                    from .interactive_result_cache import load_models as _load_same_day_models
+                    _same_day=_load_same_day_models(place=place,lat=lat,lon=lon,elevation=elev,
+                        forecast_date=day.isoformat(),direction=direction)
+                    _comparison={model:_satellite_fit_score(rows)}
+                    _other='GFS' if model=='EC' else 'EC'
+                    _other_record=_same_day.get(_other)
+                    if _other_record and isinstance(_other_record.get('result'),dict):
+                        _other_rows=compare_samples(image,landmarks,rgb['cold'],rgb['warm'],
+                            _other_record['result'],band_rgb=rgb['band'])
+                        _comparison[_other]=_satellite_fit_score(_other_rows)
+                    # Pro and Lite share one deterministic rule: if EC/GFS
+                    # scores differ by <2 points, always calibrate from EC.
+                    _winner=choose_cached_model(_comparison,tie_threshold=2.0,
+                        preferred=('EC' if _other_record or model=='EC' else model))
+                    if not any(v.get('score') is not None for v in _comparison.values()):
+                        _comparison.setdefault(_winner,{'score':None,'points':0,
+                            'note':'有效匹配点不足，无法区分模型；按 EC 优先规则选择基准'})
+                    if _winner!=model:
+                        if _winner not in ('EC','GFS') or not _same_day.get(_winner):
+                            _winner=model
+                    if _winner!=model:
+                            _alt=_same_day[_winner]
+                            _alt_config={**config,'model':_winner}
+                            _alt_ident=_key(place,lat,lon,elev,day.isoformat(),_winner,direction)
+                            _write(_alt_ident+'_base',{'config':_alt_config,'result':_alt['result'],
+                                'request_cache':_alt.get('request_cache') or {},
+                                'saved_at':_alt.get('saved_at') or _now_local(),
+                                'source':'automatic_satellite_model_selection'})
+                            st.session_state['bs_adv_handoff']=_alt_config
+                            st.session_state['bs_adv_inline_active']=_alt_ident
+                            st.session_state['fire_cloud_auto_selected_model']=_winner
+                            st.session_state['bs_adv_auto_model_notice']=(
+                                f'卫星图对比完成：EC 加权外观差异 {_comparison.get("EC",{}).get("score")}，'
+                                f'GFS {_comparison.get("GFS",{}).get("score")}；自动选择 {_winner} 作为校准基准。'
+                                '此评分只用于两套预报的相对匹配，不是卫星反演云量。')
+                            st.rerun()
+                    st.session_state['adv_model_comparison_'+ident]=_comparison
                     st.session_state['adv_candidates_'+ident]=rows
                     # Each new screenshot analysis starts with a clean selection. Old
                     # distance selections must not silently carry into a new image.
@@ -511,6 +600,10 @@ def render_inline(runtime_engine=None):
                     st.session_state.pop('adv_high_edits_'+ident, None)
                     st.session_state['adv_screenshot_meta_'+ident]={'observation_time':obs,'quality':quality}
                 except Exception as exc:st.error('截图差异分析失败：'+str(exc))
+            _model_diag=st.session_state.get('adv_model_comparison_'+ident) or {}
+            if _model_diag:
+                st.caption('EC/GFS 卫星图匹配诊断（加权外观差异越低越接近；不是实测云量）：' +
+                    '；'.join(f"{k} {v.get('score') if v.get('score') is not None else '不可评分'} / {v.get('points',0)}点" for k,v in _model_diag.items()))
             candidates=st.session_state.get('adv_candidates_'+ident) or []
             if candidates:
                 diffs=[r for r in candidates if '疑似' in r.get('judgement','') and r.get('suggested_high') is not None and r.get('confidence',0)>=.62]
@@ -583,7 +676,7 @@ def render_inline(runtime_engine=None):
                             _write(pending_key,{'config':config,'segments':segments,
                                  'extra':sorted(set(round(x,2) for x in extra))[:60],
                                  'observation_time':obs,'registration_quality':quality,
-                                 'saved_at':datetime.now().isoformat()})
+                                 'saved_at':_now_local()})
                             image.save(CACHE/f'{pending_key}.jpg','JPEG',quality=82)
                             observe,finish=_make_progress(progress_key,config,'satellite',attempt_cache,partial_key)
                             try:
@@ -595,11 +688,11 @@ def render_inline(runtime_engine=None):
                                 finish(False,err)
                                 if attempt_cache:
                                     _write(partial_key,{'config':config,'request_cache':attempt_cache,
-                                                        'saved_at':datetime.now().isoformat()})
+                                                        'saved_at':_now_local()})
                                 raise
                             (CACHE/f'{partial_key}.json').unlink(missing_ok=True)
                             _write(corrected_key,{'config':config,'result':new_result,'request_cache':updated_cache,
-                                'edits':segments,'observation_time':obs,'saved_at':datetime.now().isoformat(),
+                                'edits':segments,'observation_time':obs,'saved_at':_now_local(),
                                 'registration_quality':quality,'satellite_screenshot':f'{corrected_key}.jpg'})
                             # Keep the most recently confirmed satellite frame, and
                             # atomically overwrite earlier frames for this identity.

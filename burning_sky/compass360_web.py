@@ -175,8 +175,11 @@ def render_web_panel(st, engine, result, meta, direction_key, replay_only=False)
     day = str(meta.get('date') or '')
     name='朝霞' if direction_key in ('morning','朝霞') else '晚霞'
     model_id=engine._weather_model_id_from_label(model_label)
-    if model_id not in ('ecmwf_ifs025','ncep_gfs_global'):
-        st.caption('OM 八方位候选优势目前仅支持 EC/GFS。')
+    if model_id == 'ncep_gfs_global':
+        st.info('GFS 的 OM 水平云场已停用，不再生成基于该云场的八方位候选图；GFS 单次结果仅使用原生 API 气压层。')
+        return
+    if model_id != 'ecmwf_ifs025':
+        st.caption('OM 八方位候选优势目前仅对 EC 开放。')
         return
     if not origin or event is None:
         st.caption('本次结果缺少地理坐标或事件时间，不能生成八方位图。')

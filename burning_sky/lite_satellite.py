@@ -12,11 +12,12 @@ from PIL import Image, ImageOps
 from .satellite_auto_vision import recognize_cities, auto_cloud_references
 from .satellite_calibration import _avg_patch, compare_samples
 from .lite_forecast import number
+from .satellite_model_selection import choose_cached_model
 
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 
 
-def photo_candidates(image_bytes: bytes, original: dict):
+def _prepare_photo(image_bytes: bytes):
     if not image_bytes or len(image_bytes) > MAX_UPLOAD_BYTES:
         raise ValueError('请上传12MB以内的卫星截图')
     Image.MAX_IMAGE_PIXELS = 20_000_000
@@ -43,12 +44,61 @@ def photo_candidates(image_bytes: bytes, original: dict):
     if any(c is None for c in rgb.values()):
         raise ValueError('截图颜色取样不完整')
     landmarks = [(m['city'],float(m['x']),float(m['y'])) for m in marks]
-    rows = compare_samples(image,landmarks,rgb['cold'],rgb['warm'],original,band_rgb=rgb['band'])
-    good = [r for r in rows if '疑似' in str(r.get('judgement',''))
+    return image, landmarks, rgb, quality
+
+
+def _good_rows(rows):
+    return [r for r in rows if '疑似' in str(r.get('judgement',''))
             and number(r.get('suggested_high')) is not None
             and number(r.get('confidence')) is not None
             and float(r['confidence']) >= .62]
-    return image, good, quality
+
+
+def photo_candidates(image_bytes: bytes, original: dict):
+    image, landmarks, rgb, quality = _prepare_photo(image_bytes)
+    rows = compare_samples(image,landmarks,rgb['cold'],rgb['warm'],original,band_rgb=rgb['band'])
+    return image, _good_rows(rows), quality
+
+
+def _model_fit(rows):
+    """Qualitative screenshot agreement score; not a satellite cloud retrieval."""
+    usable=[]
+    for row in rows or []:
+        if row.get('satellite_interpolated_prior'):
+            continue
+        confidence=number(row.get('confidence'))
+        predicted=number(row.get('predicted_mid_high'))
+        reference=number(row.get('reference_level'))
+        purity=number(row.get('class_purity'))
+        if confidence is None or confidence < .62 or predicted is None or reference is None:
+            continue
+        weight=max(.05,confidence)*max(.05,purity if purity is not None else confidence)
+        usable.append((abs(predicted-reference),weight,confidence))
+    if len(usable)<4:
+        return {'score':None,'points':len(usable),'mean_confidence':None}
+    total=sum(w for _,w,_ in usable)
+    mae=sum(err*w for err,w,_ in usable)/max(total,1e-9)
+    mean_conf=sum(c for _,_,c in usable)/len(usable)
+    return {'score':round(mae,3),'points':len(usable),'mean_confidence':round(mean_conf,3)}
+
+
+def rank_cached_models(image_bytes: bytes, candidates: dict):
+    """Compare EC/GFS against one registered screenshot and return a conservative winner."""
+    image, landmarks, rgb, quality = _prepare_photo(image_bytes)
+    diagnostics={}
+    for code,state in (candidates or {}).items():
+        if not isinstance(state,dict) or not isinstance(state.get('result'),dict):
+            continue
+        rows=compare_samples(image,landmarks,rgb['cold'],rgb['warm'],state['result'],band_rgb=rgb['band'])
+        fit=_model_fit(rows)
+        diagnostics[str(code).upper()]={**fit,'checked_points':len(rows),
+            'candidate_count':len(_good_rows(rows))}
+    # Shared Pro/Lite rule: when EC and GFS scores differ by <2 points,
+    # always use EC, regardless of sample count or confidence differences.
+    winner=choose_cached_model(diagnostics, tie_threshold=2.0, preferred='EC')
+    if not any(d.get('score') is not None for d in diagnostics.values()):
+        diagnostics[winner]['note']='有效匹配点不足，无法区分模型；按 EC 优先规则选择基准'
+    return winner, diagnostics, quality
 
 
 def all_segments(good: list[dict]):
@@ -113,7 +163,31 @@ def calibrate(original: dict, request_cache: dict, meta: dict, image_bytes: byte
         raise
     metrics = result.get('inferred') if isinstance(result,dict) else None
     if not isinstance(metrics,dict) or any(number(metrics.get(k)) is None
-        for k in ('regular_score','color_score','burn_scale_index')):
-        raise RuntimeError('卫星重算未返回完整概率、色彩分和规模；原始结果保持不变')
+        for k in ('regular_score','color_score','geometric_burn_scale_index','visual_burn_scale_index')):
+        raise RuntimeError('卫星重算未返回完整概率、色彩分、几何规模和视觉规模；原始结果保持不变')
     return {'result':result,'changed':True,'candidate_count':len(segments),
             'cache':used_cache,'quality':quality,'note':'卫星校准完成'}
+
+
+def calibrate_auto(candidates: dict, image_bytes: bytes, *, compute=None, progress=None):
+    """Automatically select the closest cached EC/GFS baseline, then calibrate it."""
+    available={code.upper():state for code,state in (candidates or {}).items()
+               if code.upper() in ('EC','GFS') and isinstance(state,dict)
+               and isinstance(state.get('result'),dict)}
+    if not available:
+        raise ValueError('当前没有可用于卫星校准的当日 EC/GFS 完整结果')
+    if len(available)==1:
+        selected=next(iter(available))
+        diagnostics={selected:{'score':None,'points':0,'note':'仅有一个模型缓存，直接使用该模型'}}
+        quality=None
+    else:
+        selected,diagnostics,quality=rank_cached_models(image_bytes,available)
+    state=available[selected]
+    outcome=calibrate(state['result'],state.get('cache') or state.get('request_cache') or {},
+                      state['meta'],image_bytes,compute=compute,progress=progress,
+                      recover_cache=state.get('supplement_cache'))
+    outcome['selected_model']=selected
+    outcome['model_comparison']=diagnostics
+    if quality is not None:
+        outcome['registration_quality']=quality
+    return outcome

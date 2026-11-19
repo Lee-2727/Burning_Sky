@@ -239,6 +239,7 @@ def _render_cloud_mosaic(payload,layer):
 def render_national_map_page(st):
     st.title('🗺️ 全国朝霞 / 晚霞云场地图')
     st.caption('静态省界底图 + 动态 EC/GFS 分区云场；按东中西三地的实际日出日落时刻选择模型快照，再合成全国候选热区。')
+    st.info('本页面的 GFS OM 云场仅供独立地图展示与诊断，不进入 GFS 单次预报、多日概览、云底受光或球面遮挡计算。')
     c1,c2,c3=st.columns([1.2,1,1])
     with c1:model=st.selectbox('气象模型',list(MODELS),key='map_model')
     with c2:day=st.date_input('日期',key='map_date')

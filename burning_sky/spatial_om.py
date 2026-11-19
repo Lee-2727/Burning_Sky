@@ -21,7 +21,9 @@ import json
 
 ALLOWED_MODELS = {
     'ecmwf_ifs025': 'ecmwf_ifs025',
-    'ncep_gfs_global': 'ncep_gfs025', # DIFFERENT resolution from some seamless API runs; marked as experimental.
+    # GFS OM remains readable only by the separate read-only national-map /
+    # diagnostic tools. Forecast cloud geometry never consumes this product.
+    'ncep_gfs_global': 'ncep_gfs025',
 }
 BASE = 'https://openmeteo.s3.amazonaws.com/data_spatial'
 # Basic range-limited request budget to prevent large automatic downloads.

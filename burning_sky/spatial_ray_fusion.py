@@ -89,6 +89,13 @@ def bind_horizontal_profiles(pressure_samples, spatial_horizontal, *, max_time_g
             'note': 'OM horizontal and API pressure valid times near, run equality unverified'}
 
 
+def _is_disabled_gfs_horizontal_profile(profile):
+    if not isinstance(profile, dict):
+        return False
+    return (profile.get('spatial_horizontal_model_domain') == 'ncep_gfs025' or
+            profile.get('spatial_horizontal_layer_origin') == 'pressure_layer_proxy')
+
+
 def check_horizontal_ray_consistency(ray_profiles, target_face_km, target_height_km,
                                      solar_altitude_deg, source_end_km):
     """Identify possible upstream blockers overlooked by vertical API sampling.
@@ -102,6 +109,10 @@ def check_horizontal_ray_consistency(ray_profiles, target_face_km, target_height
     conflicts = []
     available = 0
     for row in ray_profiles:
+        # GFS OM horizontal fields are retired from forecast physics. Ignore
+        # stale case/replay evidence even if an older profile still carries it.
+        if _is_disabled_gfs_horizontal_profile(row):
+            continue
         hdata = row.get('spatial_horizontal_effective', row.get('spatial_horizontal_om'))
         if not isinstance(hdata, dict):
             continue
@@ -149,6 +160,8 @@ def check_horizontal_target_support(target_profile, target_height_km):
     This does not prove the target cloud is absent; a grid-cell mean is not a
     cloud-object detector. A disagreement is explicitly *unresolved*.
     """
+    if _is_disabled_gfs_horizontal_profile(target_profile):
+        return {'checked':False,'unresolved':False,'reason':'gfs_om_horizontal_disabled'}
     hdata = (target_profile.get('spatial_horizontal_effective',
                                 target_profile.get('spatial_horizontal_om'))
              if isinstance(target_profile, dict) else None)

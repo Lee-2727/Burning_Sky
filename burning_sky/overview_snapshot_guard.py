@@ -74,10 +74,19 @@ def restore_missing_only(published, checkpoint, dates, completed, city, models=M
             for model in models:
                 task_id = '|'.join((city, day_str, model, direction))
                 src_record = src_group.get(model)
-                if (task_id in completed and valid_record(src_record)
-                        and not valid_record(dst_group.get(model))):
-                    dst_group[model] = deepcopy(src_record)
-                    filled += 1
+                dst_record=dst_group.get(model)
+                if task_id in completed and valid_record(src_record):
+                    if not valid_record(dst_record):
+                        dst_group[model] = deepcopy(src_record)
+                        filled += 1
+                    elif isinstance(dst_record,dict) and isinstance(src_record,dict):
+                        old_visual=dst_record.get('visual_burn_scale')
+                        new_visual=src_record.get('visual_burn_scale')
+                        if (not isinstance(old_visual,(int,float)) or isinstance(old_visual,bool)) and isinstance(new_visual,(int,float)) and not isinstance(new_visual,bool):
+                            dst_record['visual_burn_scale']=new_visual
+                            if src_record.get('visual_burn_scale_label') is not None:
+                                dst_record['visual_burn_scale_label']=src_record.get('visual_burn_scale_label')
+                            filled += 1
     dst_days.sort(key=lambda d: str(d.get('date', '')))
     # Keep the official publication timestamp. A checkpoint cannot assert
     # that the full 12-item batch was published at its saved_at time.

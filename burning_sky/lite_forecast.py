@@ -53,6 +53,7 @@ def create_runner(engine, *, place, lat, lon, elevation, date, model_label):
         'aod_source': 'CAMS', 'morning_aod': '', 'evening_aod': '',
     }
     runner.vars = {k: _Value(v) for k, v in values.items()}
+    runner.input_values = dict(values)
     runner.direction_results = {}
     # Match the Pro WebForecastEngine configuration explicitly. Both clients
     # execute the same FireCloudApp methods and spatial OM mixin.
@@ -99,9 +100,17 @@ def run_single(engine, *, place, lat, lon, elevation, day, model_label, directio
         record = runner.direction_results.get(direction)
         if not isinstance(record, dict) or not isinstance(record.get('inferred'), dict):
             raise RuntimeError('当前时段暂时未返回有效的预测结果')
+        inferred=record.get('inferred') or {}
+        surface=inferred.get('surface_path_diagnostics') or {}
+        if (surface.get('primary_view') != 'backlit_cloud_bottom_only'
+                or surface.get('face_bands_used_in_primary_ratio') is not False):
+            raise RuntimeError('Lite 引擎未通过云底受光算法一致性检查：常规可染色占比必须只使用严格验证的云底受光，云锋面只能保留为诊断。')
+        if 'visual_burn_scale_index' not in inferred or 'geometric_burn_scale_index' not in inferred:
+            raise RuntimeError('Lite 引擎结果缺少几何/视觉规模字段，拒绝显示旧版算法结果。')
         return {
             'result': record,
             'spatial_source_log': runner.spatial_fetch_log,
+            'values': runner.input_values,
             'cache': request_cache,
             'fetched_at': runner.last_fetch_time,
             'meta': {'place':place, 'lat':float(lat), 'lon':float(lon),
@@ -131,17 +140,21 @@ def verdict(result):
         return '预计' + special + '，朝晚霞表现有限。'
     prob = number(inf.get('regular_score'))
     quality = number(inf.get('color_score'))
-    scale = number(inf.get('burn_scale_index'))
-    if prob is None or quality is None or scale is None:
+    scale = number(inf.get('geometric_burn_scale_index', inf.get('burn_scale_index')))
+    visual_scale = number(inf.get('visual_burn_scale_index'))
+    if prob is None or quality is None or visual_scale is None:
         return '当前预测信息尚不完整。'
     p = '高概率' if prob > 75 else ('有一定概率' if prob >= 45 else ('小概率' if prob >= 20 else '几乎不烧'))
     q = str(inf.get('color_score_label') or '').strip()
     if q not in ('平平','普通','绚烂','史诗','世纪'):
         q = '世纪' if quality >= 90 else ('史诗' if quality >= 70 else ('绚烂' if quality >= 50 else ('普通' if quality >= 30 else '平平')))
-    grade = '大烧' if scale >= 60 else ('中烧' if scale >= 30 else ('小烧' if scale >= 10 else ('微烧' if scale > 0 else '不烧')))
+    from .scale_grades import visual_scale_grade
+    grade = visual_scale_grade(visual_scale)
     if special == '低云上烧':
-        return f'可能出现低云上烧，预计{p}、{q}的{grade}。'
-    return f'预计{p}出现{q}的{grade}。'
+        visual_note = f'，视觉规模{visual_scale:.1f}%' if visual_scale is not None else ''
+        return f'可能出现低云上烧，预计{p}、{q}的{grade}{visual_note}。'
+    visual_note = f'，视觉规模{visual_scale:.1f}%' if visual_scale is not None else ''
+    return f'预计{p}出现{q}的{grade}{visual_note}。'
 
 
 def source_time(result, fetched_at=None):

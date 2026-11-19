@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""24-hour single-forecast <-> satellite-advanced cache exchange.
+"""China-local-day single-forecast <-> satellite-advanced cache exchange.
 
 Only used for EC/GFS single-direction results. It never schedules or fetches data.
 """
@@ -8,10 +8,21 @@ import hashlib
 import json
 import os
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 CACHE_DIR=Path(__file__).resolve().parents[1]/'data'/'advanced_analysis_cache'
-TTL=24*3600
+LOCAL_TZ=ZoneInfo('Asia/Shanghai')
+
+def _today(): return datetime.now(LOCAL_TZ).date().isoformat()
+def _stamp_day(value, fallback_path):
+    try:
+        dt=datetime.fromisoformat(str(value))
+        if dt.tzinfo is None: dt=dt.replace(tzinfo=ZoneInfo('UTC'))
+        return dt.astimezone(LOCAL_TZ).date().isoformat()
+    except (ValueError,TypeError):
+        return datetime.fromtimestamp(fallback_path.stat().st_mtime,LOCAL_TZ).date().isoformat()
 
 def identity(config):
     payload=json.dumps([config['place'],round(float(config['lat']),5),
@@ -30,15 +41,45 @@ def config_from_main(meta,direction):
             'elev':float(meta.get('elevation') or 0),
             'date':str(meta['date']),'model':model,'direction':direction}
 
+def _prune():
+    if not CACHE_DIR.is_dir(): return
+    today=_today()
+    for path in list(CACHE_DIR.glob('*.json'))+list(CACHE_DIR.glob('*.jpg')):
+        try:
+            if path.suffix=='.json':
+                obj=json.loads(path.read_text(encoding='utf-8'))
+                stamp=str(obj.get('saved_at') or obj.get('created_at') or '')
+                day=_stamp_day(stamp,path)
+            else:
+                sibling=path.with_suffix('.json')
+                if sibling.exists():
+                    obj=json.loads(sibling.read_text(encoding='utf-8'))
+                    stamp=str(obj.get('saved_at') or obj.get('created_at') or '')
+                    day=_stamp_day(stamp,path)
+                else: day=datetime.fromtimestamp(path.stat().st_mtime,LOCAL_TZ).date().isoformat()
+            if day!=today: path.unlink(missing_ok=True)
+        except (OSError,ValueError,TypeError):
+            try: path.unlink(missing_ok=True)
+            except OSError: pass
+
+def prune_daily_cache():
+    _prune()
+
+
 def read(key):
+    _prune()
     path=CACHE_DIR/(key+'.json')
     try:
-        if not path.is_file() or time.time()-path.stat().st_mtime>TTL:return None
-        return json.loads(path.read_text(encoding='utf-8'))
+        if not path.is_file():return None
+        obj=json.loads(path.read_text(encoding='utf-8'))
+        stamp=str(obj.get('saved_at') or obj.get('created_at') or '')
+        if stamp and _stamp_day(stamp,path)!=_today(): return None
+        return obj
     except (OSError,ValueError,TypeError):return None
 
 def write(key,data):
     CACHE_DIR.mkdir(parents=True,exist_ok=True)
+    _prune()
     path=CACHE_DIR/(key+'.json')
     tmp=path.with_suffix('.tmp')
     tmp.write_text(json.dumps(data,ensure_ascii=False,default=str),encoding='utf-8')
@@ -60,7 +101,7 @@ def prepare_handoff(meta,direction,original_results,request_cache,to_safe):
     safe_result=to_safe(result)
     safe_cache=to_safe(request_cache or {})
     record={'config':config,'result':safe_result,'request_cache':safe_cache,
-            'saved_at':__import__('datetime').datetime.now().isoformat(timespec='seconds'),
+            'saved_at':datetime.now(LOCAL_TZ).isoformat(timespec='seconds'),
             'source':'single_forecast_handoff'}
     if not prior or prior.get('result')!=safe_result:
         write(key+'_base',record)
