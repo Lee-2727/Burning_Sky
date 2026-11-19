@@ -587,14 +587,10 @@ def estimate_path_cloud_boundaries(samples, local_cloud_reach_km=None):
     complete = [r for r in relevant if all_layer_values(r) is not None]
     path_span = (float(complete[-1].get("distance_km", 0)) - float(complete[0].get("distance_km", 0))) if len(complete) >= 2 else 0.0
     has_gap = bool(gaps)
-    continuous_evidence = (len(complete) >= 4 and path_span >= 50.0 and not has_gap and
-                           all(max(all_layer_values(r)) >= 25.0 for r in complete))
-    if has_gap:
-        gap_status = "effective_gap_candidate"
-    elif continuous_evidence:
-        gap_status = "continuous_cloud"
-    else:
-        gap_status = "unknown"
+    # No horizontal-sample "continuous cloud" verdict: a missing sampled gap
+    # is not proof of an opaque wall. The strict spherical ray tracer owns
+    # illumination-path validation.
+    gap_status = "effective_gap_candidate" if has_gap else "unknown"
     return {
         "near_cloud_edge_km": near_edge.get("distance_km") if near_edge else None,
         "remote_cloud_start_km": min((float(r.get("distance_km", 0)) for r in cloudy
@@ -1287,7 +1283,7 @@ def apply_path_score_pair(inferred, geometry, boundaries, samples=None):
     """按显式权重拆分常规分与理想情景上限分；分数不是统计概率。
 
     同时统一执行单次单模式的特殊判定：剖面云底过低、本地低云遮挡、
-    连续云路难穿透、光板天及低概率结论。"""
+    光板天及低概率结论。连续云路经验判定已移除，路径遮挡只由严格球面光路验证决定。"""
     low, mid, high, total = (inferred.get(k) for k in ("low", "mid", "high", "total"))
     aod = inferred.get("aod")
     # The distant clear corridor is an illumination path, NOT a missing-cloud
@@ -1356,8 +1352,10 @@ def apply_path_score_pair(inferred, geometry, boundaries, samples=None):
         gap_regular = min(100.0, 25.0 + 0.55 * size_component + 25.0 * gap_fraction)
         gap_upper = min(100.0, max(gap_regular, 45.0 + 0.45 * size_component + 30.0 * gap_fraction))
     else:
-        gap_regular = 0 if gap_status == "continuous_cloud" else 15
-        gap_upper = 10 if gap_status == "continuous_cloud" else 78
+        # 未找到水平晴空间隔本身不再作为“连续云墙”证据；
+        # 是否存在有效受光路径由严格球面光路追踪单独决定。
+        gap_regular = 15
+        gap_upper = 78
 
     if target is None:
         target_regular, target_upper = 35, 50
@@ -1413,33 +1411,20 @@ def apply_path_score_pair(inferred, geometry, boundaries, samples=None):
         upper = min(upper, 35)  # 明确的几何矛盾不能被“理想情况”抹去
     if target is not None and target < 15:
         upper = min(upper, 35)
-    # 关键修正：有足够距离采样、低/中/高云数据齐全，且相关照明路径内没有任何有效云洞时，
-    # 不允许“中高云很多”把总分重新抬高。该上限是保守经验约束，不等于校准后的统计概率。
-    if gap_status == "continuous_cloud":
-        regular = min(regular, 20)
-        upper = min(upper, 35)
+    # 不再用水平采样的“连续云”经验标签封顶评分；严格球面光路追踪
+    # 是唯一的路径几何验证，避免同一条路径被两套规则重复判定。
     # 读取真正的本地采样点，不能用整条路径的加权低云均值代替本地低云量。
     local_sample = None
-    path_samples = []
     if samples:
         try:
             ordered_samples = sorted(samples, key=lambda row: float(row.get("distance_km", 1e12)))
             local_sample = next((row for row in ordered_samples
                                  if abs(float(row.get("distance_km", 1e12))) < 0.01), None)
-            if isinstance(reach, (int, float)) and reach > 0:
-                path_samples = [row for row in ordered_samples
-                                if 0 <= float(row.get("distance_km", -1)) <= float(reach)
-                                and isinstance(row.get("cloud_cover"), (int, float))]
-            else:
-                path_samples = [row for row in ordered_samples
-                                if isinstance(row.get("cloud_cover"), (int, float))]
         except (TypeError, ValueError):
-            local_sample, path_samples = None, []
+            local_sample = None
 
     local_low = local_sample.get("cloud_cover_low") if local_sample else None
     local_total = local_sample.get("cloud_cover") if local_sample else None
-    path_mean_total = (sum(float(row["cloud_cover"]) for row in path_samples) / len(path_samples)
-                       if path_samples else total)
     profile_base_agl = local.get("cloud_base_agl_km") if local else None
     profile_based = bool(local and "剖面" in str(local.get("base_source", "")))
 
@@ -1463,14 +1448,6 @@ def apply_path_score_pair(inferred, geometry, boundaries, samples=None):
         verdict_override = "光板天"
         new_rule_notes.append(
             f"本地总云量为 {local_total:.0f}%，低于10%，单次单模式结论标记为光板天。")
-    elif (gap_status == "continuous_cloud" and not gaps
-          and isinstance(path_mean_total, (int, float)) and path_mean_total > 50):
-        before = regular
-        regular *= 0.5
-        verdict_override = "光线难以穿透"
-        new_rule_notes.append(
-            f"极限云距内未识别到可判读晴空间隔，采样路径平均总云量约 {path_mean_total:.0f}%；"
-            f"常规概率由 {before:.0f}% 折半至 {regular:.0f}%。")
 
     regular = int(round(max(0, min(100, regular))))
     upper = int(round(max(regular, min(100, upper))))
@@ -1488,14 +1465,8 @@ def apply_path_score_pair(inferred, geometry, boundaries, samples=None):
         f"AOD扣分：常规-{aod_regular_penalty:.1f}分，上限-{aod_upper_penalty:.1f}分；区间内线性变化，未经过历史实况校准。" if aod is not None else "AOD缺测：未做AOD扣分，不把缺测视为良好空气条件。",
         "上限评分保留几何和受光云量的硬约束，放宽部分云况惩罚；它描述理想情景潜力，不代表发生概率。",
     ]
-    if gap_status == "continuous_cloud":
-        inferred["score_notes"].append(
-            f"云洞优先约束：理论照明距离内有{boundaries.get('gap_evidence_points', 0)}个完整低/中/高云采样点，"
-            f"覆盖跨度约{boundaries.get('gap_evidence_span_km', 0):.0f} km，未发现低/中/高云量均<=15%的有效云洞；"
-            "常规评分封顶20、上限评分封顶35，避免连续云层条件下仅因中高云充足而虚高。"
-        )
-    elif gap_status == "unknown":
-        inferred["score_notes"].append("云洞状态未知：距离采样不足或低/中/高云数据不完整，不能把缺测当作晴空，也不按已证实连续云层硬封顶。")
+    if gap_status == "unknown":
+        inferred["score_notes"].append("水平晴空间隔状态未知：距离采样不足或低/中/高云数据不完整；缺测不当作晴空，路径遮挡由严格球面光路追踪单独验证。")
     inferred["score_notes"].extend(new_rule_notes)
     return enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples=samples)
 
@@ -1568,12 +1539,6 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
     elif isinstance(local_100km_mean_total, (int, float)) and local_100km_mean_total < 5:
         inferred["regular_score"] = 0
         verdict, rule = "云量不足", "local_100km_mean_total_cloud_below_5pct"
-    elif (gap_status == "continuous_cloud" and not gaps and
-          isinstance(path_mean, (int, float)) and float(path_mean) > 50):
-        # apply_path_score_pair() may already have applied the 0.5 factor.
-        if inferred.get("verdict_override") != "光线难以穿透":
-            inferred["regular_score"] = float(inferred.get("regular_score", inferred.get("score", 0))) * 0.5
-        verdict, rule = "光线难以穿透", "continuous_cloud_path_mean_over_50pct"
     elif isinstance(local_total, (int, float)) and float(local_total) < 10:
         verdict, rule = "光板天", "local_total_cloud_below_10pct"
 
@@ -1591,15 +1556,14 @@ def enforce_single_mode_special_verdicts(inferred, geometry, boundaries, samples
     strict_zero_rule = rule in ("profile_cloud_base_below_500m", "local_low_cloud_at_least_90pct",
                                 "local_100km_mean_total_cloud_below_5pct")
     # A pre-existing advisory verdict must NOT bypass the hard 20% probability cap.
-    # In particular, a preceding "光线难以穿透" / "光板天" label may still be
-    # correct as a *description*, but it cannot make a zero-range sky score 61%.
+    # A zero-range sky score cannot be restored by an advisory label.
     uncapped_zero_range_score = score
     zero_range_cap_applied = bool(no_potential_range and not strict_zero_rule)
     if zero_range_cap_applied:
         score = min(score, 20)
         inferred["regular_score"] = score
         inferred["score"] = score
-        if verdict not in ("光线难以穿透", "光板天", "机会太小，几乎不烧", "云量不足"):
+        if verdict not in ("光板天", "机会太小，几乎不烧", "云量不足"):
             verdict, rule = "云量不足", "zero_potential_fire_cloud_range_cap_20pct"
         inferred.setdefault("score_notes", []).append(
             f"潜在霞云距为0或未识别：常规概率按硬规则封顶20%（封顶前 {uncapped_zero_range_score}%）。")

@@ -17,6 +17,8 @@ from zoneinfo import ZoneInfo
 CACHE_DIR = Path(__file__).resolve().parents[1] / 'data' / 'interactive_forecast_cache'
 LOCAL_TZ = ZoneInfo('Asia/Shanghai')
 MODEL_CODES = {'EC': 'ECMWF IFS 0.25°', 'GFS': 'GFS Global'}
+CACHE_SCHEMA_VERSION = 2
+ALGORITHM_CACHE_TAG = '20261120-no-continuous-cloud-heuristic-v1'
 
 
 def local_now():
@@ -41,7 +43,7 @@ def identity(place, lat, lon, elevation, forecast_date, model, direction):
     if code not in MODEL_CODES or direction not in ('morning', 'evening'):
         raise ValueError('interactive cache identity requires EC/GFS and morning/evening')
     raw = json.dumps([
-        str(place or '').strip(), round(float(lat), 5), round(float(lon), 5),
+        ALGORITHM_CACHE_TAG, str(place or '').strip(), round(float(lat), 5), round(float(lon), 5),
         round(float(elevation or 0), 1), str(forecast_date), code, direction,
     ], ensure_ascii=False, separators=(',', ':'))
     return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:28]
@@ -100,7 +102,7 @@ def save(*, place, lat, lon, elevation, forecast_date, model, direction,
     safe = to_safe or (lambda value: value)
     now = local_now()
     record = {
-        'schema_version': 1,
+        'schema_version': CACHE_SCHEMA_VERSION,
         'cache_key': key,
         'saved_local_date': now.date().isoformat(),
         'saved_at': now.isoformat(timespec='seconds'),
@@ -129,7 +131,7 @@ def load(*, place, lat, lon, elevation, forecast_date, model, direction):
     except (TypeError, ValueError):
         return None
     record = _read_path(_path(key))
-    if not record or record.get('saved_local_date') != local_today():
+    if not record or record.get('schema_version') != CACHE_SCHEMA_VERSION or record.get('saved_local_date') != local_today():
         return None
     if record.get('cache_key') != key:
         return None

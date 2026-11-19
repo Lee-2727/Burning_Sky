@@ -135,7 +135,7 @@ def verdict(result):
     """One short forecast sentence; never reproduce the engine's long report."""
     inf = result.get('inferred') or {}
     special = str(inf.get('verdict_override') or '').strip()
-    known = {'光板天','云底过低','低云遮挡过多','光线难以穿透','云量不足','低云上烧','不烧','可能少云'}
+    known = {'光板天','云底过低','低云遮挡过多','云量不足','低云上烧','不烧','可能少云'}
     if special in known and special != '低云上烧':
         return '预计' + special + '，朝晚霞表现有限。'
     prob = number(inf.get('regular_score'))

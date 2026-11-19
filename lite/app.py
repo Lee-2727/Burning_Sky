@@ -37,7 +37,7 @@ from lite.bar_cards import CSS as CHART_CSS, render as render_bars
 
 # Visible build marker: if the hosted Lite still shows five dates, it is running old code.
 LITE_OVERVIEW_UI_BUILD = '3D-GEOMETRIC-VISUAL-20261119-R4'
-LITE_SINGLE_ENGINE_BUILD = 'SHARED-ENGINE-CLOUD-BOTTOM-EVENT-GEOMETRIC-VISUAL-ANGLE-DAILY-CACHE-20261120-R4-GLASS-CARDS'
+LITE_SINGLE_ENGINE_BUILD = 'SHARED-ENGINE-CLOUD-BOTTOM-EVENT-GEOMETRIC-VISUAL-ANGLE-DAILY-CACHE-20261120-R5-NO-CONTINUOUS-CLOUD'
 
 st.set_page_config(page_title='Burning Skies Lite', page_icon='🌅', layout='wide', initial_sidebar_state='collapsed')
 
@@ -144,8 +144,8 @@ hr{border-color:var(--lite-hairline) !important;margin:1.4rem 0}
   box-shadow:0 10px 26px rgba(8,10,20,.18);
 }
 .bs-lite-model-summary .label{
-  font-size:11px;font-weight:650;letter-spacing:.025em;
-  color:var(--lite-faint);margin-bottom:5px;
+  font-size:13px;font-weight:680;letter-spacing:.02em;
+  color:var(--lite-faint);margin-bottom:6px;
 }
 .bs-lite-model-summary .text{
   font-size:14px;line-height:1.5;font-weight:600;color:var(--lite-ink);
@@ -529,7 +529,7 @@ else:
                         st.metric('色彩分',_display_metric('',inf.get('color_score')))
                         st.metric('视觉规模',_display_metric('',inf.get('visual_burn_scale_index'),'%'))
                         _reason=__import__('html').escape(verdict(_shown_candidate))
-                        st.markdown('<div class=\"bs-lite-model-summary\"><div class=\"label\">一句话总结</div>'
+                        st.markdown('<div class=\"bs-lite-model-summary\"><div class=\"label\">结论</div>'
                                     '<div class=\"text\">'+_reason+'</div></div>',unsafe_allow_html=True)
                         st.caption('模型数据时间：'+source_time(candidate['result'],candidate.get('fetched_at')))
                     else:

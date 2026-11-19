@@ -2078,15 +2078,15 @@ class FireCloudApp(tk.Tk):
                             boundaries["farthest_gap_distance_km"] = None
                             boundaries["farthest_gap_start_km"] = None
                             # No candidate from sampled profile; conservative screening, not physical proof.
-                            boundaries["gap_status"] = "continuous_cloud"
+                            boundaries["gap_status"] = "unknown"
                             inferred.setdefault("score_notes", []).append(
-                                "极限云距内未找到直接晴空区；球面光线追踪未发现数据完整且无遮挡的有效时刻，透光路径判定为无效。")
+                                "严格球面光线追踪未发现数据完整且无遮挡的有效时刻；路径状态由球面追踪诊断记录，不再触发连续云经验封顶。")
                     except Exception as _ray_exc:
                         search_stage = "spherical_raytrace_error"
                         cloud_hole_search.update({"stage": search_stage, "gaps": []})
                         boundaries["clear_gaps"] = []
                         boundaries["clear_gap_count"] = 0
-                        boundaries["gap_status"] = "continuous_cloud"
+                        boundaries["gap_status"] = "unknown"
                         inferred["spherical_raytrace_debug_error"] = str(_ray_exc)
                         inferred.setdefault("score_notes", []).append(
                             "球面光线追踪执行失败，未将未知状态当作透光证据；按无有效透光路径保守处理。")
@@ -5372,7 +5372,7 @@ class FireCloudApp(tk.Tk):
 
     @staticmethod
     def _set_judgment_text(widget, regular_score, color_score, burn_label, visual_scale=None):
-        special_verdicts = {"云底过低", "光线难以穿透", "低云遮挡过多", "机会太小，几乎不烧", "光板天", "云量不足", "不烧"}
+        special_verdicts = {"云底过低", "低云遮挡过多", "机会太小，几乎不烧", "光板天", "云量不足", "不烧"}
         if str(burn_label or "") in special_verdicts:
             try:
                 widget.configure(state="normal")
@@ -6248,9 +6248,9 @@ class FireCloudApp(tk.Tk):
         else:
             gap_start=gap_end=next_cloud=None
             # Excel 区间是用户明确输入的连续路径；若多个区间连续且云量一直>15%，视为无有效云洞。
-            all_contiguous = all(abs(zones[i]["end"]-zones[i+1]["start"]) < 0.01 for i in range(len(zones)-1))
-            has_cloud_throughout = len(zones) >= 3 and all(float(z["cover"]) > 15 for z in zones)
-            gap_status = "continuous_cloud" if all_contiguous and has_cloud_throughout else "unknown"
+            # A contiguous cloudy horizontal sample is not a physical light-path verdict.
+            # Strict spherical ray tracing is the sole illumination-path validator.
+            gap_status = "unknown"
         inferred={"low":low,"mid":mid,"high":high,"total":weighted_total,"aod":data["aod"]}
         geometry={"rows":[{"distance_km":0,"effective_base_km":effective_km,"reach_km":reach_km}]}
         boundaries={"clear_gap_start_km":gap_start,"clear_gap_end_km":gap_end,"cloud_edge_distance_km":next_cloud,

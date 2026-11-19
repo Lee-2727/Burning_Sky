@@ -1683,7 +1683,7 @@ if results:
             color_palette = {"平平无奇": "#e2c76a", "普通": "#c99b24", "绚烂": "#e67e22", "史诗": "#d62828", "世纪": "#9d174d"}
             color_hex = color_palette.get(color_class, "#4b5563")
             special_verdict = inferred.get("verdict_override")
-            if isinstance(visual_burn_index,(int,float)) and visual_burn_index < 3 and special_verdict not in ('光板天', '云底过低', '低云遮挡过多', '光线难以穿透', '云量不足'):
+            if isinstance(visual_burn_index,(int,float)) and visual_burn_index < 3 and special_verdict not in ('光板天', '云底过低', '低云遮挡过多', '云量不足'):
                 special_verdict = '不烧'
             if special_verdict:
                 st.markdown(
