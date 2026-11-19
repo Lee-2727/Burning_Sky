@@ -12,7 +12,6 @@ from PIL import Image, ImageOps
 from .satellite_auto_vision import recognize_cities, auto_cloud_references
 from .satellite_calibration import _avg_patch, compare_samples
 from .lite_forecast import number
-from .satellite_model_selection import choose_cached_model
 
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 
@@ -93,11 +92,25 @@ def rank_cached_models(image_bytes: bytes, candidates: dict):
         fit=_model_fit(rows)
         diagnostics[str(code).upper()]={**fit,'checked_points':len(rows),
             'candidate_count':len(_good_rows(rows))}
-    # Shared Pro/Lite rule: when EC and GFS scores differ by <2 points,
-    # always use EC, regardless of sample count or confidence differences.
-    winner=choose_cached_model(diagnostics, tie_threshold=2.0, preferred='EC')
-    if not any(d.get('score') is not None for d in diagnostics.values()):
+    available=[(code,d) for code,d in diagnostics.items() if d.get('score') is not None]
+    if not available:
+        # No reliable pixel-to-path comparison: keep a deterministic EC baseline
+        # rather than blocking the user's calibration workflow or claiming a win.
+        winner='EC' if 'EC' in diagnostics else next(iter(diagnostics))
         diagnostics[winner]['note']='有效匹配点不足，无法区分模型；按 EC 优先规则选择基准'
+        return winner, diagnostics, quality
+    # Lower weighted appearance error is better. If scores are effectively tied,
+    # prefer broader evidence, then higher confidence; EC is the deterministic tie-break.
+    available.sort(key=lambda item:(item[1]['score'], -item[1]['points'],
+                                    -(item[1].get('mean_confidence') or 0),
+                                    0 if item[0]=='EC' else 1))
+    winner=available[0][0]
+    if len(available)>1:
+        first,second=available[0][1],available[1][1]
+        if abs(float(first['score'])-float(second['score']))<2.0:
+            # Difference smaller than the qualitative proxy's resolution.
+            if first['points']==second['points'] and abs((first.get('mean_confidence') or 0)-(second.get('mean_confidence') or 0))<.03:
+                winner='EC' if 'EC' in diagnostics else winner
     return winner, diagnostics, quality
 
 
