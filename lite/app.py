@@ -25,7 +25,6 @@ import streamlit as st
 from burning_sky.place_excel_paths import find_place_workbook
 from burning_sky.lite_forecast import run_single, verdict, source_time, event_time, clouds, number
 from burning_sky.lite_satellite import calibrate_auto, MAX_UPLOAD_BYTES
-from burning_sky.web_color_curve import draw_dynamic_color_curve
 from burning_sky.warm_web_theme import apply_warm_theme, render_hero
 from burning_sky.advanced_bridge import identity as advanced_identity, read as archive_read, write as archive_write
 from burning_sky.interactive_result_cache import load as load_interactive_cache, save as save_interactive_cache
@@ -38,7 +37,7 @@ from lite.bar_cards import CSS as CHART_CSS, render as render_bars
 
 # Visible build marker: if the hosted Lite still shows five dates, it is running old code.
 LITE_OVERVIEW_UI_BUILD = '3D-GEOMETRIC-VISUAL-20261119-R4'
-LITE_SINGLE_ENGINE_BUILD = 'SHARED-ENGINE-CLOUD-BOTTOM-EVENT-GEOMETRIC-VISUAL-ANGLE-DAILY-CACHE-20261120-R1'
+LITE_SINGLE_ENGINE_BUILD = 'SHARED-ENGINE-CLOUD-BOTTOM-EVENT-GEOMETRIC-VISUAL-ANGLE-DAILY-CACHE-20261120-R3-REASON-CARDS'
 
 st.set_page_config(page_title='Burning Skies Lite', page_icon='🌅', layout='wide', initial_sidebar_state='collapsed')
 
@@ -134,6 +133,24 @@ hr{border-color:var(--lite-hairline) !important;margin:1.4rem 0}
 [data-testid="stMetricLabel"]{color:var(--lite-faint) !important;font-size:.78rem;font-weight:500;letter-spacing:.02em}
 [data-testid="stMetricValue"]{color:var(--lite-ink) !important;font-weight:650 !important;font-size:1.62rem !important;letter-spacing:-.02em}
 
+/* Compact EC/GFS comparison cards: three readable rows instead of three
+   separate Streamlit metric cards, so each model needs less horizontal space. */
+.bs-lite-model-compact{
+  min-width:0;padding:13px 15px 11px;border:1px solid var(--lite-line);
+  border-radius:16px;background:var(--lite-card);overflow:hidden;
+}
+.bs-lite-model-compact .head{font-size:14px;font-weight:700;letter-spacing:.02em;margin-bottom:8px;color:var(--lite-ink)}
+.bs-lite-model-compact .metric-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--lite-hairline)}
+.bs-lite-model-compact .metric-label{font-size:12px;line-height:1.35;color:var(--lite-faint);white-space:nowrap}
+.bs-lite-model-compact .metric-value{font-size:15px;line-height:1.3;font-weight:680;color:var(--lite-ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+.bs-lite-model-compact .meta{margin-top:8px;padding-top:7px;border-top:1px solid var(--lite-hairline);font-size:10.5px;line-height:1.35;color:var(--lite-faint)}
+.bs-lite-model-reason{
+  min-width:0;margin-top:8px;padding:11px 13px;border:1px solid var(--lite-line);
+  border-radius:16px;background:var(--lite-card);overflow-wrap:anywhere;
+}
+.bs-lite-model-reason .label{font-size:11px;font-weight:650;letter-spacing:.02em;color:var(--lite-faint);margin-bottom:5px}
+.bs-lite-model-reason .text{font-size:13px;line-height:1.5;font-weight:560;color:var(--lite-ink)}
+
 /* Segmented navigation pill */
 .stButtonGroup, [data-testid="stSegmentedControl"]{border-radius:14px}
 .stButtonGroup button[role="tab"], .stButtonGroup button[role="radio"]{
@@ -222,6 +239,33 @@ button[kind="primary"], [data-testid="stBaseButton-primary"]{
   [data-testid="stMetricValue"]{font-size:1.38rem !important}
   .bs-hero-cap .t{font-size:17px !important}
 }
+/* The EC/GFS comparison is intentionally denser than ordinary content.
+   On phones with at least 400 CSS px, keep its two model cards side by side;
+   on narrower phones Streamlit's native mobile layout keeps them stacked. */
+@media(min-width:400px) and (max-width:640px){
+  .st-key-lite-model-comparison [data-testid="stHorizontalBlock"]{
+    flex-wrap:nowrap !important;
+    gap:.5rem !important;
+  }
+  .st-key-lite-model-comparison [data-testid="stHorizontalBlock"] > [data-testid="column"]{
+    flex:1 1 0 !important;
+    width:50% !important;
+    min-width:0 !important;
+    max-width:50% !important;
+  }
+  .bs-lite-model-compact{
+    min-width:0; padding:10px 10px 9px; border:1px solid var(--lite-line);
+    border-radius:14px; background:var(--lite-card); overflow:hidden;
+  }
+  .bs-lite-model-compact .head{font-size:13px;font-weight:700;letter-spacing:.02em;margin-bottom:7px;color:var(--lite-ink)}
+  .bs-lite-model-compact .metric-row{display:flex;align-items:baseline;justify-content:space-between;gap:5px;padding:4px 0;border-top:1px solid var(--lite-hairline)}
+  .bs-lite-model-compact .metric-label{font-size:11px;line-height:1.35;color:var(--lite-faint);white-space:nowrap}
+  .bs-lite-model-compact .metric-value{font-size:14px;line-height:1.3;font-weight:680;color:var(--lite-ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .bs-lite-model-reason{padding:9px 10px;border-radius:14px}
+  .bs-lite-model-reason .label{font-size:10px;margin-bottom:4px}
+  .bs-lite-model-reason .text{font-size:11.5px;line-height:1.4}
+  .st-key-lite-model-comparison [data-testid="stCaptionContainer"]{font-size:10px;line-height:1.3}
+}
 </style>''',unsafe_allow_html=True)
 
 @st.cache_data(show_spinner=False)
@@ -273,12 +317,6 @@ def _visual_result(result, fetched_at=None, direction='evening'):
         st.markdown('**'+' / '.join(_display_metric('',x,'%') for x in (lo,mid,hi))+'**')
         st.caption('上限概率')
         st.markdown('**'+_display_metric('',inferred.get('upper_score'),'%')+'**')
-    st.markdown('#### 云色时序')
-    curve=result.get('dynamic_light_curve') or {}
-    # The Lite variant keeps the real per-minute geometry, color and time axis,
-    # but removes the long scientific legend below the original Pro figure.
-    timeline=draw_dynamic_color_curve(curve.get('samples') or [],curve.get('peak'),direction)
-    st.image(timeline.crop((0,0,timeline.width,429)),use_container_width=True)
     # Expose the same verified-angle evidence used by the shared Pro engine;
     # Lite must not silently look like an older colour-score implementation.
     angle_diag=inferred.get('color_angle_diagnostic') or {}
@@ -478,9 +516,13 @@ else:
         if loaded:
             st.session_state['lite_model_states']=loaded
             if model=='EC&GFS':
-                _prior_active=st.session_state.get('lite_active_model')
-                active=_prior_active if _prior_active in loaded else ('EC' if 'EC' in loaded else 'GFS')
-                st.session_state['lite_detail_model']=active
+                # The comparison view no longer has a detail-model switch.
+                # Use the model with a restored satellite correction for the
+                # calibration status panel; otherwise EC is the stable default.
+                active=next((code for code in ('EC','GFS')
+                             if loaded.get(code,{}).get('calibration')),None)
+                if active not in loaded:
+                    active='EC' if 'EC' in loaded else 'GFS'
             else:
                 active='EC' if model=='ECMWF IFS 0.25°' else 'GFS'
             st.session_state['lite_current']=loaded.get(active) or next(iter(loaded.values()))
@@ -498,29 +540,41 @@ else:
     state=st.session_state.get('lite_current')
     if model=='EC&GFS' and model_states:
         st.markdown('#### EC / GFS 当日结果')
-        cols=st.columns(2)
-        for col,code in zip(cols,('EC','GFS')):
-            with col:
-                candidate=model_states.get(code)
-                st.markdown('**'+code+'**')
-                if candidate:
-                    _corrected=(candidate.get('calibration') or {}).get('result') if (candidate.get('calibration') or {}).get('changed') else None
-                    _shown_candidate=_corrected or candidate['result']
-                    inf=_shown_candidate.get('inferred') or {}
-                    st.metric('常规概率',_display_metric('',inf.get('regular_score'),'%'))
-                    st.metric('色彩分',_display_metric('',inf.get('color_score')))
-                    st.metric('视觉规模',_display_metric('',inf.get('visual_burn_scale_index'),'%'))
-                    st.caption('模型数据时间：'+source_time(candidate['result'],candidate.get('fetched_at')))
-                else:
-                    st.info('暂无当日完整缓存；需要查询后才会显示。')
+        with st.container(key='lite-model-comparison'):
+            cols=st.columns(2,gap='small')
+            for col,code in zip(cols,('EC','GFS')):
+                with col:
+                    candidate=model_states.get(code)
+                    if candidate:
+                        _corrected=(candidate.get('calibration') or {}).get('result') if (candidate.get('calibration') or {}).get('changed') else None
+                        _shown_candidate=_corrected or candidate['result']
+                        inf=_shown_candidate.get('inferred') or {}
+                        _rows=(('常规概率',_display_metric('',inf.get('regular_score'),'%')),
+                               ('色彩分',_display_metric('',inf.get('color_score'))),
+                               ('视觉规模',_display_metric('',inf.get('visual_burn_scale_index'),'%')))
+                        _html_rows=''.join(
+                            '<div class=\"metric-row\"><span class=\"metric-label\">'+__import__('html').escape(label)+
+                            '</span><span class=\"metric-value\">'+__import__('html').escape(value)+'</span></div>'
+                            for label,value in _rows)
+                        _data_time=__import__('html').escape(source_time(candidate['result'],candidate.get('fetched_at')))
+                        st.markdown('<div class=\"bs-lite-model-compact\"><div class=\"head\">'+code+
+                                    '</div>'+_html_rows+'<div class=\"meta\">数据时间：'+_data_time+'</div></div>',
+                                    unsafe_allow_html=True)
+                        _reason=__import__('html').escape(verdict(_shown_candidate))
+                        st.markdown('<div class=\"bs-lite-model-reason\"><div class=\"label\">判断依据</div>'
+                                    '<div class=\"text\">'+_reason+'</div></div>',unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div class=\"bs-lite-model-compact\"><div class=\"head\">'+code+
+                                    '</div><div class=\"metric-label\">暂无当日完整缓存</div></div>',unsafe_allow_html=True)
+                        st.markdown('<div class=\"bs-lite-model-reason\"><div class=\"label\">判断依据</div>'
+                                    '<div class=\"text\">暂无可用结果</div></div>',unsafe_allow_html=True)
         available=[x for x in ('EC','GFS') if x in model_states]
-        if len(available)>1:
-            active=st.segmented_control('详细分析',available,default=st.session_state.get('lite_active_model','EC'),key='lite_detail_model')
-        else:
-            active=available[0]
+        _active=st.session_state.get('lite_active_model')
+        active=_active if _active in available else ('EC' if 'EC' in available else available[0])
         st.session_state['lite_active_model']=active
         state=model_states.get(active)
-        if state: st.session_state['lite_current']=state
+        if state:
+            st.session_state['lite_current']=state
     elif model in ('ECMWF IFS 0.25°','GFS Global') and model_states:
         active='EC' if model=='ECMWF IFS 0.25°' else 'GFS'
         state=model_states.get(active) or state
@@ -530,20 +584,22 @@ else:
         meta=state['meta']
         original=state['result']
         corrected=(state.get('calibration') or {}).get('result') if (state.get('calibration') or {}).get('changed') else None
-        st.markdown(f"**{meta['place']} · {meta['date']} · {'朝霞' if meta['direction']=='morning' else '晚霞'} · {meta['model_label']}**")
+        _display_model_label='EC&GFS 双模式' if model=='EC&GFS' else meta['model_label']
+        st.markdown(f"**{meta['place']} · {meta['date']} · {'朝霞' if meta['direction']=='morning' else '晚霞'} · {_display_model_label}**")
         st.caption('Lite 单次计算：'+LITE_SINGLE_ENGINE_BUILD+' · EC/GFS 共用云底受光与视觉规模算法' + (' · 已恢复当日缓存，未重新请求天气 API' if state.get('from_cache') else ''))
-        if corrected:
-            _version_table(original,corrected)
-            if st.session_state.pop('lite_next_version',None)=='校准后':
-                st.session_state['lite_version']='校准后'
-            if 'lite_version' in st.session_state:
-                selected=st.segmented_control('结果版本',['原始预测','校准后'],key='lite_version')
+        if model!='EC&GFS':
+            if corrected:
+                _version_table(original,corrected)
+                if st.session_state.pop('lite_next_version',None)=='校准后':
+                    st.session_state['lite_version']='校准后'
+                if 'lite_version' in st.session_state:
+                    selected=st.segmented_control('结果版本',['原始预测','校准后'],key='lite_version')
+                else:
+                    selected=st.segmented_control('结果版本',['原始预测','校准后'],default='校准后',key='lite_version')
+                displayed=corrected if selected=='校准后' else original
             else:
-                selected=st.segmented_control('结果版本',['原始预测','校准后'],default='校准后',key='lite_version')
-            displayed=corrected if selected=='校准后' else original
-        else:
-            displayed=original
-        _visual_result(displayed,state.get('fetched_at'),meta['direction'])
+                displayed=original
+            _visual_result(displayed,state.get('fetched_at'),meta['direction'])
         st.divider()
         st.markdown('#### 卫星校准')
         upload_identity=hashlib.sha256(json.dumps([meta['place'],meta['lat'],meta['lon'],meta['elev'],meta['date'],meta['direction']],ensure_ascii=False).encode()).hexdigest()[:18]
