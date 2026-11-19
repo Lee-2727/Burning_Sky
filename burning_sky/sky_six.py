@@ -386,6 +386,61 @@ def _cloud_bottom_sweep_grid(limit_km):
     return [BOTTOM_SWEEP_STEP_KM*i for i in range(count+1)]
 
 
+def _exposed_cloud_target_cells(target_cells, support_cells=None, vertical_touch_km=0.15):
+    """Remove vertically stacked upper cells from the *target* list only.
+
+    A lower cloud block supports an upper block when it overlaps horizontally,
+    reaches the upper block's lower boundary (within ``vertical_touch_km``),
+    and has at least the same 25% cover threshold used by the optical blocker
+    field.  Covered portions of an upper cell are subtracted; uncovered
+    horizontal portions remain eligible targets.  The original cells are not
+    mutated and must remain in the blocker field.
+    """
+    source=list(target_cells or [])
+    supports=list(support_cells if support_cells is not None else source)
+    out=[]
+    removed_width=0.0
+    split_count=0
+    eps=1e-8
+    for upper in sorted(source,key=lambda c:(float(c.get('bottom_km',0)),
+                                             float(c.get('start_km',0)),
+                                             float(c.get('top_km',0)))):
+        ua=float(upper.get('start_km',0)); ub=float(upper.get('end_km',0))
+        ubase=float(upper.get('bottom_km',0))
+        if ub<=ua: continue
+        cuts=[]
+        for lower in supports:
+            lb=float(lower.get('bottom_km',0)); lt=float(lower.get('top_km',0))
+            if lb>=ubase-eps: continue
+            if lt < ubase-float(vertical_touch_km)-eps: continue
+            if float(lower.get('cloud_cover',0) or 0)<25.0: continue
+            a=max(ua,float(lower.get('start_km',ua)))
+            b=min(ub,float(lower.get('end_km',ub)))
+            if b>a+eps: cuts.append((a,b))
+        if not cuts:
+            out.append(dict(upper)); continue
+        cuts.sort(); merged=[]
+        for a,b in cuts:
+            if not merged or a>merged[-1][1]+eps: merged.append([a,b])
+            else: merged[-1][1]=max(merged[-1][1],b)
+        pieces=[]; cursor=ua
+        for a,b in merged:
+            if a>cursor+eps: pieces.append((cursor,a))
+            cursor=max(cursor,b)
+        if cursor<ub-eps: pieces.append((cursor,ub))
+        removed_width += (ub-ua)-sum(b-a for a,b in pieces)
+        if len(pieces)>1: split_count+=1
+        for a,b in pieces:
+            row=dict(upper);row['start_km']=a;row['end_km']=b
+            row['stacked_upper_target_piece']=True
+            out.append(row)
+    return out, {'input_target_cells':len(source),'retained_target_cells':len(out),
+                 'removed_stacked_horizontal_km':round(removed_width,3),
+                 'split_upper_cells':split_count,
+                 'vertical_touch_tolerance_km':float(vertical_touch_km),
+                 'support_cloud_cover_threshold_pct':25.0}
+
+
 def _bottom_sweep_strips(target, limit_km, refine_points=()):
     """Actual widths owned by cloud-bottom positions on the global scan grid.
 
@@ -570,8 +625,11 @@ def dynamic_solar_source_horizon(profiles, event_dt, utc_offset, lat, lon,
     and the strict tracer MUST validate their actual cloud intersections.
     Invalid targets/angles do not fabricate a clear ray.
     """
-    cells=profile_cloud_cells(profiles or (),threshold=0.000001,
-                              blur_horizontal_km=0.,blur_vertical_km=0.)
+    all_target_cells=profile_cloud_cells(profiles or (),threshold=0.000001,
+                                         blur_horizontal_km=0.,blur_vertical_km=0.)
+    support_cells=profile_cloud_cells(profiles or (),threshold=25.,
+                                      blur_horizontal_km=0.,blur_vertical_km=0.)
+    cells,stacking_diag=_exposed_cloud_target_cells(all_target_cells,support_cells)
     reach=max(0.,float(reach_km or 0.))
     limit=(min(reach,max(0.,float(target_limit_km)))
            if target_limit_km is not None else reach)
@@ -620,7 +678,8 @@ def dynamic_solar_source_horizon(profiles, event_dt, utc_offset, lat, lon,
     return {'required_source_km':end,'raw_required_km':round(max_required,2),
             'minimum_source_km':round(base,2), 'atmosphere_ceiling_km':atmosphere_top_km,
             'eligible_ray_count':eligible,'limiting_ray':worst,
-            'method':'minute_target_cloud_bottom_and_face_spherical_sunray_exit'}
+            'stacked_target_diagnostic':stacking_diag,
+            'method':'exposed_cloud_bottom_and_face_spherical_sunray_exit'}
 
 
 def _validated_cloud_bottom(target, minute, dt, event_az, lat, lon, utc_offset,
@@ -738,7 +797,8 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
     # Never treat the nonzero target cloud as a completely opaque blocker
     # merely because it contributes some fractional cloud coverage.
     cells=profile_cloud_cells(valid,threshold=25.,blur_horizontal_km=0.,blur_vertical_km=0.)
-    target_cells=profile_cloud_cells(valid,threshold=0.000001,blur_horizontal_km=0.,blur_vertical_km=0.)
+    all_target_cells=profile_cloud_cells(valid,threshold=0.000001,blur_horizontal_km=0.,blur_vertical_km=0.)
+    target_cells,stacking_diag=_exposed_cloud_target_cells(all_target_cells,cells)
     limit = min(reach, max(0.0, float(target_limit_km))) if target_limit_km is not None else reach
     # Target is its real SUNWARD face, not the profile-centre point. A ray
     # starting at centre would either ignore part of its cloud or self-block.
@@ -754,7 +814,8 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
     if not targets:
         return {'gaps':[], 'status':'no_target_cloud','evaluations':0, 'verified_ray_traces': [], 'verified_target_bands': [],
                 'required_profile_km':round(required,2), 'available_profile_km':round(available,2),
-                'note':'霞云距内没有满足剖面条件的中高云目标'}
+                'note':'霞云距内没有满足剖面条件的中高云目标',
+                'stacked_target_diagnostic':stacking_diag}
     verified=[]; evaluations=0; confirmed_faces=set(); by_minute={}
     # Per-minute verification collects every target; no selection of a winner.
     verified_target_bands=[]
@@ -966,6 +1027,7 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
             'bottom_verified_point_count':bottom_verified_count,
             'bottom_unresolved_point_count':bottom_unknown_count,
             'bottom_inner_sweep_method':'global_fixed_15km_single_if_short',
+            'stacked_target_diagnostic':stacking_diag,
             'target_surface_methods':['cloud_bottom','sunward_face'],
             'spatially_unverified_minutes':sorted(uncovered_minutes),
             'source_boundary_unresolved_minutes':sorted(source_boundary_unresolved_minutes),

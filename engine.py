@@ -2008,6 +2008,7 @@ class FireCloudApp(tk.Tk):
                         inferred['adaptive_target_candidates'] = _adaptive.get('gaps', [])
                         inferred['verified_primary_ray_traces'] = _adaptive.get('verified_ray_traces', [])
                         inferred['verified_bottom_sample_traces'] = _adaptive.get('verified_target_bottom_points', [])
+                        inferred['stacked_target_diagnostic'] = _adaptive.get('stacked_target_diagnostic', {})
                         inferred['verified_sunward_face_traces'] = [r for r in (_adaptive.get('verified_ray_traces') or [])
                             if r.get('status') == 'verified_sunward_face_full_sampled_corridor']
                         inferred['verified_sunward_face_bands'] = _adaptive.get('verified_target_bands', [])
@@ -2027,6 +2028,7 @@ class FireCloudApp(tk.Tk):
                             'horizontal_fusion_enabled':_adaptive.get('horizontal_fusion_enabled',False),
                             'horizontal_conflict_unresolved_minutes':_adaptive.get('horizontal_conflict_unresolved_minutes',[]),
                             'horizontal_conflict_examples':_adaptive.get('horizontal_conflict_examples',[]),
+                            'stacked_target_diagnostic':_adaptive.get('stacked_target_diagnostic',{}),
                             'note':_adaptive.get('note')}
 
                         _profile_end = max((float(p.get('distance_km', 0)) for p in profiles), default=0.0)

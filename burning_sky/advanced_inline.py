@@ -331,7 +331,7 @@ def render_inline(runtime_engine=None):
     remaining=cooldown_remaining()
     if remaining:
         st.warning(f'Open-Meteo 冷却中，约剩余 {remaining} 秒。已保存的预测仍可查看；期间不要重复点击重算。')
-    st.caption('卫星补采使用专用慢速档：真实HTTP请求至少间隔8秒，最多每分钟7次。缓存命中不占额度；遇到429时暂停，保留成功补采。')
+    st.caption('卫星补采使用专用慢速档：真实HTTP请求至少间隔15.5秒，最多每分钟4次。缓存命中不占额度；遇到429后全局暂停20分钟，保留已成功补采。')
 
     col1,col2,col3=st.columns([1,1,2])
     col1.caption('✅ 当前单次结果已继承')

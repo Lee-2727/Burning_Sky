@@ -1,56 +1,49 @@
-"""Web cloud-profile renderer matching the desktop diagnostic drawing style.
+# -*- coding: utf-8 -*-
+"""Web cloud-profile renderer using the desktop Matplotlib diagnostic style.
 
-The renderer is display-only. Strict paths, geometric candidates, blocked
-bottom samples and reconstructed cloud layers retain separate visual semantics.
+Rendering is display-only: it does not change cloud geometry, ray validation,
+or target weights. Verified bottom rays, reverse-burn face evidence, geometric
+candidates and blocked bottom samples retain separate visual semantics.
 """
-import json
+from __future__ import annotations
+
+import io
 import math
-import os
-from PIL import Image, ImageDraw, ImageFont
-from .spherical_raytrace import profile_cloud_cells, _earth_occluded, _ray_height_km
-from .profile_geometry import sample_ray_curve
+from PIL import Image
 
 
-def _font(size, bold=False):
-    candidates = (['/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',
-                   '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-                   '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf'] if bold else
-                  ['/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-                   '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-                   '/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf'])
-    for path in candidates:
-        try:
-            return ImageFont.truetype(path, size)
-        except OSError:
-            pass
-    return ImageFont.load_default()
-
-
-def _dashed_line(draw, xy, fill, width=2, dash=8, gap=5):
-    if len(xy) < 2:
-        return
-    for a, b in zip(xy, xy[1:]):
-        dx, dy = b[0]-a[0], b[1]-a[1]
-        length = math.hypot(dx, dy)
-        if length < 1:
-            continue
-        ux, uy = dx/length, dy/length
-        pos = 0.0
-        while pos < length:
-            end = min(length, pos+dash)
-            draw.line((a[0]+ux*pos, a[1]+uy*pos,
-                       a[0]+ux*end, a[1]+uy*end), fill=fill, width=width)
-            pos += dash+gap
+def _setup_chinese_fonts():
+    from matplotlib import rcParams, font_manager
+    known = {x.name for x in font_manager.fontManager.ttflist}
+    preferred = ('Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP',
+                 'SimHei', 'AR PL UMing CN', 'DejaVu Sans')
+    rcParams['font.sans-serif'] = [x for x in preferred if x in known] or ['DejaVu Sans']
+    rcParams['axes.unicode_minus'] = False
 
 
 def render_profile(result, width=1600, height=900):
-    """Render a desktop-style distance/height cross-section for Streamlit."""
+    """Return a desktop-style distance/height cross-section as a PIL image.
+
+    Verified bottom rays are grouped by their 15-km target zone and rendered
+    with thin, translucent LineCollections, matching the desktop fusion plot.
+    This avoids the opaque purple wall created by drawing hundreds of thick
+    individual Pillow lines. Upper stacked cloud cells remain in the cloud
+    obstruction/profile display, but the ray engine no longer treats them as
+    independent targets.
+    """
+    import numpy as np
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.patches import Rectangle
+    from matplotlib.collections import LineCollection
+    from matplotlib import colormaps
+    from burning_sky.spherical_raytrace import profile_cloud_cells, _earth_occluded, _ray_height_km
+
+    _setup_chinese_fonts()
     samples = sorted((result.get('samples') or []), key=lambda x: float(x.get('distance_km') or 0))
     raw_profiles = result.get('profiles') or []
     pmap = {p.get('distance_km'): p for p in raw_profiles if isinstance(p, dict)}
     profiles = []
-    # Match the desktop's display-only fallback: use pressure layers when they
-    # contain cloud evidence; otherwise show low/mid/high forecast bands.
     for sm in samples:
         prof = pmap.get(sm.get('distance_km'), {}) or {}
         levels = list(prof.get('levels') or [])
@@ -82,112 +75,56 @@ def render_profile(result, width=1600, height=900):
         return None
 
     inferred = result.get('inferred') or {}
-    ray_records = []
-    debug_path = inferred.get('spherical_raytrace_debug_json')
-    if debug_path and os.path.isfile(debug_path):
-        try:
-            with open(debug_path, encoding='utf-8') as f:
-                ray_records = json.load(f).get('results', [])
-        except (OSError, ValueError, TypeError):
-            ray_records = []
-
     all_verified = [r for r in (inferred.get('verified_primary_ray_traces') or [])
-                    if isinstance(r, dict) and isinstance(r.get('solar_altitude_deg'), (int, float))
+                    if isinstance(r, dict)
+                    and isinstance(r.get('solar_altitude_deg'), (int, float))
                     and isinstance(r.get('target_height_km'), (int, float))]
-    # Standard backlit fire-cloud rays must originate at cloud bottoms.
-    # Verified sunward faces are shown separately as reverse-burn evidence.
     verified_bottom = [r for r in all_verified
                        if r.get('surface') == 'cloud_bottom'
                        or r.get('status') == 'verified_cloud_bottom_spherical']
     verified_faces = [r for r in all_verified
                       if r.get('status') == 'verified_sunward_face_full_sampled_corridor']
+    candidates = [r for r in (inferred.get('spherical_face_plot_traces') or [])
+                  if isinstance(r, dict) and all(isinstance(r.get(k), (int, float))
+                  for k in ('target_face_km', 'target_height_km', 'solar_altitude_deg'))]
+
     target = next((float(r['target_height_km']) for r in verified_bottom), None)
     if target is None:
         target = next((float(r['target_height_km']) for r in verified_faces), None)
     if target is None:
-        target = next((float(r['target_cloud_base_km']) for r in ray_records
-                       if isinstance(r.get('target_cloud_base_km'), (int, float))), None)
-    if target is None:
         target = next((float(p['estimated_base_km']) for p in profiles
                        if float(p.get('distance_km') or 0) == 0 and
-                       isinstance(p.get('estimated_base_km'), (int, float))), None)
-    if target is None:
-        target = 4.0
+                       isinstance(p.get('estimated_base_km'), (int, float))), 4.0)
 
-    left, right, top, bottom = 92, 118, 58, 125
-    plot_w, plot_h = width-left-right, height-top-bottom
-    distances = [float(p['distance_km']) for p in profiles]
-    max_dist = max(distances) if distances else 1.0
-    plot_dist = max_dist + ((distances[-1]-distances[-2])/2 if len(distances)>1 else 0)
-    all_h = [float(lv.get('height_agl_km')) for p in profiles for lv in p.get('levels', [])
-             if isinstance(lv.get('height_agl_km'), (int, float))]
-    max_h = min(22.0, max(8.0, target+4.0, math.ceil(max(all_h or [10.0]))))
-    def X(v): return left + (float(v)/plot_dist)*plot_w if plot_dist else left
-    def Y(v): return top + plot_h - max(0.0, min(max_h, float(v)))/max_h*plot_h
+    cells = profile_cloud_cells(profiles, threshold=25.0)
+    xmax = max(100.0, max(float(p.get('distance_km') or 0) for p in profiles))
+    ymax = max(18.0, min(24.0, max((float(c.get('top_km') or 0) for c in cells), default=12.0) + 1.0))
 
-    im = Image.new('RGB', (width, height), '#fbfcfe')
-    d = ImageDraw.Draw(im)
-    title_font, axis_font = _font(25, True), _font(16)
-    small_font, legend_font = _font(13), _font(14)
-    direction = result.get('direction')
-    title = ('朝霞路径云层精细剖面' if direction == 'morning' else
-             '晚霞路径云层精细剖面' if direction == 'evening' else
-             '严格球面光路 · 云层剖面')
-    model = str(result.get('query_model_label') or result.get('query_model_id') or '')
-    d.text((left, 15), title, font=title_font, fill='#1e293b')
-    d.text((left, 42), f"{result.get('place','')}  {model}  ｜横轴：沿太阳方位距离（km）｜纵轴：相对地面高度（km）",
-           font=small_font, fill='#64748b')
+    fig = Figure(figsize=(float(width) / 100.0, float(height) / 100.0), dpi=100, facecolor='#f8fafc')
+    canvas = FigureCanvasAgg(fig)
+    ax = fig.add_subplot(111)
+    ax.set_facecolor('#fbfcfe')
 
-    # Grid and axes, as in the desktop Tk diagnostic.
-    for h in range(0, int(max_h)+1, 2):
-        yy = Y(h)
-        d.line((left, yy, left+plot_w, yy), fill='#e3e8ef', width=1)
-        d.text((left-12, yy-8), f'{h} km', font=small_font, fill='#334155', anchor='ra')
-    tick_step = 25 if max_dist <= 250 else (50 if max_dist <= 500 else 100)
-    ticks = list(range(0, int(max_dist)+1, tick_step))
-    if not ticks or ticks[-1] < max_dist:
-        ticks.append(int(max_dist))
-    for dist in ticks:
-        xx = X(dist)
-        d.line((xx, top, xx, top+plot_h), fill='#edf0f4', width=1)
-        d.text((xx, top+plot_h+12), str(dist), font=small_font, fill='#334155', anchor='mt')
-    d.line((left, top, left, top+plot_h), fill='#475569', width=2)
-    d.line((left, top+plot_h, left+plot_w, top+plot_h), fill='#475569', width=2)
-    d.text((left+plot_w/2, height-21), '沿太阳方位距离（km）', font=axis_font,
-           fill='#1f2937', anchor='mt')
-    ylab = Image.new('RGBA', (140, 26), (0,0,0,0))
-    ImageDraw.Draw(ylab).text((4, 3), '相对高度（km）', font=small_font, fill='#1f2937')
-    ylab = ylab.rotate(90, expand=True)
-    im.paste(ylab, (18, int(top+plot_h/2-ylab.height/2)), ylab)
-
-    # Draw the same cloud cells used by the geometric ray tracer.
-    cells = profile_cloud_cells(profiles, threshold=25.0, blur_horizontal_km=0., blur_vertical_km=0.)
+    # Actual pressure-level cloud cells. They remain as blockers even when an
+    # upper vertically stacked cell is omitted from the target-ray sweep.
     for cell in cells:
-        if cell['top_km'] <= 0 or cell['bottom_km'] > max_h:
+        try:
+            x0, x1 = float(cell['start_km']), float(cell['end_km'])
+            y0, y1 = max(0.0, float(cell['bottom_km'])), float(cell['top_km'])
+            if x1 <= x0 or y1 <= y0 or y0 > ymax:
+                continue
+            cover = max(0.0, min(100.0, float(cell.get('cloud_cover', 50))))
+            alpha = max(.12, min(.78, .12 + .0062 * cover))
+            ax.add_patch(Rectangle((x0, y0), x1-x0, y1-y0,
+                                   facecolor='#536071', alpha=alpha,
+                                   edgecolor='#d4dbe4', linewidth=.38, zorder=2))
+        except (KeyError, TypeError, ValueError):
             continue
-        cc = cell.get('cloud_cover')
-        if not isinstance(cc, (int, float)):
-            cc = 50.0
-        gray = int(250-205*max(0, min(100, float(cc)))/100)
-        x0, x1 = X(cell['start_km']), X(cell['end_km'])
-        y0, y1 = Y(min(max_h, cell['top_km'])), Y(max(0, cell['bottom_km']))
-        d.rectangle((x0, y0, x1, y1), fill=(gray, gray, gray), outline='#ffffff', width=1)
-        if cell.get('reconstructed_cloud'):
-            _dashed_line(d, [(x0,y0),(x1,y0),(x1,y1),(x0,y1),(x0,y0)], '#e11d48', 2, 7, 5)
 
-    # Estimated bases are markers only; never substitute them for cloud layers.
-    for prof in profiles:
-        base = prof.get('estimated_base_km')
-        if isinstance(base, (int, float)) and 0 <= base <= max_h:
-            xx, yy = X(prof['distance_km']), Y(base)
-            d.line((xx-4, yy-4, xx+4, yy+4), fill='#d83c3c', width=2)
-            d.line((xx+4, yy-4, xx-4, yy+4), fill='#d83c3c', width=2)
-
-    # Verified bottom samples: red horizontal strip is the ONLY official
-    # primary-view illuminated surface. Blocked/unresolved samples remain distinct.
+    # Bottom samples: red only for verified cloud-bottom illumination.
     bottom_rows = inferred.get('verified_bottom_sample_traces') or []
     lit_segments = set()
-    seen_markers = set()
+    marker_rows = {}
     for row in bottom_rows:
         key = row.get('target_key') or []
         if len(key) < 4:
@@ -200,166 +137,148 @@ def render_profile(result, width=1600, height=900):
             continue
         status = str(row.get('status', ''))
         if status == 'verified_bottom' and width_km > 0:
-            seg = (max(float(key[0]), pos-width_km/2), min(float(key[1]), pos+width_km/2), base_km)
-            lit_segments.add(seg)
+            lit_segments.add((max(float(key[0]), pos-width_km/2),
+                              min(float(key[1]), pos+width_km/2), base_km))
         elif status in ('cloud_blocked', 'earth_or_source_horizon') or status.startswith('unresolved'):
-            marker_key = (round(pos,2), round(base_km,3), status)
-            if marker_key in seen_markers:
-                continue
-            seen_markers.add(marker_key)
-            xx, yy = X(pos), Y(base_km)
-            color = '#e2893b' if status == 'cloud_blocked' else ('#a8b0c6' if status.startswith('unresolved') else '#64748b')
-            d.line((xx-5, yy-5, xx+5, yy+5), fill=color, width=2)
-            d.line((xx+5, yy-5, xx-5, yy+5), fill=color, width=2)
-    for start_km, end_km, base_km in sorted(lit_segments):
-        if end_km > start_km and 0 <= base_km <= max_h:
-            d.line((X(start_km), Y(base_km), X(end_km), Y(base_km)), fill='#ef4444', width=5)
+            marker_rows.setdefault(status, []).append((pos, base_km))
+    for a, b, base in sorted(lit_segments):
+        if b > a:
+            ax.plot([a, b], [base, base], color='#ef4444', linewidth=3.0,
+                    solid_capstyle='butt', zorder=7)
+    for status, points in marker_rows.items():
+        color = '#e2893b' if status == 'cloud_blocked' else (
+            '#94a3b8' if status.startswith('unresolved') else '#64748b')
+        dedup = sorted(set((round(x, 2), round(y, 3)) for x, y in points))
+        if dedup:
+            ax.scatter([p[0] for p in dedup], [p[1] for p in dedup],
+                       marker='x', s=25, linewidths=1.0, c=color, zorder=8,
+                       label={'cloud_blocked': '云层遮挡采样点',
+                              'earth_or_source_horizon': '地球/光源地平线限制',
+                              }.get(status, '未验证采样点'))
 
-    # Draw all final verified rays at their own cloud target, not a guessed
-    # shared cloud base. Grouping is display-only; no ray is promoted by it.
-    strict_count = 0
+    # Strict verified bottom rays: every ray is retained, but drawn as thin,
+    # translucent region-colored segments (desktop LineCollection style).
+    groups = {}
     for ray in verified_bottom:
-        start = ray.get('target_bottom_position_km', ray.get('target_face_km'))
         try:
-            start, h0, alt = float(start), float(ray['target_height_km']), float(ray['solar_altitude_deg'])
-            far = min(plot_dist, float(ray.get('source_check_km') or plot_dist))
-        except (TypeError, ValueError):
+            origin = float(ray.get('target_bottom_position_km', ray.get('target_face_km')))
+            h0 = float(ray['target_height_km'])
+            alt = float(ray['solar_altitude_deg'])
+            far = min(xmax, float(ray.get('source_check_km') or xmax))
+            if not (0 <= origin < far and 0 < h0 <= ymax):
+                continue
+            ds = np.linspace(origin, far, 120)
+            hs = [(_ray_height_km(h0, alt, float(d-origin))
+                   if not _earth_occluded(h0, alt, float(d-origin)) else np.nan) for d in ds]
+            groups.setdefault(round(origin / 15.0), []).append(
+                np.column_stack((ds, np.asarray(hs, dtype=float))))
+        except (TypeError, ValueError, KeyError):
             continue
-        if not (0 <= start < far and 0 < h0 <= max_h):
-            continue
-        pts=[]
-        for j in range(401):
-            dist=start+(far-start)*j/400
-            if _earth_occluded(h0, alt, dist-start):
-                if len(pts)>1: d.line(pts, fill='#7434ac', width=3)
-                pts=[]; continue
-            h=_ray_height_km(h0,alt,dist-start)
-            if math.isfinite(h) and 0 <= h <= max_h:
-                pts.append((X(dist),Y(h)))
-            else:
-                if len(pts)>1: d.line(pts, fill='#7434ac', width=3)
-                pts=[]
-        if len(pts)>1:
-            d.line(pts, fill='#7434ac', width=3)
-        strict_count += 1
+    palette = colormaps['plasma']
+    for gid, segments in sorted(groups.items()):
+        hue = palette((gid * 0.6180339887498949) % 1.0)
+        ax.add_collection(LineCollection(segments, colors=[hue], alpha=.25,
+                                         linewidths=.95, zorder=5))
+    if verified_bottom:
+        ax.plot([], [], color='#7434ac', lw=1.3, alpha=.65,
+                label='严格验证云底光线（按15 km区域着色）')
 
-    face_verified_count = 0
+    # Reverse-burn face paths are shown separately and never enter bottom area.
     for ray in verified_faces:
         try:
-            face, h0, alt = float(ray['target_face_km']), float(ray['target_height_km']), float(ray['solar_altitude_deg'])
-            far = min(plot_dist, float(ray.get('source_check_km') or plot_dist))
-        except (TypeError, ValueError):
-            continue
-        if not (0 <= face < far and 0 < h0 <= max_h):
-            continue
-        pts=[]
-        for j in range(301):
-            dist=face+(far-face)*j/300
-            if _earth_occluded(h0,alt,dist-face):
-                break
-            h=_ray_height_km(h0,alt,dist-face)
-            if math.isfinite(h) and 0 <= h <= max_h:
-                pts.append((X(dist),Y(h)))
-        _dashed_line(d,pts,'#8b5cf6',2,5,5)
-        face_verified_count += 1
-
-    # Geometric face traces are candidates only: dashed/dotted, never the red
-    # official underside marks. This preserves the desktop distinction.
-    candidates = [r for r in (inferred.get('spherical_face_plot_traces') or [])
-                  if isinstance(r, dict) and all(isinstance(r.get(k),(int,float))
-                  for k in ('target_face_km','target_height_km','solar_altitude_deg'))]
-    for ray in candidates[::max(1, math.ceil(len(candidates)/28))][:28]:
-        face, h0, alt = float(ray['target_face_km']), float(ray['target_height_km']), float(ray['solar_altitude_deg'])
-        if not 0 <= face < plot_dist or not 0 < h0 <= max_h:
-            continue
-        pts=[]
-        for j in range(181):
-            dist=face+(plot_dist-face)*j/180
-            if _earth_occluded(h0,alt,dist-face):
-                break
-            h=_ray_height_km(h0,alt,dist-face)
-            if math.isfinite(h) and 0 <= h <= max_h:
-                pts.append((X(dist),Y(h)))
-        _dashed_line(d,pts,'#b16ad4',2,4,5)
-
-    # If the legacy debug file has contiguous clear-path minutes, shade only
-    # between the outer boundary rays of each run, matching desktop behavior.
-    ordered = sorted((r for r in ray_records if isinstance(r.get('solar_altitude_deg'),(int,float))
-                      and isinstance(r.get('time'),str)), key=lambda r:r['time'])
-    runs=[]; current=[]
-    from datetime import datetime as _dt
-    for ray in ordered:
-        if ray.get('status') != 'clear_path':
-            if len(current)>=2: runs.append(current)
-            current=[]; continue
-        if current:
-            try:
-                gap=(_dt.fromisoformat(ray['time'])-_dt.fromisoformat(current[-1]['time'])).total_seconds()
-            except (ValueError,TypeError): gap=float('inf')
-            if not 1 <= gap <= 61:
-                if len(current)>=2: runs.append(current)
-                current=[]
-        current.append(ray)
-    if len(current)>=2:runs.append(current)
-    for group in runs:
-        alts=[float(r['solar_altitude_deg']) for r in group]
-        lo,hi=min(alts),max(alts)
-        if hi-lo<1e-8: continue
-        for col in range(1,181):
-            dist=plot_dist*col/181
-            if _earth_occluded(target,lo,dist) or _earth_occluded(target,hi,dist):
+            face = float(ray['target_face_km'])
+            h0 = float(ray['target_height_km'])
+            alt = float(ray['solar_altitude_deg'])
+            far = min(xmax, float(ray.get('source_check_km') or xmax))
+            if not (0 <= face < far and 0 < h0 <= ymax):
                 continue
-            h1,h2=_ray_height_km(target,lo,dist),_ray_height_km(target,hi,dist)
-            if not (math.isfinite(h1) and math.isfinite(h2)): continue
-            low,high=max(0.,min(h1,h2)),min(max_h,max(h1,h2))
-            if high<=low: continue
-            xx=X(dist)
-            for k in range(1,7):
-                yy=Y(low+(high-low)*k/7)
-                d.ellipse((xx-1,yy-1,xx+1,yy+1),fill='#bb398d')
+            ds = np.linspace(face, far, 100)
+            hs = [(_ray_height_km(h0, alt, float(d-face))
+                   if not _earth_occluded(h0, alt, float(d-face)) else np.nan) for d in ds]
+            ax.plot(ds, hs, color='#9b78c8', linestyle=(0, (3, 3)),
+                    linewidth=.8, alpha=.28, zorder=4)
+        except (TypeError, ValueError, KeyError):
+            continue
+    if verified_faces:
+        ax.plot([], [], color='#9b78c8', ls=(0, (3, 3)), lw=1,
+                label='严格验证云锋面（反烧专用，不计入常规占比）')
 
-    # OM horizontal/vertical conflicts remain orange crosses at their real nodes.
-    gate = inferred.get('strict_primary_path_diagnostic') or {}
-    for row in (gate.get('horizontal_conflict_examples') or [])[:24]:
-        try: xx, yy = X(float(row['distance_km'])), Y(float(row['ray_height_km']))
-        except (KeyError,TypeError,ValueError): continue
-        d.line((xx-6,yy-6,xx+6,yy+6),fill='#ec770f',width=3)
-        d.line((xx+6,yy-6,xx-6,yy+6),fill='#ec770f',width=3)
+    # Geometric candidates remain faint and are deliberately downsampled.
+    candidate_stride = max(1, math.ceil(len(candidates) / 24))
+    for ray in candidates[::candidate_stride][:24]:
+        try:
+            face = float(ray['target_face_km'])
+            h0 = float(ray['target_height_km'])
+            alt = float(ray['solar_altitude_deg'])
+            if not (0 <= face < xmax and 0 < h0 <= ymax):
+                continue
+            ds = np.linspace(face, xmax, 100)
+            hs = [(_ray_height_km(h0, alt, float(d-face))
+                   if not _earth_occluded(h0, alt, float(d-face)) else np.nan) for d in ds]
+            ax.plot(ds, hs, color='#c084d8', linestyle=(0, (2, 3)),
+                    linewidth=.7, alpha=.18, zorder=3)
+        except (TypeError, ValueError, KeyError):
+            continue
+    if candidates:
+        ax.plot([], [], color='#c084d8', ls=(0, (2, 3)), lw=.8,
+                label='球面几何候选（未验证）')
 
-    # Target base and range boundaries.
-    if 0 <= target <= max_h:
-        xx, yy = X(0), Y(target)
-        d.ellipse((xx-6,yy-6,xx+6,yy+6),fill='#101820',outline='white',width=2)
-        d.text((xx+12,yy-18),f'目标云底 {target:.2f} km',font=small_font,fill='#111827')
+    # Conflict examples are diagnostics, not automatically opaque blockers.
+    diag = inferred.get('strict_primary_path_diagnostic') or {}
+    conflict = diag.get('horizontal_conflict_examples') or []
+    cx, cy = [], []
+    for row in conflict[:24]:
+        try:
+            x, y = float(row['distance_km']), float(row['ray_height_km'])
+            if 0 <= x <= xmax and 0 <= y <= ymax:
+                cx.append(x); cy.append(y)
+        except (KeyError, TypeError, ValueError):
+            continue
+    if cx:
+        ax.scatter(cx, cy, marker='x', s=38, linewidths=1.5,
+                   c='#f97316', label='OM/垂直数据冲突示例', zorder=9)
+
+    if 0 <= target <= ymax:
+        ax.scatter([0], [target], s=35, c='#111827', edgecolors='white',
+                   linewidths=.8, zorder=10, label=f'目标云底 {target:.2f} km')
     boundaries = result.get('boundaries') or {}
-    for key, color, label, yoff in (('fire_cloud_range_km','#0f766e','霞云距',8),
-                                    ('cloud_edge_distance_km','#b45309','云边距',26)):
-        dist=boundaries.get(key)
-        if isinstance(dist,(int,float)):
-            xx=X(dist)
-            d.line((xx,top,xx,top+plot_h),fill=color,width=2)
-            d.text((min(left+plot_w-115,max(left+5,xx+5)),top+yoff),
-                   f'{label} {dist:.0f}km',font=small_font,fill=color)
+    for key, color, label in (('fire_cloud_range_km', '#0f766e', '霞云距'),
+                              ('cloud_edge_distance_km', '#b45309', '云边距')):
+        value = boundaries.get(key)
+        if isinstance(value, (int, float)):
+            ax.axvline(float(value), color=color, linewidth=1.1, alpha=.85,
+                       label=f'{label} {float(value):.0f} km')
 
-    # Cloud-cover grayscale legend and concise key.
-    cbx, cby, cbh = width-70, top+38, max(100, plot_h-90)
-    for k in range(100):
-        gray=int(250-205*k/100)
-        d.line((cbx,cby+k*cbh/100,cbx,cby+(k+1)*cbh/100+1),fill=(gray,gray,gray),width=14)
-    d.text((cbx-8,cby-20),'云量 %',font=small_font,fill='#334155')
-    for v in (0,25,50,75,100):
-        d.text((cbx+12,cby+v*cbh/100-7),str(v),font=small_font,fill='#334155')
-    legend_rows=[(height-91,[('#7434ac','严格验证云底光线'),
-                               ('#8b5cf6','严格验证云锋面（反烧专用）'),
-                               ('#b16ad4','几何候选光线')]),
-                  (height-65,[('#ef4444','已受光云底采样带'),
-                               ('#e2893b','云层遮挡采样点')])]
-    for legend_y, items in legend_rows:
-        lx=left
-        for color,label in items:
-            d.line((lx,legend_y+8,lx+22,legend_y+8),fill=color,width=4)
-            d.text((lx+29,legend_y),label,font=small_font,fill='#334155')
-            lx += int(width*.29)
-    status=f'云底光线：{strict_count}   ·   已验证云锋面（反烧专用）：{face_verified_count}   ·   云底采样：{len(bottom_rows)}'
-    d.text((left+plot_w,15),status,font=small_font,fill='#64748b',anchor='ra')
-    return im
+    ax.set_xlim(0, xmax); ax.set_ylim(0, ymax)
+    ax.set_xlabel('沿太阳方位距离（km）')
+    ax.set_ylabel('相对地面高度（km）')
+    ax.grid(color='#d1d5db', alpha=.36, linewidth=.55)
+    ax.tick_params(colors='#475569', labelsize=8)
+    ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color('#64748b'); ax.spines['bottom'].set_color('#64748b')
+
+    place = str(result.get('place') or '')
+    model = str(result.get('query_model_label') or result.get('query_model_id') or '')
+    direction = result.get('direction')
+    title = '朝霞' if direction == 'morning' else '晚霞' if direction == 'evening' else '火烧云'
+    ax.set_title(f'{place} {model}｜{title}严格球面光路 · 云层剖面',
+                 loc='left', fontsize=11, color='#1e293b', pad=10)
+    stack_diag = inferred.get('stacked_target_diagnostic') or {}
+    stack_removed_km = float(stack_diag.get('removed_stacked_horizontal_km') or 0.0)
+    ax.text(1.0, 1.015,
+            f'云底光线：{len(verified_bottom)}  ·  反烧云锋面：{len(verified_faces)}  ·  云底采样：{len(bottom_rows)}  ·  叠层上部目标剔除：{stack_removed_km:.0f} km',
+            transform=ax.transAxes, ha='right', va='bottom', fontsize=7.1, color='#64748b')
+    # Cloud-cover grayscale colorbar, as in the desktop diagnostic.
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.colors import Normalize
+    sm = ScalarMappable(norm=Normalize(0, 100), cmap='Greys')
+    cb = fig.colorbar(sm, ax=ax, fraction=.025, pad=.025)
+    cb.set_label('云量 %', fontsize=8); cb.ax.tick_params(labelsize=7)
+    ax.legend(loc='upper left', fontsize=7.2, framealpha=.9, ncol=2)
+    fig.subplots_adjust(left=.09, right=.93, bottom=.12, top=.88)
+
+    buf = io.BytesIO()
+    canvas.print_png(buf)
+    buf.seek(0)
+    with Image.open(buf) as rendered:
+        return rendered.convert('RGB').copy()

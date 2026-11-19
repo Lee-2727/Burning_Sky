@@ -21,7 +21,7 @@ _STATE = Path(os.environ.get('BURNING_SKY_RATE_STATE', '/tmp/burning_sky_open_me
 # Manual overview stays on its more conservative existing budget.
 _PROFILE = os.environ.get('BURNING_SKY_REQUEST_PROFILE', 'interactive').lower()
 _POLICY = {'manual': (7.6, 8), 'interactive': (1.6, 35), 'scheduled': (12.0, 5),
-           'satellite_advanced': (8.0, 7)}
+           'satellite_advanced': (15.5, 4)}
 # Context-local profile prevents a Streamlit advanced page from slowing down other
 # visitors or other application pages imported in the same Python process.
 _ACTIVE_PROFILE = contextvars.ContextVar('burning_sky_http_profile', default=None)
@@ -117,7 +117,10 @@ def _mark_429(retry_after=None):
             state['429_strikes']=strikes
             try: requested=float(retry_after)
             except (ValueError,TypeError): requested=0
-            delay=min(_COOLDOWN_MAX,max(_COOLDOWN_MIN,requested,100*(2**min(strikes-1,4))))
+            # Satellite calibration is expensive and has repeatedly hit provider
+            # minute limits. After any 429, stop all Open-Meteo requests for the
+            # full 20-minute safety window; keep successful partial cache intact.
+            delay=max(20*60,requested)
             state['cooldown_until']=max(float(state.get('cooldown_until',0)),now+delay)
             tmp = _STATE.with_suffix('.tmp')
             tmp.write_text(json.dumps(state), encoding='utf-8')
