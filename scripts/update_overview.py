@@ -266,9 +266,30 @@ def _record(result):
                       if local_cover is not None and tintable_ratio is not None else None)
     fire_score = (round(probability * burn_scale / 100.0, 2)
                   if probability is not None and burn_scale is not None else None)
+    color_score = numeric(inferred.get("color_score"))
+    verdict = inferred.get('verdict_override') or inferred.get('verdict')
+    # Preserve a valid deterministic no-burn forecast when there are no
+    # colourable clouds. None is still reserved for genuinely unresolved
+    # illumination; it must not turn a confirmed 0% / 0-scale forecast into
+    # a failed overview task.
+    no_colorable_cloud = (
+        color_score is None and verdict == '云量不足'
+        and probability is not None and probability <= 0.0
+        and burn_scale is not None and burn_scale <= 0.0
+        and tintable_ratio is not None and tintable_ratio <= 0.0
+    )
+    color_score_status = 'not_applicable_no_colorable_cloud' if no_colorable_cloud else (
+        'scored' if color_score is not None else 'unresolved')
+    if no_colorable_cloud:
+        color_score = 0.0
     return {
         "probability": probability,
-        "color_score": numeric(inferred.get("color_score")),
+        "color_score": color_score,
+        "color_score_status": color_score_status,
+        "color_score_label": ('云量不足' if no_colorable_cloud else inferred.get('color_score_label')),
+        "color_score_note": ('无可染色目标云；按有效的0分结果发布。' if no_colorable_cloud
+                              else inferred.get('color_score_note')),
+        "verdict": verdict,
         "burn_scale": burn_scale,
         "local_mid_cloud": local_mid_cloud,
         "local_high_layer_cloud": local_high_layer_cloud,
