@@ -130,14 +130,23 @@ def from_sources(city, sources, *, today=None):
                     group = {}
                     target[direction] = group
                 for model in MODELS:
-                    if not valid_record(group.get(model)) and valid_record(incoming.get(model)):
-                        group[model] = copy.deepcopy(incoming[model])
+                    current=group.get(model)
+                    candidate=incoming.get(model)
+                    if not valid_record(current) and valid_record(candidate):
+                        group[model] = copy.deepcopy(candidate)
+                    elif valid_record(current) and valid_record(candidate):
+                        old_visual=current.get('visual_burn_scale') if isinstance(current,dict) else None
+                        new_visual=candidate.get('visual_burn_scale') if isinstance(candidate,dict) else None
+                        if (not isinstance(old_visual,(int,float)) or isinstance(old_visual,bool)) and isinstance(new_visual,(int,float)) and not isinstance(new_visual,bool):
+                            current['visual_burn_scale']=new_visual
+                            if candidate.get('visual_burn_scale_label') is not None:
+                                current['visual_burn_scale_label']=candidate.get('visual_burn_scale_label')
     selected['days'] = [by_date.setdefault(date_string, {'date':date_string,'morning':{},'evening':{}})
                         for date_string in dates]
     checkpoint_count = None
     checkpoint_filled = 0
     checkpoint = sources.get('checkpoint')
-    if (count_valid(selected, dates) < 12 and isinstance(checkpoint, dict)
+    if ((count_valid(selected, dates) < 12 or count_visual_valid(selected, dates) < 12) and isinstance(checkpoint, dict)
             and checkpoint.get('place') == city
             and checkpoint.get('batch_day') == today.isoformat()
             and checkpoint.get('dates') == dates
@@ -156,7 +165,8 @@ def from_sources(city, sources, *, today=None):
                  for model in MODELS}
     return {
         'days': selected['days'], 'updated_at': selected.get('updated_at', ''),
-        'has_data': valid_total > 0, 'valid_count': valid_total, 'total_count':12,
+        'has_data': valid_total > 0, 'valid_count': valid_total,
+        'visual_valid_count': count_visual_valid(selected, dates), 'total_count':12,
         'model_counts': per_model, 'checkpoint_count': checkpoint_count,
         'checkpoint_filled': checkpoint_filled, 'source_name': source_name,
         'publication': (selected.get('publication') if isinstance(selected.get('publication'), dict)
@@ -164,12 +174,30 @@ def from_sources(city, sources, *, today=None):
     }
 
 
+
+def count_visual_valid(snapshot, dates, models=MODELS):
+    """Count rows that also contain the new apparent-solid-angle scale."""
+    days=(snapshot or {}).get('days') if isinstance(snapshot,dict) else None
+    if not isinstance(days,list):
+        return 0
+    index={str(day.get('date')):day for day in days if isinstance(day,dict)}
+    count=0
+    for day in dates:
+        for direction in DIRECTIONS:
+            for model in models:
+                row=((index.get(day) or {}).get(direction) or {}).get(model) or {}
+                value=row.get('visual_burn_scale') if isinstance(row,dict) else None
+                if (valid_record(row) and isinstance(value,(int,float))
+                        and not isinstance(value,bool) and value==value and abs(value)!=float('inf')):
+                    count+=1
+    return count
+
 def get_overview(city, *, reader=file_data, today=None):
     today = today or china_today()
     dates = expected_dates(today)
     city_data = reader(f'overview_{city}.json')
     # Avoid two unnecessary HTTP requests when a complete 12/12 city file exists.
-    if count_valid(city_data, dates) == 12:
+    if count_valid(city_data, dates) == 12 and count_visual_valid(city_data, dates) == 12:
         return from_sources(city, {'city': city_data}, today=today)
     global_data = reader('overview.json')
     tentative = from_sources(city, {'city': city_data, 'global': global_data}, today=today)

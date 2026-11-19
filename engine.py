@@ -1345,9 +1345,9 @@ class FireCloudApp(tk.Tk):
                     x=info.get(key)
                     return '—' if x is None else str(x)
                 old_line=(f"原始/先前：概率 {v(old_inf,'regular_score')}% | 色彩 {v(old_inf,'color_score')}"
-                          f" | 可染色占比 {v(old_inf,'tintable_ratio')}% | 染色云面积 {v(old_inf,'burn_scale_index')}%")
+                          f" | 几何规模 {v(old_inf,'geometric_burn_scale_index')}% | 视觉规模 {v(old_inf,'visual_burn_scale_index')}%")
                 new_line=(f"卫星修正后：概率 {v(new_inf,'regular_score')}% | 色彩 {v(new_inf,'color_score')}"
-                          f" | 可染色占比 {v(new_inf,'tintable_ratio')}% | 染色云面积 {v(new_inf,'burn_scale_index')}%")
+                          f" | 几何规模 {v(new_inf,'geometric_burn_scale_index')}% | 视觉规模 {v(new_inf,'visual_burn_scale_index')}%")
                 self.after(0,lambda: self.fetch_status_var.set(f'{label}卫星校准已完成，主页面已刷新；新增路径采样 {len(extra)} 个。'))
                 self.after(0,lambda: messagebox.showinfo('卫星校准完成',old_line+'\n'+new_line+'\n原始预测保留在本次案例状态，可清除修正恢复。'))
             except Exception as exc:
@@ -1723,7 +1723,7 @@ class FireCloudApp(tk.Tk):
                 # No new OM-only probability/color multipliers are introduced.
                 from burning_sky.spatial_pipeline import calibrate_path_samples
                 _spatial_calibration = calibrate_path_samples(
-                    samples, profiles, manual=bool(_manual_overrides))
+                    samples, profiles, manual=bool(_manual_overrides), model_id=model_id)
                 raw_profiles_before_reconstruction = copy.deepcopy(profiles)
                 _vertical_aod = {"status":"未启用", "factor":1.0}
                 if aod_source == "CAMS（垂直分布）":
@@ -1899,7 +1899,7 @@ class FireCloudApp(tk.Tk):
                 # extensions.  It is idempotent: the saved original API layer
                 # remains the reference and no additional HTTP requests occur.
                 _spatial_calibration = calibrate_path_samples(
-                    samples, profiles, manual=bool(_manual_overrides))
+                    samples, profiles, manual=bool(_manual_overrides), model_id=model_id)
                 inferred['spatial_calibration'] = _spatial_calibration
                 boundaries = estimate_path_cloud_boundaries(samples, local_reach)
                 # Preserve sampled physical clear intervals separately from verified illumination.
@@ -2468,31 +2468,62 @@ class FireCloudApp(tk.Tk):
                     inferred['verdict'] = '严格主光路未证实透光'
                 elif _observed_gap_verified:
                     inferred['verdict'] = '明确晴空间隔及连续云面严格光路均存在有效受光时刻' 
+                visual_tintable_ratio = None
                 if _local_light.get('available') and _primary_path_verified and not _complete_no_local_path:
+                    # The official ratios now describe the WHOLE dawn/dusk event:
+                    # a unique 15-km horizontal zone counts once if its cloud
+                    # bottom passed strict validation at any sampled minute.
+                    # The peak-minute ratio remains a separate timeline diagnostic.
                     _best_local = max(_local_light['times'],key=lambda x:x['fraction'])
-                    inferred['tintable_ratio_kind'] = 'verified_profile_proxy'
-                    tintable_ratio = round(100*_best_local['fraction'],1)
+                    inferred['tintable_ratio_kind'] = 'event_cumulative_unique_horizontal_zones'
+                    tintable_ratio = round(100*float(_local_light.get('event_geometric_fraction',0.0)),1)
+                    visual_tintable_ratio = round(100*float(_local_light.get('event_visual_fraction',0.0)),1)
                     _diag_row = max(_local_light['times'], key=lambda x:(x.get('fraction',0),x.get('face_only_zone_count',0)))
+                    _event_unknown_count = int(_local_light.get('event_unknown_zone_count',0) or 0)
+                    _event_unknown_note = (f"另有{_event_unknown_count}个区域尚未完成全窗口严格验证，当前两种占比均为已确认下限。"
+                                           if _event_unknown_count else "霞云距内目标区域均完成验证。")
                     inferred['tintable_ratio_diagnostic'] = (
-                        f"常规逆光云底统计：云底受光{_diag_row.get('bottom_lit_zone_count',0)}区/"
-                        f"{_diag_row.get('eligible_zone_count',_local_light.get('target_count',0))}区；"
-                        f"另有云锋面受光候选{_diag_row.get('face_only_zone_count',0)}区，仅作反烧诊断，不计入本方向占比。")
+                        f"整个朝/晚霞窗口累计：曾经严格受光的唯一水平采样区 "
+                        f"{_local_light.get('event_lit_zone_count',0)}/{_local_light.get('target_count',0)}；"
+                        f"几何占比 {tintable_ratio:.1f}%，视角面积占比 {visual_tintable_ratio:.1f}%；"
+                        f"峰值单分钟同时受光 {_diag_row.get('bottom_lit_zone_count',0)}/"
+                        f"{_diag_row.get('eligible_zone_count',_local_light.get('target_count',0))} 区。"
+                        f"{_event_unknown_note}另有云锋面受光候选{_diag_row.get('face_only_zone_count',0)}区，仅作反烧诊断，不计入本方向占比。")
                     inferred['local_cloud_illumination'] = {
                         'potential_km':_local_light['potential_km'],
                         'target_count':_local_light['target_count'],
+                        'event_lit_zone_count':_local_light.get('event_lit_zone_count',0),
+                        'event_unknown_zone_count':_local_light.get('event_unknown_zone_count',0),
+                        'event_geometric_fraction':round(float(_local_light.get('event_geometric_fraction',0)),6),
+                        'event_visual_fraction':round(float(_local_light.get('event_visual_fraction',0)),6),
+                        'event_possible_geometric_fraction':round(float(_local_light.get('event_possible_geometric_fraction',0)),6),
+                        'event_possible_visual_fraction':round(float(_local_light.get('event_possible_visual_fraction',0)),6),
+                        'visual_total_solid_angle_sr':round(float(_local_light.get('visual_total_solid_angle_sr',0)),8),
+                        'visual_lit_solid_angle_sr':round(float(_local_light.get('visual_lit_solid_angle_sr',0)),8),
+                        'visual_zone_weights':[{
+                            'zone_index':z.get('index'),
+                            'distance_range_km':[round(float(z.get('start_km',0)),3),round(float(z.get('end_km',0)),3)],
+                            'target_cover_pct':z.get('target_cover_pct'),
+                            'visual_weight_sr':round(float(z.get('visual_weight_sr',0)),9),
+                            'visual_weight_deg2':round(float(z.get('visual_weight_deg2',0)),6),
+                            'ever_lit':bool(float((_local_light.get('event_zone_values') or {}).get(z.get('index'),0) or 0)>0)
+                        } for z in (_local_light.get('eligible_zones') or [])],
                         'peak_minute':_best_local['minutes_from_event'],
                         'peak_fraction':round(_best_local['fraction'],5),
+                        'peak_visual_fraction':round(_best_local.get('visual_fraction',0),5),
                         'front_face_peak_fraction':round(max((v.get('front_face_fraction',0) for v in _scenario_times),default=0),5),
                         'bottom_unresolved_at_peak':round(_best_local.get('bottom_unresolved_weight_fraction',0),5),
                         'strict_peak_fraction':round(_scenario_strict_peak,5),
                         'possible_peak_fraction':round(_scenario_possible_peak,5),
+                        'visual_method':_local_light.get('visual_method'),
                         'caveat':_local_light['caveat']}
                 else:
                     tintable_ratio = 0 if (_complete_no_local_path or search_stage == 'spherical_raytrace_no_clear_path') else None
+                    visual_tintable_ratio = tintable_ratio
                     if _complete_no_local_path and _local_light.get('available'):
                         _diag_row = max(_local_light['times'], key=lambda x:x.get('face_only_zone_count',0))
                         inferred['tintable_ratio_diagnostic'] = (
-                            f"常规逆光云底统计：云底受光0区/{_diag_row.get('eligible_zone_count',_local_light.get('target_count',0))}区；"
+                            f"常规逆光云底统计：整个有效窗口内曾经受光0区/{_local_light.get('target_count',0)}区；"
                             f"云底阻挡{inferred['surface_path_diagnostics']['bottom_blocked_samples']}条，"
                             f"地球/光源地平线阻挡{inferred['surface_path_diagnostics']['bottom_horizon_samples']}条；"
                             f"另有云锋面受光{_diag_row.get('face_only_zone_count',0)}区，仅作反烧诊断，不计入占比。")
@@ -2512,6 +2543,7 @@ class FireCloudApp(tk.Tk):
                     _scale_zero_reason = '严格球面光路确认无无遮挡光路'
                 if _scale_zero_reason is not None:
                     tintable_ratio = 0.0
+                    visual_tintable_ratio = 0.0
                     tintable_text = '约 0%'
                     if not (_complete_no_local_path and _local_light.get('available')):
                         inferred['tintable_ratio_diagnostic'] = _scale_zero_reason
@@ -2520,7 +2552,12 @@ class FireCloudApp(tk.Tk):
                     strict_path_verified=bool(_primary_path_verified),
                     complete_no_local_path=bool(_complete_no_local_path))
                 _low_pct = (inferred.get('special_rule_diagnostics') or {}).get('local_low_cloud_pct')
-                burn_scale_index, burn_scale_label = (None, '暂不可估') if tintable_ratio is None else calculate_burn_scale(local_cover, 0.0, tintable_ratio)
+                geometric_burn_scale_index, geometric_burn_scale_label = (None, '暂不可估') if tintable_ratio is None else calculate_burn_scale(local_cover, 0.0, tintable_ratio)
+                visual_burn_scale_index, _legacy_visual_scale_label = (None, '暂不可估') if visual_tintable_ratio is None else calculate_burn_scale(local_cover, 0.0, visual_tintable_ratio)
+                from burning_sky.scale_grades import visual_scale_grade
+                visual_burn_scale_label = visual_scale_grade(visual_burn_scale_index)
+                # Backward compatibility: burn_scale_index remains the geometric scale.
+                burn_scale_index, burn_scale_label = geometric_burn_scale_index, geometric_burn_scale_label
                 # 视野内低云提示仍保留原几何可见距离定义，不参与规模计算。
                 visible_cover = visible_cloud_coverage(samples)
                 inferred['visible_cloud_cover'] = visible_cover
@@ -2528,12 +2565,20 @@ class FireCloudApp(tk.Tk):
                 inferred['potential_range_mid_high_pct'] = round(local_cover, 2)
                 inferred["burn_scale_index"] = burn_scale_index
                 inferred["burn_scale_label"] = burn_scale_label
+                inferred["geometric_burn_scale_index"] = geometric_burn_scale_index
+                inferred["geometric_burn_scale_label"] = geometric_burn_scale_label
+                inferred["visual_burn_scale_index"] = visual_burn_scale_index
+                inferred["visual_burn_scale_label"] = visual_burn_scale_label
                 inferred['burn_summary_label'] = ('低云上烧' if inferred.get('low_cloud_overburn') and
-                     isinstance(burn_scale_index,(int,float)) and burn_scale_index > 0 else burn_scale_label)
+                     isinstance(visual_burn_scale_index,(int,float)) and visual_burn_scale_index >= 3 else visual_burn_scale_label)
                 inferred["tintable_ratio"] = tintable_ratio
-                # Different quantities: share of clouds illuminated vs share
-                # of the sampled corridor actually covered by lit clouds.
+                inferred["geometric_tintable_ratio"] = tintable_ratio
+                inferred["visual_tintable_ratio"] = visual_tintable_ratio
+                # Both scales share the same mid/high cloud resource; their
+                # difference is the event-wide geometric vs apparent-solid-angle
+                # fraction of unique target zones that were ever lit.
                 inferred["satellite_corrected_colored_area_pct"] = burn_scale_index
+                inferred["satellite_corrected_visual_colored_area_pct"] = visual_burn_scale_index
                 inferred["satellite_corrected_cloud_cover_pct"] = round(local_cover,2)
                 inferred["satellite_correction_active"] = bool(_manual_overrides)
                 special_summary_line = (f"\n特殊判定：{inferred.get('verdict_override')}" if inferred.get("verdict_override") else "")
@@ -2578,7 +2623,7 @@ class FireCloudApp(tk.Tk):
                 if _no_colorable_cloud:
                     inferred['color_score'] = 0
                     inferred['color_score_label'] = '云量不足'
-                    inferred['color_score_note'] = '本地目标云量不足且常规概率、火烧云规模均为0；这是有效的无火烧预报，不需要对不存在的目标云评价颜色。'
+                    inferred['color_score_note'] = '本地目标云量不足且常规概率、几何规模与视觉规模均为0；这是有效的无火烧预报，不需要对不存在的目标云评价颜色。'
                     inferred['color_score_peak_method'] = 'no_colorable_cloud_zero'
                 elif _peak_zone is not None:
                     _peak_dt = _peak_zone['datetime']
@@ -2635,7 +2680,8 @@ class FireCloudApp(tk.Tk):
                 summary = (
                     f"{model_time_text}\n"
                     f"{direction_name} · {data['place']} · {data['date'].isoformat()}　{event_dt.strftime('%H:%M')} / 方位 {azimuth:.0f}°\n"
-                    f"{model_label}　|　色彩评分 {_color_display}　|　云量 总 {self._fmt_pct(inferred['total'])} · 低 {self._fmt_pct(inferred['low'])} · 中 {self._fmt_pct(inferred['mid'])} · 高 {self._fmt_pct(inferred['high'])} · 可染色云占比 {tintable_text}\n"
+                    f"{model_label}　|　色彩评分 {_color_display}　|　云量 总 {self._fmt_pct(inferred['total'])} · 低 {self._fmt_pct(inferred['low'])} · 中 {self._fmt_pct(inferred['mid'])} · 高 {self._fmt_pct(inferred['high'])}\n"
+                    f"整个朝/晚霞窗口累计可染色：几何 {tintable_text} · 视觉 {('暂不可估' if visual_tintable_ratio is None else f'约 {visual_tintable_ratio}%')}　|　规模：几何 {('暂不可估' if burn_scale_index is None else f'{burn_scale_index:.1f}%')} · 视觉 {('暂不可估' if visual_burn_scale_index is None else f'{visual_burn_scale_index:.1f}%')}\n"
                     f"潜在霞云距 {fire_range_text}　|　极限云距 {cloud_edge_text}　|　{gap_display_label} {gap_text}\n"
                     f"云底 {base_short}（{base_source_short}）　|　AOD {aod_short}"
                     f"{special_summary_line}"
@@ -2646,7 +2692,8 @@ class FireCloudApp(tk.Tk):
                     f"火烧云发生概率估计：{inferred['regular_score']}%（经验估计，尚未经历史样本校准）",
                     f"有利情景上限：{inferred['upper_score']}%（表示条件理想时的潜在机会，不代表实际发生概率）",
                     f"色彩表现评分：{_color_display}（{inferred.get('color_score_label', '待估')}；{inferred.get('color_score_note', '经验指数')}）",
-                    f"可染色云占比：{tintable_text}。仅统计潜在霞云距内的中高云，并取朝霞日出前/晚霞日落后同一分钟的最大受光比例；云洞通道仍为近似修正，不是卫星实测值。",
+                    f"几何可染色占比：{tintable_text}；视觉可染色占比：{('暂不可估' if visual_tintable_ratio is None else f'约 {visual_tintable_ratio}%')}。两者均累计整个朝霞/晚霞窗口：同一15 km水平采样区只要有一分钟通过严格云底受光验证就计入一次；上下堆叠云不重复计数。几何占比对采样区等权，视觉占比按球面投影视角面积加权。",
+                    f"几何规模：{('暂不可估' if burn_scale_index is None else f'{burn_scale_index:.1f}%')}；视觉规模：{('暂不可估' if visual_burn_scale_index is None else f'{visual_burn_scale_index:.1f}%')}。两者均为本地霞云距内中高云资源量乘以对应的累计可染色占比。",
                     model_time_text,
                     f"潜在霞云距（本地连续中高云末端）：{fire_range_text}；极限云距（几何上限）：{cloud_edge_text}；{gap_display_label}：{gap_text}",
                     (f"彩虹出现机会：暂不可估；{rainbow_result.get('note', '反太阳方向降水条件数据不可用。')}" if rainbow_result.get("score") is None else
@@ -2817,7 +2864,8 @@ class FireCloudApp(tk.Tk):
                 if not _verdict and isinstance(_scale, (int,float)) and _scale <= 0:
                     _verdict = '不烧'
                 self._set_judgment_text(getattr(self, f"{prefix}_judgment_label"), regular_score, color_score,
-                                         _verdict or inferred_result.get('burn_summary_label') or inferred_result.get("burn_scale_label"))
+                                         _verdict or inferred_result.get('burn_summary_label') or inferred_result.get("burn_scale_label"),
+                                         inferred_result.get('visual_burn_scale_index'))
                 rainbow = result.get("rainbow", {})
                 getattr(self, f"{prefix}_rainbow_label").configure(
                     text=self._rainbow_indicator_text(rainbow, result.get("event_dt"), direction_key))
@@ -5323,13 +5371,15 @@ class FireCloudApp(tk.Tk):
             pass
 
     @staticmethod
-    def _set_judgment_text(widget, regular_score, color_score, burn_label):
+    def _set_judgment_text(widget, regular_score, color_score, burn_label, visual_scale=None):
         special_verdicts = {"云底过低", "光线难以穿透", "低云遮挡过多", "机会太小，几乎不烧", "光板天", "云量不足", "不烧"}
         if str(burn_label or "") in special_verdicts:
             try:
                 widget.configure(state="normal")
                 widget.delete("1.0", "end")
                 widget.insert("end", str(burn_label), "special_black")
+                if isinstance(visual_scale, (int, float)) and math.isfinite(float(visual_scale)):
+                    widget.insert("end", f"\n视觉规模 {float(visual_scale):.1f}%")
                 widget.tag_configure("special_black", foreground="#111111")
                 widget.configure(state="disabled")
             except Exception:
@@ -5351,6 +5401,8 @@ class FireCloudApp(tk.Tk):
             widget.insert("end", probability_label + " ")
             widget.insert("end", color_label, "color_" + color_label)
             widget.insert("end", "的" + str(burn_label or "暂不可判定"))
+            if isinstance(visual_scale, (int, float)) and math.isfinite(float(visual_scale)):
+                widget.insert("end", f"\n视觉规模 {float(visual_scale):.1f}%")
             widget.configure(state="disabled")
         except Exception:
             pass

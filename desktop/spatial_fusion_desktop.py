@@ -133,6 +133,12 @@ class SpatialDesktopMixin:
         if not bool(getattr(self,'_spatial_enabled_snapshot',False)):
             return pressure
         self.spatial_fetch_log=getattr(self,'spatial_fetch_log',[])
+        if 'gfs' in str(model_id or '').lower():
+            self.spatial_fetch_log.append({
+                'status':'gfs_om_horizontal_disabled_native_pressure_only',
+                'model':model_id,'distance_count':len(distances),
+                'reason':'GFS 预测停用 OM 水平云场；仅使用原生 API 气压层剖面'})
+            return pressure
         # An explicitly replayed case must NEVER trigger OM network downloads.
         # Reuse archived spatial values only if coordinates, model and time match.
         import engine as runtime_engine
@@ -198,8 +204,10 @@ def collect_report(app):
             'regular_probability':inferred.get('regular_score'),
             'color_score':inferred.get('color_score'),
             'tintable_ratio':inferred.get('tintable_ratio'),
-            'burn_scale_index':inferred.get('burn_scale_index'),
-            'burn_scale_label':inferred.get('burn_scale_label'),
+            'burn_scale_index':inferred.get('geometric_burn_scale_index',inferred.get('burn_scale_index')),
+            'burn_scale_label':inferred.get('geometric_burn_scale_label',inferred.get('burn_scale_label')),
+            'visual_burn_scale_index':inferred.get('visual_burn_scale_index'),
+            'visual_burn_scale_label':inferred.get('visual_burn_scale_label'),
             'strict_primary_path_diagnostic':inferred.get('strict_primary_path_diagnostic'),
             'off_axis_resampling':inferred.get('off_axis_resampling'),
             'spatial_calibration':inferred.get('spatial_calibration'),
@@ -323,7 +331,8 @@ def format_report_comparison(result):
             ('regular_probability','常规概率','%'),
             ('color_score','色彩分','分'),
             ('tintable_ratio','可染色云占比','%'),
-            ('burn_scale_index','火烧云规模','%')):
+            ('burn_scale_index','几何规模','%'),
+            ('visual_burn_scale_index','视觉规模','%')):
             a,b=measured(old,key),measured(new,key)
             text='  %-9s %s → %s'%(label,fmt(a),fmt(b))
             if isinstance(a,(int,float)) and isinstance(b,(int,float)) and not isinstance(a,bool) and not isinstance(b,bool):
@@ -544,15 +553,22 @@ class DesktopSpatialApp(SpatialDesktopMixin, FireCloudApp):
         self._spatial_enabled_snapshot=bool(self.spatial_toggle.get())
         self._spatial_replay_snapshot=bool(self.spatial_replay.get())
         self.spatial_fetch_log=[]
-        self.spatial_message.set('运行中：空间融合='+('开启' if self._spatial_enabled_snapshot else '关闭') +
-                                 ('；OM 本地快照重放' if self._spatial_replay_snapshot else '；OM 联网读取'))
+        selected_model = str(self.vars.get('weather_model').get() if self.vars.get('weather_model') else '')
+        if 'gfs' in selected_model.lower():
+            self.spatial_message.set('运行中：GFS 已停用 OM 水平云场，仅使用原生 API 气压层。')
+        else:
+            self.spatial_message.set('运行中：空间融合='+('开启' if self._spatial_enabled_snapshot else '关闭') +
+                                     ('；OM 本地快照重放' if self._spatial_replay_snapshot else '；OM 联网读取'))
         return super().fetch_weather(direction_key)
 
     def _finish_fetch_weather(self,preserve_status=False):
         super()._finish_fetch_weather(preserve_status=preserve_status)
         successes=sum(x.get('status') in ('spatial_horizontal_used_vertical_api','archive_om_used') for x in self.spatial_fetch_log)
         misses=sum(x.get('status') in ('point_api_fallback','archive_no_matching_om') for x in self.spatial_fetch_log)
-        status=('已完成：OM 融合 %s 批；回退 API %s 批。' % (successes,misses)) if self._spatial_enabled_snapshot else '已完成原版对照，不使用 OM 数据。'
+        gfs_disabled=sum(x.get('status')=='gfs_om_horizontal_disabled_native_pressure_only' for x in self.spatial_fetch_log)
+        status=('已完成：EC OM 融合 %s 批；API 回退 %s 批。' % (successes,misses)) if self._spatial_enabled_snapshot else '已完成原版对照，不使用 OM 数据。'
+        if gfs_disabled:
+            status += ' GFS 已按规则停用 OM 水平云场（%s 批），使用原生气压层。' % gfs_disabled
         if self._spatial_enabled_snapshot and misses:
             failures=[row.get('reason') or '无错误详情' for row in self.spatial_fetch_log if row.get('status')=='point_api_fallback']
             if failures:

@@ -58,8 +58,8 @@ def main():
                     # preserves valid deterministic zero/no-cloud rows and the
                     # same color-score status semantics in manual publications.
                     row=_record(result)
-                    if any(not isinstance(row.get(k), (int, float)) for k in ('probability','color_score','burn_scale')):
-                        raise RuntimeError('预测结果不完整：概率、色彩分或火烧云规模缺失')
+                    if any(not isinstance(row.get(k), (int, float)) for k in ('probability','color_score','burn_scale','visual_burn_scale')):
+                        raise RuntimeError('预测结果不完整：概率、色彩分、几何规模或视觉规模缺失')
                     records.append({'date':day.isoformat(),'model':model,'direction':direction,**row})
                 except Exception as exc:
                     reason=str(exc)

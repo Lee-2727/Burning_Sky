@@ -85,7 +85,12 @@ def audit_state(state):
                     p['spatial_horizontal_model_domain'] = 'ncep_gfs025'
         before = {round(float(s['distance_km']), 4): dict(s) for s in samples
                   if isinstance(s, dict) and _numeric(s.get('distance_km')) is not None}
-        diag = calibrate_path_samples(samples, profiles)
+        # Snapshot old OM evidence before the new GFS policy strips it from
+        # forecast inputs. This audit is read-only and never feeds forecasts.
+        raw_om_by_distance = {round(float(p['distance_km']), 4): dict(p.get('spatial_horizontal_om') or {})
+                              for p in profiles if isinstance(p, dict)
+                              and _numeric(p.get('distance_km')) is not None}
+        diag = calibrate_path_samples(samples, profiles, model_id=(result.get('query_model_id') or model))
         after = {round(float(s['distance_km']), 4): s for s in samples
                  if isinstance(s, dict) and _numeric(s.get('distance_km')) is not None}
         ps = {round(float(p['distance_km']), 4): p for p in profiles
@@ -94,7 +99,7 @@ def audit_state(state):
         for d, old in sorted(before.items()):
             sample = after[d]
             profile = ps.get(d, {})
-            raw_om = profile.get('spatial_horizontal_om') or {}
+            raw_om = raw_om_by_distance.get(d, {})
             eff = profile.get('spatial_horizontal_effective') or {}
             for field, label in zip(FIELDS, LABELS):
                 native = _original(old, field)
@@ -107,7 +112,8 @@ def audit_state(state):
                        'old_calculation_pct': before_value, 'current_effective_pct': result_value,
                        'horizontal_effective_pct': _numeric(eff.get(field)),
                        'delta_pp': abs(native - om_value) if native is not None and om_value is not None else None,
-                       'decision': (profile.get('spatial_horizontal_effective_sources') or {}).get(field, 'not_bound')}
+                       'decision': ('gfs_om_disabled_diagnostic_only' if gfs else
+                                    (profile.get('spatial_horizontal_effective_sources') or {}).get(field, 'not_bound'))}
                 rows.append(row)
         out['directions'][direction] = {'gfs': gfs, 'rows': len(rows),
                                          'legacy_provenance_inferred': missing_provenance,
@@ -129,12 +135,15 @@ def format_summary(audit):
              '【离线云量一致性核对】不会请求 Open-Meteo，不会修改原 ZIP。']
     for direction, d in audit['directions'].items():
         c = d['calibration']
-        lines += [f"{'朝霞' if direction == 'morning' else '晚霞' if direction == 'evening' else direction}："
-                  f"分层记录 {d['rows']} 条；GFS 气压层 proxy {c.get('gfs_proxy_points',0)} 点；"
-                  f"冲突 {c.get('conflict_count',0)} 项（>25个百分点）；"
-                  f"旧版缺失来源标签 {d['legacy_provenance_inferred']} 点。"]
+        if d.get('gfs'):
+            lines += [f"{'朝霞' if direction == 'morning' else '晚霞' if direction == 'evening' else direction}："
+                      f"分层记录 {d['rows']} 条；GFS OM 水平云场已停用，仅作为历史诊断；"
+                      f"旧版缺失来源标签 {d['legacy_provenance_inferred']} 点。"]
+        else:
+            lines += [f"{'朝霞' if direction == 'morning' else '晚霞' if direction == 'evening' else direction}："
+                      f"分层记录 {d['rows']} 条；EC OM 校准点 {len(c.get('corrected_distances') or [])} 个。"]
     return '\n'.join(lines) + ('\n仅复核云量输入；保存时的概率和几何结果没有重算。'
-                               '完整结果需要使用案例缓存重算，或重新联网查询。')
+                               'GFS 的历史 OM 数值只供查看，不进入新预测计算。')
 
 
 def export_csv(audit, path):

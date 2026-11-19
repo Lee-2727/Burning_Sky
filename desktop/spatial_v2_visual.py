@@ -261,6 +261,47 @@ def _draw_admin_overlay(ax):
                 bbox={'facecolor':'white','alpha':.88,'edgecolor':'none'})
 
 
+def _verified_bottom_red_segments(inferred, profiles=None):
+    """Return only the sampled cloud-bottom strips with strict light proof.
+
+    Each record is one 15-km sweep sub-strip at a particular minute.  The red
+    overlay is deliberately limited to the bottom edge; it never paints cloud
+    sides/tops and never treats blocked or unresolved samples as illuminated.
+    """
+    segments = set()
+    rows=inferred.get('verified_bottom_sample_traces') or []
+    try:
+        from burning_sky.sky_six import filter_bottom_sample_traces_to_single_vertical_target
+        rows=filter_bottom_sample_traces_to_single_vertical_target(rows,profiles)
+    except Exception:
+        # Rendering must remain available for older offline diagnostic bundles.
+        pass
+    for row in rows:
+        if not isinstance(row, dict) or row.get('status') != 'verified_bottom':
+            continue
+        key = row.get('target_key') or []
+        if not isinstance(key, (list, tuple)) or len(key) < 4:
+            continue
+        try:
+            zone_start, zone_end = float(key[0]), float(key[1])
+            bottom_km = float(key[2])
+            position = float(row['position_km'])
+            width = float(row.get('area_width_km') or 0.0)
+        except (KeyError, TypeError, ValueError, IndexError):
+            continue
+        if not all(math.isfinite(v) for v in (zone_start, zone_end, bottom_km, position, width)):
+            continue
+        if width <= 0 or zone_end <= zone_start:
+            continue
+        left = max(zone_start, position - width / 2.0)
+        right = min(zone_end, position + width / 2.0)
+        if right <= left:
+            continue
+        segments.add((round(left, 4), round(bottom_km, 4),
+                      round(right, 4), round(bottom_km, 4)))
+    return sorted(segments)
+
+
 def render_fusion_profile_figure(result,*,model='未知',origin_name='',om_run=None,api_run=None):
     """Use actual saved ray candidates/verified paths and conflict exemplars.
 
@@ -340,6 +381,16 @@ def render_fusion_profile_figure(result,*,model='未知',origin_name='',om_run=N
         ax.add_collection(col)
     ax.plot([],[],color='#6926a6',lw=2,label='所有已验证区域的逐分钟光路（按区域着色）')
 
+    # Restore the explicit red-bottom overlay used by the main profile view.
+    # This diagnostic renderer previously drew purple rays but never consumed
+    # verified_bottom_sample_traces, so valid lit strips silently disappeared.
+    red_bottom_segments = _verified_bottom_red_segments(inferred, valid)
+    if red_bottom_segments:
+        red_lines = [[(a, y0), (b, y1)] for a, y0, b, y1 in red_bottom_segments]
+        ax.add_collection(LineCollection(red_lines, colors=['#ef4444'],
+                                         linewidths=2.8, zorder=9,
+                                         label='严格验证受光的云底（仅标红底边）'))
+
     examples=diag.get('horizontal_conflict_examples') or []
     xs=[];ys=[]
     for e in examples:
@@ -353,9 +404,20 @@ def render_fusion_profile_figure(result,*,model='未知',origin_name='',om_run=N
     ax.set(xlim=(0,xmax),ylim=(0,ymax),xlabel='沿原采样中心线距离 (km)',ylabel='相对地表高度 (km)')
     ax.grid(color='#d1d5db',alpha=.36)
     ax.legend(loc='upper left',fontsize=9)
-    cloud_note=f"水平/垂直冲突 {diag.get('horizontal_conflict_count',0)} 次；图上仅显示 {len(xs)} 个可定位示例（最多保存 12 个）"
+    bottom_rows = inferred.get('verified_bottom_sample_traces') or []
+    try:
+        from burning_sky.sky_six import filter_bottom_sample_traces_to_single_vertical_target
+        bottom_rows=filter_bottom_sample_traces_to_single_vertical_target(bottom_rows,valid)
+    except Exception:
+        pass
+    bottom_verified = sum(1 for row in bottom_rows if row.get('status') == 'verified_bottom')
+    bottom_blocked = sum(1 for row in bottom_rows if row.get('status') == 'cloud_blocked')
+    bottom_horizon = sum(1 for row in bottom_rows if row.get('status') == 'earth_or_source_horizon')
+    bottom_unknown = sum(1 for row in bottom_rows if str(row.get('status', '')).startswith('unresolved'))
+    cloud_note=(f"水平/垂直冲突 {diag.get('horizontal_conflict_count',0)} 次；"
+                f"云底受光 {bottom_verified} / 云层遮挡 {bottom_blocked} / 地平线限制 {bottom_horizon} / 未验证 {bottom_unknown}")
     ax.set_title(f"{origin_name} {model} | 融合后剖面复核 · {result.get('event_dt','')}\n{cloud_note}",loc='left',fontsize=11)
     fig.text(.09,.045,'run：OM '+format_time(om_run)+'    /    API 元数据 '+format_time(api_run),fontsize=9,color='#475569')
-    fig.text(.09,.02,'橙色叉号 = 数据证据冲突，不代表确认遮挡；轴外光路节点无法精确投影到此一维图。',fontsize=9,color='#475569')
+    fig.text(.09,.02,'红色底边 = 严格验证通过的云底受光采样段；橙色叉号 = 数据证据冲突，不代表确认遮挡。',fontsize=8.5,color='#475569')
     fig.subplots_adjust(left=.09,right=.97,bottom=.17,top=.83)
     return fig

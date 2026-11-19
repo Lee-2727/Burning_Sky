@@ -259,11 +259,14 @@ def _record(result):
     local_high_cloud = (min(100.0, max(0.0, local_mid_cloud) + max(0.0, local_high_layer_cloud))
                         if local_mid_cloud is not None and local_high_layer_cloud is not None else None)
     # Reuse the engine's visible-horizon scale rather than the 0-km cloud sample.
-    burn_scale = numeric(inferred.get("burn_scale_index"))
+    burn_scale = numeric(inferred.get("geometric_burn_scale_index", inferred.get("burn_scale_index")))
     if burn_scale is None:
         local_cover = numeric(inferred.get('potential_range_mid_high_pct'))
         burn_scale = (round(local_cover*tintable_ratio/100.0, 2)
                       if local_cover is not None and tintable_ratio is not None else None)
+    # Visual scale must come from the projected apparent-solid-angle model;
+    # never copy the geometric scale as a substitute.
+    visual_burn_scale = numeric(inferred.get('visual_burn_scale_index'))
     fire_score = (round(probability * burn_scale / 100.0, 2)
                   if probability is not None and burn_scale is not None else None)
     color_score = numeric(inferred.get("color_score"))
@@ -291,11 +294,13 @@ def _record(result):
                               else inferred.get('color_score_note')),
         "verdict": verdict,
         "burn_scale": burn_scale,
+        "visual_burn_scale": visual_burn_scale,
         "local_mid_cloud": local_mid_cloud,
         "local_high_layer_cloud": local_high_layer_cloud,
         "local_high_cloud": local_high_cloud,
         "fire_score_no_color": fire_score,
-        "burn_scale_label": inferred.get("burn_scale_label", "暂不可判定"),
+        "burn_scale_label": inferred.get("geometric_burn_scale_label", inferred.get("burn_scale_label", "暂不可判定")),
+        "visual_burn_scale_label": inferred.get("visual_burn_scale_label", "暂不可判定"),
         "spatial_calibration_status": (inferred.get('spatial_calibration') or {}).get('status','not_available'),
         "spatial_corrected_point_count": len((inferred.get('spatial_calibration') or {}).get('corrected_distances',[])),
         "event_time": ((result or {}).get("event_dt").isoformat()
@@ -493,7 +498,7 @@ def main():
                         if task_key in checkpoint_completed:
                             previous = snapshot['days'][day_index][direction].get(label)
                             if isinstance(previous, dict) and all(isinstance(previous.get(k), (int,float))
-                                                      for k in ('probability','color_score','burn_scale')):
+                                                      for k in ('probability','color_score','burn_scale','visual_burn_scale')):
                                 task_index += 1
                                 print(f'[checkpoint] {task_key}: valid ({task_index}/{status["task_total"]})', flush=True)
                                 status.update(task_progress=task_index, city_progress=city_index)
@@ -541,7 +546,7 @@ def main():
                             error = engine.messagebox.last_error
                             valid_attempt = (not error and isinstance(record, dict)
                                              and all(isinstance(record.get(k), (int, float))
-                                                     for k in ('probability', 'color_score', 'burn_scale')))
+                                                     for k in ('probability', 'color_score', 'burn_scale', 'visual_burn_scale')))
                             if not valid_attempt:
                                 inferred_diagnostic = ((result or {}).get('inferred') or {})
                                 print('[OVERVIEW DIAGNOSTIC] '
@@ -552,6 +557,7 @@ def main():
                                       f'raw_prob={inferred_diagnostic.get("regular_score")!r} '
                                       f'raw_color={inferred_diagnostic.get("color_score")!r} '
                                       f'raw_scale={inferred_diagnostic.get("burn_scale_index")!r} '
+                                      f'raw_visual_scale={inferred_diagnostic.get("visual_burn_scale_index")!r} '
                                       f'raw_tint={inferred_diagnostic.get("tintable_ratio")!r} '
                                       f'verdict={inferred_diagnostic.get("verdict_override")!r} '
                                       f'parsed={record!r} error={error!r}', flush=True)
@@ -563,7 +569,7 @@ def main():
                                 break
                             reason = (str(error[1]) if error else '预测流程返回指标不完整：' + ', '.join(
                                 f'{key}={record.get(key) if isinstance(record, dict) else None!r}'
-                                for key in ('probability', 'color_score', 'burn_scale')))
+                                for key in ('probability', 'color_score', 'burn_scale', 'visual_burn_scale')))
                             attempts_diagnostics[task_key] = {'attempt': attempt, 'reason': reason[:500]}
                             # Incomplete scores/unknown illumination are not fixed by
                             # repeatedly downloading the same weather run. A 429 is
@@ -591,7 +597,7 @@ def main():
 
                         valid = (not error and isinstance(record, dict)
                                  and all(isinstance(record.get(k), (int,float))
-                                         for k in ('probability','color_score','burn_scale')))
+                                         for k in ('probability','color_score','burn_scale','visual_burn_scale')))
                         if valid:
                             snapshot['days'][day_index][direction][label] = record
                             checkpoint_completed.add(task_key)

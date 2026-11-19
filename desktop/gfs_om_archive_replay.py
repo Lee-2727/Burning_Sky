@@ -19,6 +19,10 @@ def _distance_km(a, b, c, d):
 def bind_saved_horizontal(pressure, saved_state, event_utc, model_id):
     """Update pressure['samples'] in place; return transparent match statistics."""
     result = {'status':'archive_no_matching_om', 'attached':0, 'checked':0, 'skipped':0}
+    if 'gfs' in str(model_id or '').lower():
+        result.update({'status':'gfs_om_horizontal_disabled_native_pressure_only',
+                       'reason':'GFS 案例回放不再绑定历史 OM 水平云场'})
+        return result
     if not isinstance(saved_state, dict):
         result['reason']='no loaded case'
         return result

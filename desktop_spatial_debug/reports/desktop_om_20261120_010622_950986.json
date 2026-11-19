@@ -1,0 +1,101 @@
+{
+  "mode": "OM_HORIZONTAL_FUSION_DESKTOP",
+  "local_om_replay": false,
+  "generated_at": "2026-11-19T17:06:22.951982+00:00",
+  "location": "合肥",
+  "query_direction": "morning",
+  "spatial_threshold_experimental": 85.0,
+  "report_format_version": 2,
+  "explanation": "85% is a new OM-versus-pressure inconsistency screen, not the old sky ray threshold",
+  "source_log": [
+    {
+      "status": "gfs_om_horizontal_disabled_native_pressure_only",
+      "model": "ncep_gfs_global",
+      "distance_count": 6,
+      "reason": "GFS 预测停用 OM 水平云场；仅使用原生 API 气压层剖面"
+    },
+    {
+      "status": "gfs_om_horizontal_disabled_native_pressure_only",
+      "model": "ncep_gfs_global",
+      "distance_count": 17,
+      "reason": "GFS 预测停用 OM 水平云场；仅使用原生 API 气压层剖面"
+    }
+  ],
+  "directions": {
+    "morning": {
+      "date": "2026-11-20",
+      "model": "ncep_gfs_global",
+      "api_model_metadata": null,
+      "api_profile_valid_times": [
+        "2026-11-19 23:00 UTC"
+      ],
+      "event_local_time": "2026-11-20 06:43:25.342591",
+      "origin": [
+        31.8047,
+        117.2214
+      ],
+      "azimuth": 112.72161411196403,
+      "regular_probability": 86,
+      "color_score": 0,
+      "tintable_ratio": null,
+      "burn_scale_index": null,
+      "burn_scale_label": "暂不可估",
+      "visual_burn_scale_index": null,
+      "visual_burn_scale_label": "暂不可估",
+      "strict_primary_path_diagnostic": {
+        "method_version": "DYNAMIC_SOLAR_CLOUD_EXIT_AUTO_RESAMPLE_V1",
+        "status": "unresolved_data",
+        "verified_minutes": [],
+        "required_profile_km": 1150.0,
+        "available_profile_km": 750.0,
+        "target_limit_km": null,
+        "off_axis_rays_measured": null,
+        "off_axis_rays_missing": null,
+        "horizontal_ray_checks": 0,
+        "horizontal_evaluated_nodes": 0,
+        "horizontal_conflict_count": 0,
+        "horizontal_target_conflict_count": 0,
+        "horizontal_fusion_enabled": false,
+        "horizontal_conflict_unresolved_minutes": [],
+        "horizontal_conflict_examples": [],
+        "stacked_target_diagnostic": {},
+        "note": "上游气压层未覆盖太阳角度决定的完整云层遮挡检查范围，或有剖面缺失；未采样区域不得当作晴空。"
+      },
+      "off_axis_resampling": {
+        "state": "partial_unverified",
+        "new_locations": 75,
+        "measured_rays": 0,
+        "failed_batches": [
+          {
+            "start": 0,
+            "size": 20,
+            "error": "案例原始请求缓存不完整或与当前算法的采样请求不同，无法离线重新计算。\n缺失请求：https://api.open-meteo.com/v1/forecast?latitude=30.25966%2C30.09526%2C29.92920%2C29.76152%2C29.59222%2C29.42131%2C29.24882%2C29.07476%2C28.89916%2C28.72201%2C28.54335%2C28.36318%2C28.18153%2C27.99841%2C30.43651%2C30.81363%2C30.64928%2C30.48315%2C30.31524%2C30.14559&longitude=121.52702%2C121.99469%2C122.46080%2C122.92535%2C123.38834%2C123.84977%2C124.30964%2C124.76796%2C125.22472%2C125.67994%2C126.13361%2C126.58573%2C127.03632%2C127.48537%2C121.01651%2C119.92899%2C120.41261%2C120.89458%2C121.3749\n已有请求数：15。可直接查看已保存的分析结果；如需按新版算法重新计算，必须重新联网获取缺失的采样数据。"
+          },
+          {
+            "start": 20,
+            "size": 20,
+            "error": "案例原始请求缓存不完整或与当前算法的采样请求不同，无法离线重新计算。\n缺失请求：https://api.open-meteo.com/v1/forecast?latitude=29.97421%2C29.80112%2C29.62633%2C29.44986%2C30.87142%2C30.71316%2C30.55324%2C30.39168%2C30.22851%2C30.06373%2C29.26326%2C30.97788%2C31.03501%2C29.89503%2C29.72582%2C31.14064%2C27.92256%2C29.05452%2C28.86964%2C28.11440&longitude=122.33058%2C122.80595%2C123.27966%2C123.75173%2C119.77596%2C120.24098%2C120.70447%2C121.16642%2C121.62685%2C122.08574%2C124.21789%2C119.49652%2C119.34354%2C122.56136%2C123.01490%2C119.06270%2C127.44944%2C124.67178%2C125.1369\n已有请求数：15。可直接查看已保存的分析结果；如需按新版算法重新计算，必须重新联网获取缺失的采样数据。"
+          },
+          {
+            "start": 40,
+            "size": 20,
+            "error": "案例原始请求缓存不完整或与当前算法的采样请求不同，无法离线重新计算。\n缺失请求：https://api.open-meteo.com/v1/forecast?latitude=28.29250%2C30.63028%2C31.24982%2C31.19299%2C29.53871%2C28.46170%2C28.67204%2C30.80884%2C28.99291%2C28.81316%2C31.41002%2C31.08952%2C31.35384%2C29.34666%2C29.16951%2C28.62925%2C29.18374%2C29.35745%2C31.59458%2C31.51317&longitude=126.54032%2C120.57198%2C118.76879%2C118.92193%2C123.45864%2C126.12085%2C125.59458%2C120.05935%2C124.78144%2C125.22724%2C118.33287%2C119.27273%2C118.48605%2C123.89885%2C124.34590%2C125.67777%2C124.25171%2C123.78932%2C117.8243\n已有请求数：15。可直接查看已保存的分析结果；如需按新版算法重新计算，必须重新联网获取缺失的采样数据。"
+          },
+          {
+            "start": 60,
+            "size": 15,
+            "error": "案例原始请求缓存不完整或与当前算法的采样请求不同，无法离线重新计算。\n缺失请求：https://api.open-meteo.com/v1/forecast?latitude=27.84812%2C28.43501%2C29.53133%2C28.03439%2C31.68001%2C28.21217%2C31.55616%2C29.69957%2C28.96388%2C28.77610%2C28.58682%2C29.38488%2C29.19508%2C29.56436%2C29.72478&longitude=127.40846%2C126.02999%2C123.32625%2C126.95722%2C117.58660%2C126.52640%2C117.95823%2C122.85947%2C124.68885%2C125.14208%2C125.59367%2C123.69063%2C124.15803%2C123.21691%2C122.76733&hourly=cloud_cover_1000hPa%2Crelative_humidity_1000hPa%2Cgeopotential_height_1000hPa%2Ccloud_cover_97\n已有请求数：15。可直接查看已保存的分析结果；如需按新版算法重新计算，必须重新联网获取缺失的采样数据。"
+          }
+        ],
+        "planned_rays": 223
+      },
+      "spatial_calibration": {
+        "status": "gfs_om_horizontal_disabled",
+        "restored_point_api_layers": 0,
+        "unknowned_legacy_layers": 0,
+        "stripped_profile_count": 0,
+        "manual_values_preserved": false
+      }
+    }
+  }
+}

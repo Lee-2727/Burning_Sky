@@ -40,6 +40,10 @@ if _ENGINE_SPEC is None or _ENGINE_SPEC.loader is None:
 engine = importlib.util.module_from_spec(_ENGINE_SPEC)
 sys.modules[_ENGINE_SPEC.name] = engine
 _ENGINE_SPEC.loader.exec_module(engine)
+# The shared spatial pipeline imports the canonical module name `engine` to
+# inspect replay/capture context. Alias the verified module so Pro and Lite use
+# exactly one FireCloudApp class and one request-context object.
+sys.modules['engine'] = engine
 if not hasattr(engine, "WEATHER_MODEL_CATALOG"):
     raise ImportError(f"加载的引擎文件缺少 WEATHER_MODEL_CATALOG：{_ENGINE_PATH}")
 
@@ -93,6 +97,11 @@ class _DummyLabel:
         pass
 
 from burning_sky.spatial_pipeline import HybridSpatialMixin
+from burning_sky.interactive_result_cache import load as load_interactive_cache, save as save_interactive_cache
+from burning_sky.interactive_result_cache import prune_previous_days as _prune_interactive_cache
+from burning_sky.advanced_bridge import prune_daily_cache as _prune_satellite_cache
+_prune_interactive_cache()
+_prune_satellite_cache()
 
 class WebForecastEngine(HybridSpatialMixin, engine.FireCloudApp):
     """Reuses v1.4.49 calculation and data-fetch methods without creating Tk."""
@@ -220,7 +229,10 @@ with st.sidebar:
     _default_elev = float(_selected["海拔（m）"]) if _selected is not None and pd.notna(_selected.get("海拔（m）")) else 0.0
     forecast_date = st.date_input("预报日期", value=date.today())
     model_options = [item["label"] for item in engine.WEATHER_MODEL_CATALOG]
-    model_label = st.selectbox("天气预报模式", model_options, index=0)
+    if 'ECMWF IFS 0.25°' in model_options and 'GFS Global' in model_options:
+        _pair_insert = model_options.index('GFS Global') + 1
+        model_options.insert(_pair_insert, 'EC&GFS')
+    model_label = st.selectbox("天气预报模式", model_options, index=0, key='single_forecast_model')
     st.caption("坐标、云底和大气参数已归入下方高级设置。")
     with st.expander("📍 坐标与海拔 · 按需修改", expanded=False):
         lat = st.number_input("纬度", min_value=-90.0, max_value=90.0, value=_default_lat, format="%.4f")
@@ -253,8 +265,8 @@ with st.sidebar:
     # EC/GFS spatial calibration is part of the standard forecast pipeline.
     # No user-facing experimental switch: failures fall back to the original API,
     # and the per-batch provenance remains visible in the result diagnostics.
-    if model_label in ('ECMWF IFS 0.25°', 'GFS Global'):
-        st.caption('EC/GFS 自动使用 OM 空间云场校准；数据不足自动回退原 API，实际来源见结果诊断。')
+    if model_label in ('ECMWF IFS 0.25°', 'GFS Global', 'EC&GFS'):
+        st.caption('EC/GFS 使用各自的原生云层剖面与统一云底受光算法；选择 EC&GFS 时按 EC→GFS 顺序计算。')
     morning_col, evening_col = st.columns(2)
     with morning_col:
         run_morning = st.button("查询朝霞", use_container_width=True)
@@ -429,7 +441,16 @@ def _web_summary_lines(summary):
         parts=lines[2].split('　|　',1)
         model=parts[0]
         clouds=parts[1] if len(parts)>1 else ''
-        out=[lines[0],lines[1]+'　'+model,clouds,lines[3]+'　'+lines[4]]
+        _scale_line=lines[3]
+        if '几何' in _scale_line and '视觉' in _scale_line:
+            try:
+                _tint_part,_burn_part=_scale_line.split('　|　规模：',1)
+                _visual_tint=_tint_part.split('· 视觉 ',1)[1]
+                _visual_scale=_burn_part.split('· 视觉 ',1)[1]
+                _scale_line=f'整个朝/晚霞窗口累计可染色：视觉 {_visual_tint}　|　视觉规模：{_visual_scale}'
+            except (IndexError,ValueError):
+                pass
+        out=[lines[0],lines[1]+'　'+model,clouds,_scale_line+'　'+lines[4]]
         out.append('　'.join(x for x in lines[5:] if not x.startswith('视野内低云')) if len(lines)>5 else '特殊判定：无')
         out.extend(x for x in lines[5:] if x.startswith('视野内低云'))
         return out
@@ -467,7 +488,7 @@ if not run and st.session_state.get('rainbow_only_web_result') is not None:
         st.json(_rb.get('environment_sources',{}))
         st.json([{'time': r.get('time'), 'details': r.get('details', [])} for r in _rb.get('timeline', []) if isinstance(r, dict) and r.get('details')])
     st.caption('数字为未经历史校准的概率式评分，不是统计发生概率。')
-    st.caption('火烧云规模：0% 不烧；大于0%且不足10% 微烧；10%–不足30% 小烧；30%–不足60% 中烧；60%–100% 大烧。')
+    st.caption('几何规模与视觉规模均按0%–100%分级：0% 不烧；大于0%且不足10% 微烧；10%–不足30% 小烧；30%–不足60% 中烧；60%–100% 大烧。')
     if rainbow_only_web: st.stop()
 
 # 在“未来多日概览 / 手动查询多日概览”页面点击左侧任一查询按钮时，优先执行单次查询。
@@ -668,7 +689,8 @@ if st.session_state.get("show_multi_day_overview"):
                             _rows.append({"日期":_day.get('date','—'), "模式":_short,
                                           "常规概率":_fmt('probability','%'),
                                           "色彩分":_fmt('color_score',''),
-                                          "火烧云规模":_fmt('burn_scale','%')})
+                                          "几何规模":_fmt('burn_scale','%'),
+                                          "视觉规模":_fmt('visual_burn_scale','%')})
                     st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
     _render_multi_day_overview()
 
@@ -725,11 +747,13 @@ def _manual_direction_frame(records_by_model):
         probability = record.get("probability")
         color_score = record.get("color_score")
         burn_scale = record.get("burn_scale")
+        visual_burn_scale = record.get("visual_burn_scale")
         rows.append({
             "模式": _MODEL_SHORT.get(model, model),
             "常规概率": (f"{probability:.0f}%" if isinstance(probability, (int, float)) else "—"),
             "色彩分": (f"{color_score:.0f}" if isinstance(color_score, (int, float)) else "—"),
-            "火烧云规模": (f"{burn_scale:.0f}%" if isinstance(burn_scale, (int, float)) else "—"),
+            "几何规模": (f"{burn_scale:.0f}%" if isinstance(burn_scale, (int, float)) else "—"),
+            "视觉规模": (f"{visual_burn_scale:.0f}%" if isinstance(visual_burn_scale, (int, float)) else "—"),
         })
     return pd.DataFrame(rows)
 
@@ -775,7 +799,8 @@ def _render_manual_overview_result(display, expected_dates):
                     rows.append({'日期': day.get('date', '—'), '模式': short,
                                  '常规概率': fmt('probability', '%'),
                                  '色彩分': fmt('color_score', ''),
-                                 '火烧云规模': fmt('burn_scale', '%')})
+                                 '几何规模': fmt('burn_scale', '%'),
+                                 '视觉规模': fmt('visual_burn_scale', '%')})
             frame = pd.DataFrame(rows)
             try:
                 st.dataframe(_overview_styled(frame), use_container_width=True, hide_index=True)
@@ -988,7 +1013,7 @@ if st.session_state.get("show_manual_overview"):
                    f"进度 {_display.get('completed', 0)}/{_display.get('total', 12)} · "
                    f"状态：{_state_labels.get(str(_display.get('state')), _display.get('state', '未知'))} · "
                    f"数据获得时间：{_display.get('obtained_at', '未知')}")
-        st.caption("表格列与自动更新的多日概览一致：常规概率为未经实况校准的经验估计，火烧云规模为可着色中高云占比。")
+        st.caption("表格列与自动更新的多日概览一致：几何规模按曾经受光的唯一采样区统计；视觉规模按这些采样区的视角面积加权。")
         _render_manual_overview_result(_display, _expected_dates)
         if _display.get("errors"):
             with st.expander(f"失败详情（{len(_display['errors'])} 项）"):
@@ -1017,57 +1042,149 @@ if run:
         "morning_aod": morning_aod_text.strip(),
         "evening_aod": evening_aod_text.strip(),
     }
-    runner = WebForecastEngine(values)
+    def _complete_interactive_record(_record):
+        if not isinstance(_record,dict) or not isinstance(_record.get('inferred'),dict):
+            return False
+        _inf=_record['inferred'];_surface=_inf.get('surface_path_diagnostics') or {}
+        return (_surface.get('primary_view')=='backlit_cloud_bottom_only'
+                and _surface.get('face_bands_used_in_primary_ratio') is False
+                and 'visual_burn_scale_index' in _inf
+                and 'geometric_burn_scale_index' in _inf)
+
     _direction_text = "朝霞与晚霞" if query_direction == "all" else ("朝霞" if query_direction == "morning" else "晚霞")
     _query_dir = "both" if query_direction == "all" else query_direction
     _case_state = st.session_state.get("case_bundle_state")
-    if use_case_cache:
-        _expected_model = {"ecmwf_ifs025": "EC", "ncep_gfs_global": "GFS", "icon_global": "ICON", "ecmwf_aifs025_single": "AIFS", "cma_grapes_global": "CMA_GRAPES"}.get(engine._weather_model_id_from_label(model_label), "EC")
-        _dirs = set((_case_state or {}).get("direction_results", {}).keys())
-        _required_dirs = {"morning", "evening"} if _query_dir == "both" else {_query_dir}
-        _missing_dirs = _required_dirs - _dirs
-        if not _case_state or _case_state.get("date") != forecast_date.isoformat() or _case_state.get("model_code") != _expected_model or _missing_dirs:
-            _why = []
-            if not _case_state: _why.append("未加载案例")
-            elif _case_state.get("date") != forecast_date.isoformat(): _why.append(f"案例日期为 {_case_state.get('date')}，当前为 {forecast_date.isoformat()}")
-            if _case_state and _case_state.get("model_code") != _expected_model: _why.append(f"案例模式为 {_case_state.get('model_code')}，当前为 {_expected_model}")
-            if _missing_dirs: _why.append("案例缺少方向：" + "、".join("朝霞" if x == "morning" else "晚霞" for x in _missing_dirs))
-            st.error("案例数据不匹配，已停止查询：" + "；".join(_why) + "。请加载正确案例或取消缓存勾选。")
+    _combined_mode = model_label == 'EC&GFS'
+    _model_runs = []
+    _model_errors = {}
+    _model_results = {}
+    _model_caches = {}
+    _model_values = {}
+    _model_logs = {}
+    _model_records = {}
+
+    if _combined_mode:
+        if use_case_cache:
+            st.error('EC&GFS 双模式暂不支持单个案例 ZIP 离线回放；请取消“从案例读取数据”，或分别选择 EC/GFS 回放。')
             st.stop()
-        _replay_cache = st.session_state.get('case_bundle_cache') or {}
-        _sat_replay = st.session_state.get('case_bundle_satellite') or {}
-        engine._CASE_REQUEST_CONTEXT = {"mode": "replay", "cache": _replay_cache}
-    else:
-        # A new online query captures newly requested data. Previously uploaded
-        # case payloads are only for explicit offline replay, never online mode.
-        _web_case_cache = {}
-        engine._CASE_REQUEST_CONTEXT = {"mode": "capture", "cache": _web_case_cache}
-    try:
-        with st.spinner(f"{'正在读取案例缓存' if use_case_cache else '正在获取天气、云层剖面与 CAMS AOD'}，并计算{_direction_text}……"):
-            # The shared engine now splits combined queries identically for
-            # desktop and web, including merged rainbow results.
-            if use_case_cache and _sat_replay:
-                # Satellite corrections are directional; a combined call cannot
-                # apply distinct confirmed edits to morning and evening together.
-                for _replay_dir in (('morning','evening') if _query_dir=='both' else (_query_dir,)):
-                    _revised = (_sat_replay.get(_replay_dir) or {}).get('edits') or []
-                    _ctx = {'mode':'replay', 'cache':_replay_cache}
-                    if _revised:
-                        _ctx.update({'cloud_overrides':_revised, 'satellite_recompute':True,
-                            'satellite_extra_distances':sorted({round(max(0., (float(e[0])+float(e[1]))/2 + delta),2)
-                                for e in _revised for delta in (-4,0,4)})[:60]})
-                    engine._CASE_REQUEST_CONTEXT = _ctx
-                    runner._fetch_weather_task(_replay_dir)
+        for _code, _label in (('EC','ECMWF IFS 0.25°'),('GFS','GFS Global')):
+            _values_for_model=dict(values)
+            _values_for_model['weather_model']=_label
+            _runner=WebForecastEngine(_values_for_model)
+            _request_cache={}
+            engine.messagebox.last_error=None
+            engine._CASE_REQUEST_CONTEXT={'mode':'capture','cache':_request_cache}
+            try:
+                with st.spinner(f'EC&GFS 双模式：正在计算 {_code}（{_direction_text}）…'):
+                    _runner._fetch_weather_task(_query_dir)
+            finally:
+                engine._CASE_REQUEST_CONTEXT=None
+            if engine.messagebox.last_error:
+                _model_errors[_code]=str(engine.messagebox.last_error[1] if isinstance(engine.messagebox.last_error,(tuple,list)) and len(engine.messagebox.last_error)>1 else engine.messagebox.last_error)
+            _valid_direction_results={k:v for k,v in (_runner.direction_results or {}).items()
+                if k in ('morning','evening') and _complete_interactive_record(v)}
+            if _valid_direction_results:
+                _model_results[_code]=_valid_direction_results
+                _model_caches[_code]=_request_cache
+                _model_values[_code]=_values_for_model
+                _model_logs[_code]=getattr(_runner,'spatial_fetch_log',[]) or []
+                for _direction_key,_record in _valid_direction_results.items():
+                    _saved_record=save_interactive_cache(place=place,lat=lat,lon=lon,elevation=elevation,
+                        forecast_date=forecast_date.isoformat(),model=_code,direction=_direction_key,
+                        result=_record,request_cache=_request_cache,
+                        meta={'place':place,'lat':lat,'lon':lon,'elev':elevation,'date':forecast_date.isoformat(),
+                              'model_label':_label,'direction':_direction_key,'query_direction':query_direction},
+                        values=_values_for_model,spatial_source_log=_model_logs[_code],
+                        fetched_at=_runner.last_fetch_time,to_safe=engine.FireCloudApp._json_safe)
+                    _model_records.setdefault(_code,{})[_direction_key]=_saved_record
             else:
-                runner._fetch_weather_task(_query_dir)
-    finally:
-        engine._CASE_REQUEST_CONTEXT = None
+                _model_errors.setdefault(_code,'未返回完整结果')
+            _model_runs.append((_code,_runner,_request_cache,_values_for_model))
+        if not _model_results:
+            st.error('EC 和 GFS 均未获得有效结果：'+'；'.join(f'{k}: {v}' for k,v in _model_errors.items()))
+            st.stop()
+        _active_code='EC' if 'EC' in _model_results else 'GFS'
+        _active_tuple=next(x for x in _model_runs if x[0]==_active_code)
+        _active_code,runner,_web_case_cache,values=_active_tuple
+        _active_label=values['weather_model']
+        _active_result_set=_model_results[_active_code]
+        st.session_state['fire_cloud_model_results']=_model_results
+        st.session_state['fire_cloud_model_records']=_model_records
+        st.session_state['fire_cloud_model_caches']=_model_caches
+        st.session_state['fire_cloud_model_values']=_model_values
+        st.session_state['fire_cloud_model_errors']=_model_errors
+        st.session_state['fire_cloud_model_selection']='EC&GFS'
+        model_label_for_meta=_active_label
+        engine.messagebox.last_error=None
+        if _model_errors:
+            st.warning('双模式中部分模型未完成：'+'；'.join(f'{k}: {v}' for k,v in _model_errors.items())+'。已保留成功模型结果及原有有效缓存。')
+    else:
+        _active_code='EC' if model_label=='ECMWF IFS 0.25°' else ('GFS' if model_label=='GFS Global' else None)
+        runner = WebForecastEngine(values)
+        if use_case_cache:
+            _expected_model = {"ecmwf_ifs025": "EC", "ncep_gfs_global": "GFS", "icon_global": "ICON", "ecmwf_aifs025_single": "AIFS", "cma_grapes_global": "CMA_GRAPES"}.get(engine._weather_model_id_from_label(model_label), "EC")
+            _dirs = set((_case_state or {}).get("direction_results", {}).keys())
+            _required_dirs = {"morning", "evening"} if _query_dir == "both" else {_query_dir}
+            _missing_dirs = _required_dirs - _dirs
+            if not _case_state or _case_state.get("date") != forecast_date.isoformat() or _case_state.get("model_code") != _expected_model or _missing_dirs:
+                _why = []
+                if not _case_state: _why.append("未加载案例")
+                elif _case_state.get("date") != forecast_date.isoformat(): _why.append(f"案例日期为 {_case_state.get('date')}，当前为 {forecast_date.isoformat()}")
+                if _case_state and _case_state.get("model_code") != _expected_model: _why.append(f"案例模式为 {_case_state.get('model_code')}，当前为 {_expected_model}")
+                if _missing_dirs: _why.append("案例缺少方向：" + "、".join("朝霞" if x == "morning" else "晚霞" for x in _missing_dirs))
+                st.error("案例数据不匹配，已停止查询：" + "；".join(_why) + "。请加载正确案例或取消缓存勾选。")
+                st.stop()
+            _replay_cache = st.session_state.get('case_bundle_cache') or {}
+            _sat_replay = st.session_state.get('case_bundle_satellite') or {}
+            engine._CASE_REQUEST_CONTEXT = {"mode": "replay", "cache": _replay_cache}
+        else:
+            _web_case_cache = {}
+            engine._CASE_REQUEST_CONTEXT = {"mode": "capture", "cache": _web_case_cache}
+        try:
+            with st.spinner(f"{'正在读取案例缓存' if use_case_cache else '正在获取天气、云层剖面与 CAMS AOD'}，并计算{_direction_text}……"):
+                if use_case_cache and _sat_replay:
+                    for _replay_dir in (('morning','evening') if _query_dir=='both' else (_query_dir,)):
+                        _revised = (_sat_replay.get(_replay_dir) or {}).get('edits') or []
+                        _ctx = {'mode':'replay', 'cache':_replay_cache}
+                        if _revised:
+                            _ctx.update({'cloud_overrides':_revised, 'satellite_recompute':True,
+                                'satellite_extra_distances':sorted({round(max(0., (float(e[0])+float(e[1]))/2 + delta),2)
+                                    for e in _revised for delta in (-4,0,4)})[:60]})
+                        engine._CASE_REQUEST_CONTEXT = _ctx
+                        runner._fetch_weather_task(_replay_dir)
+                else:
+                    runner._fetch_weather_task(_query_dir)
+        finally:
+            engine._CASE_REQUEST_CONTEXT = None
+        if _active_code and runner.direction_results and not use_case_cache:
+            for _direction_key,_record in runner.direction_results.items():
+                if _direction_key not in ('morning','evening') or not _complete_interactive_record(_record):
+                    continue
+                _saved_record=save_interactive_cache(place=place,lat=lat,lon=lon,elevation=elevation,
+                    forecast_date=forecast_date.isoformat(),model=_active_code,direction=_direction_key,
+                    result=_record,request_cache=_web_case_cache,
+                    meta={'place':place,'lat':lat,'lon':lon,'elev':elevation,'date':forecast_date.isoformat(),
+                          'model_label':model_label,'direction':_direction_key,'query_direction':query_direction},
+                    values=values,spatial_source_log=getattr(runner,'spatial_fetch_log',[]) or [],
+                    fetched_at=runner.last_fetch_time,to_safe=engine.FireCloudApp._json_safe)
+                _model_records.setdefault(_active_code,{})[_direction_key]=_saved_record
+            st.session_state['fire_cloud_model_results']={_active_code:runner.direction_results}
+            st.session_state['fire_cloud_model_records']=_model_records
+            st.session_state['fire_cloud_model_caches']={_active_code:_web_case_cache}
+            st.session_state['fire_cloud_model_values']={_active_code:values}
+            st.session_state['fire_cloud_model_errors']={}
+            st.session_state['fire_cloud_model_selection']=model_label
+        model_label_for_meta=model_label
+
     if runner.spatial_fetch_log:
         with st.expander('空间网格数据源诊断 · 本次查询', expanded=False):
             _ok = sum(x.get('status')=='spatial_used' for x in runner.spatial_fetch_log)
             _hybrid = sum(x.get('status')=='spatial_horizontal_used_vertical_api' for x in runner.spatial_fetch_log)
+            _gfs_disabled = sum(x.get('status')=='gfs_om_horizontal_disabled_native_pressure_only' for x in runner.spatial_fetch_log)
             _all = len(runner.spatial_fetch_log)
-            if _hybrid:
+            if _gfs_disabled:
+                st.caption(f'GFS：OM 水平低/中/高云场已停用（{_gfs_disabled}/{_all} 批）；单次计算只使用 GFS 原生 API 气压层。EC 的 OM 空间校准规则保持不变。')
+            elif _hybrid:
                 st.caption(f'.om 原生气压层采用 {_ok}/{_all} 批；'
                            f'二维低中高云场已读取 {_hybrid}/{_all} 批，垂直气压层仍用原坐标 API。'
                            '二维云量与气压层绑定后参与逐分钟光路冲突复核；若云区冲突则判未验证，不能据此认定遮挡或通光。')
@@ -1081,13 +1198,16 @@ if run:
                 if not _gate:
                     continue
                 _dir_name = '朝霞' if _direction == 'morning' else '晚霞'
-                st.caption(
-                    f"{_dir_name}：二维网格光路复核 {_gate.get('horizontal_ray_checks',0)} 条候选光路 / "
-                    f"{_gate.get('horizontal_evaluated_nodes',0)} 次网格节点检查；"
-                    f"水平/垂直证据冲突 {_gate.get('horizontal_conflict_count',0)} 次，"
-                    f"目标云存在性冲突 {_gate.get('horizontal_target_conflict_count',0)} 次。"
-                    + ("（人工云图修正期间停用 OM 冲突复核）" if
-                       not _gate.get('horizontal_fusion_enabled',True) else ""))
+                if _gfs_disabled:
+                    st.caption(f"{_dir_name}：GFS OM 水平云场复核已停用；光路只读取 GFS 原生 API 气压层。")
+                else:
+                    st.caption(
+                        f"{_dir_name}：二维网格光路复核 {_gate.get('horizontal_ray_checks',0)} 条候选光路 / "
+                        f"{_gate.get('horizontal_evaluated_nodes',0)} 次网格节点检查；"
+                        f"水平/垂直证据冲突 {_gate.get('horizontal_conflict_count',0)} 次，"
+                        f"目标云存在性冲突 {_gate.get('horizontal_target_conflict_count',0)} 次。"
+                        + ("（人工云图修正期间停用 OM 冲突复核）" if
+                           not _gate.get('horizontal_fusion_enabled',True) else ""))
                 if _gate.get('horizontal_conflict_unresolved_minutes'):
                     st.info(f"{_dir_name} 有部分分钟因二维/垂直云场冲突被标记为未验证，"
                             "这不代表已经证实遮挡或完全晴空。")
@@ -1109,7 +1229,8 @@ if run:
         st.session_state["fire_cloud_last_results"] = runner.direction_results
         st.session_state["fire_cloud_last_report"] = runner.last_report
         st.session_state["fire_cloud_last_meta"] = {
-            "place": place, "date": forecast_date.isoformat(), "model": model_label,
+            "place": place, "date": forecast_date.isoformat(), "model": model_label_for_meta,
+            "model_selection": model_label,
             "lat": lat, "lon": lon, "elevation": elevation, "fetched_at": runner.last_fetch_time,
             "query_direction": query_direction,
         }
@@ -1119,7 +1240,7 @@ if run:
         _case_state_out = {
                 "schema_version": 1, "app_version": "Burning Sky", "saved_at": __import__("datetime").datetime.now().astimezone().isoformat(),
                 "place": place, "date": forecast_date.isoformat(), "latitude": f"{lat:.6f}", "longitude": f"{lon:.6f}", "elevation_m": elevation,
-                "weather_model": model_label, "model_code": {"ecmwf_ifs025": "EC", "ncep_gfs_global": "GFS", "icon_global": "ICON", "ecmwf_aifs025_single": "AIFS", "cma_grapes_global": "CMA_GRAPES"}.get(engine._weather_model_id_from_label(model_label), "EC"),
+                "weather_model": model_label_for_meta, "model_code": {"ecmwf_ifs025": "EC", "ncep_gfs_global": "GFS", "icon_global": "ICON", "ecmwf_aifs025_single": "AIFS", "cma_grapes_global": "CMA_GRAPES"}.get(engine._weather_model_id_from_label(model_label_for_meta), "EC"),
                 "cloud_base_mode": cloud_base_mode, "aod_inputs": {"morning_aod": morning_aod_text, "evening_aod": evening_aod_text},
                 "cloud_base_inputs": {"morning_cloud_base_km": morning_cloud_base, "evening_cloud_base_km": evening_cloud_base},
                 "last_fetch_time": runner.last_fetch_time or (_case_state or {}).get("last_fetch_time"), "direction_results": engine.FireCloudApp._json_safe({k: {kk: vv for kk, vv in v.items() if kk != "raw_weather"} for k, v in _combined_results.items()}),
@@ -1137,7 +1258,7 @@ if run:
                 "aod_inputs": _case_state_out["aod_inputs"],
                 "query_direction": query_direction,
                 "manual_cloud_override": st.session_state.get('cloud_manual_override_text', ''),
-                "effective_model": model_label,
+                "effective_model": model_label_for_meta,
                 "local_cloud_geometry": "continuous_face_strict",
                 "primary_spherical_path_gate": True,
             })
@@ -1187,9 +1308,9 @@ def _color_label(value):
     return "世纪"
 
 def _burn_label(inferred, summary):
-    """Classify cloud scale from actual mid/high cloud cover × tintable ratio."""
-    value = inferred.get("burn_scale_index")
-    label = inferred.get("burn_scale_label")
+    """Return the geometric scale (legacy burn_scale_index remains its alias)."""
+    value = inferred.get("geometric_burn_scale_index", inferred.get("burn_scale_index"))
+    label = inferred.get("geometric_burn_scale_label", inferred.get("burn_scale_label"))
     if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
         value, label = engine.calculate_burn_scale(
             inferred.get("mid"), inferred.get("high"), inferred.get("tintable_ratio"))
@@ -1276,10 +1397,114 @@ if st.session_state.get('fire_cloud_original_results'):
                 st.error(f'人工云图修正失败：{_exc}')
 
 from burning_sky import advanced_bridge as _advanced_bridge
+
+# Restore the latest successful same-day EC/GFS result when the user changes
+# the model selector. This is a disk-backed local-day cache read, never a query.
+_auto_detail_model = st.session_state.pop('fire_cloud_auto_selected_model',None) if not run else None
+if _auto_detail_model in ('EC','GFS'):
+    # Apply the model selected by the satellite comparison before creating the
+    # segmented-control widget on this rerun.
+    st.session_state['fire_cloud_detail_model']=_auto_detail_model
+if not run and model_label in ('ECMWF IFS 0.25°','GFS Global','EC&GFS'):
+    _previous_meta=st.session_state.get('fire_cloud_last_meta') or {}
+    _restore_dirs=('morning','evening')
+    _restore_codes=('EC','GFS') if model_label=='EC&GFS' or _auto_detail_model in ('EC','GFS') else (('EC',) if model_label=='ECMWF IFS 0.25°' else ('GFS',))
+    _restored_models={};_restored_records={}
+    for _code in _restore_codes:
+        _by_direction={};_records={}
+        for _dir in _restore_dirs:
+            _rec=load_interactive_cache(place=place,lat=lat,lon=lon,elevation=elevation,
+                forecast_date=forecast_date.isoformat(),model=_code,direction=_dir)
+            if _rec:
+                _by_direction[_dir]=_rec['result'];_records[_dir]=_rec
+        if _by_direction:
+            _restored_models[_code]=_by_direction
+            _restored_records[_code]=_records
+    if _restored_models:
+        st.session_state['fire_cloud_model_results']=_restored_models
+        st.session_state['fire_cloud_model_records']=_restored_records
+        _active_restore=(_auto_detail_model if _auto_detail_model in _restored_models else
+            ('EC' if model_label=='EC&GFS' and 'EC' in _restored_models else
+             ('GFS' if model_label=='EC&GFS' else ('EC' if model_label=='ECMWF IFS 0.25°' else 'GFS'))))
+        if _active_restore not in _restored_models:
+            _active_restore=next(iter(_restored_models))
+        _records=_restored_records[_active_restore]
+        _first_record=next(iter(_records.values()))
+        _active_label=_first_record.get('model_label') or ('ECMWF IFS 0.25°' if _active_restore=='EC' else 'GFS Global')
+        _active_values=_first_record.get('values') or {}
+        _active_cache=_first_record.get('request_cache') or {}
+        _active_meta=dict(_first_record.get('meta') or {})
+        _active_dirs=tuple(d for d in ('morning','evening') if d in _restored_models[_active_restore])
+        _active_meta.update({'place':place,'date':forecast_date.isoformat(),'model':_active_label,
+            'model_selection':model_label,'lat':lat,'lon':lon,'elevation':elevation,
+            'query_direction':'all' if len(_active_dirs)==2 else (_active_dirs[0] if _active_dirs else 'all'),
+            'fetched_at':_first_record.get('fetched_at'),'cache_restored':True})
+        st.session_state['fire_cloud_last_results']=_restored_models[_active_restore]
+        st.session_state['fire_cloud_original_results']=_restored_models[_active_restore]
+        st.session_state['fire_cloud_replay_cache']=_active_cache
+        st.session_state['fire_cloud_replay_values']=_active_values
+        st.session_state['fire_cloud_last_meta']=_active_meta
+        st.session_state['fire_cloud_last_report']=''
+    else:
+        st.session_state.pop('fire_cloud_last_results',None)
+        st.session_state.pop('fire_cloud_original_results',None)
+        st.session_state.pop('fire_cloud_model_results',None)
+
 results = st.session_state.get("fire_cloud_last_results")
 meta = st.session_state.get("fire_cloud_last_meta", {})
+_model_results_for_display=st.session_state.get('fire_cloud_model_results') or {}
+if model_label=='EC&GFS' and _model_results_for_display:
+    st.markdown('### EC / GFS 双模式结果')
+    st.caption('两个模型分别保留当日最后一次完整结果；切换模式或方向只读取缓存，不重新请求天气 API。')
+    _dir_names={'morning':'朝霞','evening':'晚霞'}
+    _show_dirs=tuple(d for d in ('morning','evening') if any(d in (v or {}) for v in _model_results_for_display.values()))
+    _pair_cols=st.columns(2)
+    for _col,_code in zip(_pair_cols,('EC','GFS')):
+        with _col:
+            st.markdown('**'+_code+'**')
+            _dir_results=_model_results_for_display.get(_code) or {}
+            if not _dir_results:
+                st.info('暂无当日完整缓存')
+            for _dir in _show_dirs:
+                _item=_dir_results.get(_dir) or {}
+                _inf=_item.get('inferred') or {}
+                if not _inf:
+                    st.caption(_dir_names.get(_dir,_dir)+'：暂无缓存')
+                    continue
+                st.caption(_dir_names.get(_dir,_dir))
+                _m1,_m2,_m3=st.columns(3)
+                _m1.metric('常规概率',f"{_inf.get('regular_score','—')}%")
+                _m2.metric('色彩分',f"{_inf.get('color_score','—')}")
+                _m3.metric('视觉规模',f"{_inf.get('visual_burn_scale_index','—')}%")
+    _available_detail=[c for c in ('EC','GFS') if _model_results_for_display.get(c)]
+    if len(_available_detail)>1:
+        _detail_default=st.session_state.get('fire_cloud_detail_model','EC')
+        _detail_code=st.segmented_control('详细分析模式',_available_detail,
+            default=_detail_default if _detail_default in _available_detail else _available_detail[0],
+            key='fire_cloud_detail_model')
+    else:
+        _detail_code=_available_detail[0]
+    _detail_records=_model_results_for_display.get(_detail_code) or {}
+    _detail_cache_records=(st.session_state.get('fire_cloud_model_records') or {}).get(_detail_code) or {}
+    _detail_record=next(iter(_detail_cache_records.values()),None)
+    _detail_label='ECMWF IFS 0.25°' if _detail_code=='EC' else 'GFS Global'
+    if _detail_record:
+        _detail_meta=dict(_detail_record.get('meta') or {})
+        _detail_dirs=tuple(d for d in ('morning','evening') if d in _detail_records)
+        _detail_meta.update({'place':place,'date':forecast_date.isoformat(),'model':_detail_label,
+            'model_selection':'EC&GFS','lat':lat,'lon':lon,'elevation':elevation,
+            'query_direction':'all' if len(_detail_dirs)==2 else (_detail_dirs[0] if _detail_dirs else 'all'),
+            'fetched_at':_detail_record.get('fetched_at'),'cache_restored':bool(meta.get('cache_restored'))})
+        st.session_state['fire_cloud_last_meta']=_detail_meta
+        st.session_state['fire_cloud_replay_cache']=_detail_record.get('request_cache') or {}
+        st.session_state['fire_cloud_replay_values']=_detail_record.get('values') or {}
+    st.session_state['fire_cloud_last_results']=_detail_records
+    st.session_state['fire_cloud_original_results']=_detail_records
+    results=_detail_records
+    meta=st.session_state.get('fire_cloud_last_meta',meta)
+
 if results:
-    st.caption(f"最近一次结果：{meta.get('place','')} · {meta.get('date','')} · {meta.get('model','')} · {meta.get('fetched_at') or '时间信息不可用'}")
+    st.caption(f"最近一次结果：{meta.get('place','')} · {meta.get('date','')} · {meta.get('model','')} · {meta.get('fetched_at') or '时间信息不可用'}" + (' · 当日缓存恢复（无天气 API 请求）' if meta.get('cache_restored') else ''))
     # Export the *current* replayed case, including manual cloud edits and full cached responses.
     _current_cache = st.session_state.get('fire_cloud_replay_cache') or {}
     _current_values = st.session_state.get('fire_cloud_replay_values') or {}
@@ -1417,8 +1642,10 @@ if results:
                                   '修正':_sat_metric_value(sat_inf,'color_score')},
                                 {'指标':'可染色云占比','原始':_sat_metric_value(base_inf,'tintable_ratio'),
                                   '修正':_sat_metric_value(sat_inf,'tintable_ratio')},
-                                {'指标':'火烧云规模','原始':_sat_metric_value(base_inf,'burn_scale_index'),
-                                  '修正':_sat_metric_value(sat_inf,'burn_scale_index')},
+                                {'指标':'几何规模','原始':_sat_metric_value(base_inf,'geometric_burn_scale_index'),
+                                  '修正':_sat_metric_value(sat_inf,'geometric_burn_scale_index')},
+                                {'指标':'视觉规模','原始':_sat_metric_value(base_inf,'visual_burn_scale_index'),
+                                  '修正':_sat_metric_value(sat_inf,'visual_burn_scale_index')},
                             ],hide_index=True,use_container_width=True)
                     else:
                         st.caption('暂无卫星修正版本；进入校准后可直接复用本次请求数据。')
@@ -1448,13 +1675,15 @@ if results:
                 st.caption('色彩：低于30 平平无奇；30–不足50 普通；50–不足70 绚烂；70–不足90 史诗；90–100 世纪。')
                 st.caption('规模：0% 不烧；大于0%–不足10% 微烧；10–不足30% 小烧；30–不足60% 中烧；60–100% 大烧。')
             burn_label, burn_index = _burn_label(inferred, result.get("summary", ""))
+            visual_burn_index = inferred.get('visual_burn_scale_index')
+            visual_burn_label = inferred.get('visual_burn_scale_label') or '暂不可估'
             regular_label = _probability_label(regular_score)
             color_class = _color_label(color_score)
             burn_text = inferred.get('burn_summary_label') or burn_label
             color_palette = {"平平无奇": "#e2c76a", "普通": "#c99b24", "绚烂": "#e67e22", "史诗": "#d62828", "世纪": "#9d174d"}
             color_hex = color_palette.get(color_class, "#4b5563")
             special_verdict = inferred.get("verdict_override")
-            if burn_index is not None and burn_index <= 0 and special_verdict not in ('光板天', '云底过低', '低云遮挡过多', '光线难以穿透', '云量不足'):
+            if isinstance(visual_burn_index,(int,float)) and visual_burn_index < 3 and special_verdict not in ('光板天', '云底过低', '低云遮挡过多', '光线难以穿透', '云量不足'):
                 special_verdict = '不烧'
             if special_verdict:
                 st.markdown(
@@ -1466,10 +1695,13 @@ if results:
                     f'{regular_label} <span style="color:{color_hex};">{color_class}</span>的{burn_text}</div>',
                     unsafe_allow_html=True)
             # Full one-line interpretation under the short verdict.
+            _geometry_value = f'{burn_index:.1f}%' if isinstance(burn_index,(int,float)) else '暂不可估'
+            _visual_value = f'{visual_burn_index:.1f}%' if isinstance(visual_burn_index,(int,float)) else '暂不可估'
+            st.metric('视觉规模', _visual_value, help='整个朝霞/晚霞过程中，曾经受光的唯一采样区按球面视角面积加权后，再乘本地中高云资源量。主结果分级以此数值为准。')
+            st.caption(f'几何规模（Pro 辅助）：{_geometry_value}（{burn_label}）。色彩分是共同的大气色彩质量分，不存在单独的“几何色彩分”；几何与视觉的区别体现在受光云区面积权重。')
             if not special_verdict:
-                _scale_value = f'{burn_index:.1f}%' if isinstance(burn_index,(int,float)) else '暂不可估'
                 _color_line=(str(color_score) if isinstance(color_score,(int,float)) else '暂不可估')
-                st.markdown(f'预计{regular_label}{color_class}的{burn_text}；常规概率 {regular_score}%，色彩分 {_color_line}，火烧云规模 {_scale_value}。')
+                st.markdown(f'预计{regular_label}{color_class}；常规概率 {regular_score}%，色彩分 {_color_line}，视觉规模 {_visual_value}（{visual_burn_label}）。')
             # The detailed original summary follows the short verdict.
             if result.get('summary'):
                 for _line in _web_summary_lines(result['summary']):

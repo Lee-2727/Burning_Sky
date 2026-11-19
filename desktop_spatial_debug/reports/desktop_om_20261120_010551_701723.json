@@ -1,0 +1,137 @@
+{
+  "mode": "OM_HORIZONTAL_FUSION_DESKTOP",
+  "local_om_replay": false,
+  "generated_at": "2026-11-19T17:05:51.701723+00:00",
+  "location": "合肥",
+  "query_direction": "evening",
+  "spatial_threshold_experimental": 85.0,
+  "report_format_version": 2,
+  "explanation": "85% is a new OM-versus-pressure inconsistency screen, not the old sky ray threshold",
+  "source_log": [
+    {
+      "status": "gfs_om_horizontal_disabled_native_pressure_only",
+      "model": "ncep_gfs_global",
+      "distance_count": 6,
+      "reason": "GFS 预测停用 OM 水平云场；仅使用原生 API 气压层剖面"
+    },
+    {
+      "status": "gfs_om_horizontal_disabled_native_pressure_only",
+      "model": "ncep_gfs_global",
+      "distance_count": 14,
+      "reason": "GFS 预测停用 OM 水平云场；仅使用原生 API 气压层剖面"
+    },
+    {
+      "status": "gfs_om_horizontal_disabled_native_pressure_only",
+      "model": "ncep_gfs_global",
+      "distance_count": 12,
+      "reason": "GFS 预测停用 OM 水平云场；仅使用原生 API 气压层剖面"
+    },
+    {
+      "status": "gfs_om_horizontal_disabled_native_pressure_only",
+      "model": "ncep_gfs_global",
+      "distance_count": 20,
+      "reason": "GFS 预测停用 OM 水平云场；仅使用原生 API 气压层剖面"
+    },
+    {
+      "status": "gfs_om_horizontal_disabled_native_pressure_only",
+      "model": "ncep_gfs_global",
+      "distance_count": 20,
+      "reason": "GFS 预测停用 OM 水平云场；仅使用原生 API 气压层剖面"
+    },
+    {
+      "status": "gfs_om_horizontal_disabled_native_pressure_only",
+      "model": "ncep_gfs_global",
+      "distance_count": 20,
+      "reason": "GFS 预测停用 OM 水平云场；仅使用原生 API 气压层剖面"
+    },
+    {
+      "status": "gfs_om_horizontal_disabled_native_pressure_only",
+      "model": "ncep_gfs_global",
+      "distance_count": 20,
+      "reason": "GFS 预测停用 OM 水平云场；仅使用原生 API 气压层剖面"
+    }
+  ],
+  "directions": {
+    "evening": {
+      "date": "2026-11-19",
+      "model": "ncep_gfs_global",
+      "api_model_metadata": null,
+      "api_profile_valid_times": [
+        "2026-11-19 09:00 UTC"
+      ],
+      "event_local_time": "2026-11-19 17:09:57.868081",
+      "origin": [
+        31.8047,
+        117.2214
+      ],
+      "azimuth": 247.43181353330175,
+      "regular_probability": 62,
+      "color_score": 67,
+      "tintable_ratio": 51.9,
+      "burn_scale_index": 42.62,
+      "burn_scale_label": "中烧",
+      "visual_burn_scale_index": 8.62,
+      "visual_burn_scale_label": "微烧",
+      "strict_primary_path_diagnostic": {
+        "method_version": "DYNAMIC_SOLAR_CLOUD_EXIT_AUTO_RESAMPLE_V1",
+        "status": "local_targets_verified",
+        "verified_minutes": [
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          16,
+          17,
+          18,
+          19
+        ],
+        "required_profile_km": 1200.0,
+        "available_profile_km": 1200.0,
+        "target_limit_km": 400.0,
+        "off_axis_rays_measured": 0,
+        "off_axis_rays_missing": 237,
+        "horizontal_ray_checks": 0,
+        "horizontal_evaluated_nodes": 0,
+        "horizontal_conflict_count": 0,
+        "horizontal_target_conflict_count": 0,
+        "horizontal_fusion_enabled": true,
+        "horizontal_conflict_unresolved_minutes": [],
+        "horizontal_conflict_examples": [],
+        "stacked_target_diagnostic": {
+          "input_target_cells": 134,
+          "retained_target_cells": 26,
+          "vertical_columns": 26,
+          "removed_stacked_horizontal_km": 5175.0,
+          "removed_stacked_cell_km": 5175.0,
+          "vertical_touch_tolerance_km_legacy_unused": 0.15,
+          "support_cloud_cover_threshold_pct": 25.0,
+          "target_rule": "one_lowest_cloud_target_per_vertical_column"
+        },
+        "note": "上游验证距离按每分钟、每个目标云底与云锋面的太阳高度角动态计算；700km仅是基础采样距离。沿完整实际采样光线逐段验证云层遮挡，直至光线在上升段脱离普通云层高度范围。若所需距离未覆盖或偏轴气压层缺失，返回未验证而非假定晴空。20km是普通气象云层的保守垂直模型上界，不是700km终点达标门槛。"
+      },
+      "off_axis_resampling": {
+        "state": "partial_unverified",
+        "new_locations": 90,
+        "measured_rays": 275,
+        "failed_batches": [
+          {
+            "start": 80,
+            "size": 10,
+            "error": "案例原始请求缓存不完整或与当前算法的采样请求不同，无法离线重新计算。\n缺失请求：https://api.open-meteo.com/v1/forecast?latitude=28.15016%2C27.96206%2C27.77251%2C28.53633%2C29.39161%2C29.57028%2C28.48822%2C29.46278%2C28.92634%2C28.68274&longitude=107.41132%2C106.96257%2C106.51539%2C108.34301%2C110.52263%2C110.97295%2C108.26207%2C110.71298%2C109.29512%2C108.69422&hourly=cloud_cover_1000hPa%2Crelative_humidity_1000hPa%2Cgeopotential_height_1000hPa%2Ccloud_cover_975hPa%2Crelative_humidity_975hPa%2Cgeopotential_height_975hPa%2Ccloud_cover_950hPa%2Crelative_humidity_950hPa%2Cgeop\n已有请求数：13。可直接查看已保存的分析结果；如需按新版算法重新计算，必须重新联网获取缺失的采样数据。"
+          }
+        ],
+        "planned_rays": 364
+      },
+      "spatial_calibration": {
+        "status": "gfs_om_horizontal_disabled",
+        "restored_point_api_layers": 0,
+        "unknowned_legacy_layers": 0,
+        "stripped_profile_count": 0,
+        "manual_values_preserved": false
+      }
+    }
+  }
+}

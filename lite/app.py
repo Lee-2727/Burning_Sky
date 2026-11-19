@@ -15,7 +15,7 @@ import sys
 
 # Set before engine import (the engine has an optional Tk desktop interface).
 os.environ['BURNING_SKY_HEADLESS'] = '1'
-os.environ['BURNING_SKY_REQUEST_PROFILE'] = 'manual'
+os.environ['BURNING_SKY_REQUEST_PROFILE'] = 'interactive'  # Lite single-mode queries use the interactive budget; published overview is read-only
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
@@ -24,16 +24,21 @@ import pandas as pd
 import streamlit as st
 from burning_sky.place_excel_paths import find_place_workbook
 from burning_sky.lite_forecast import run_single, verdict, source_time, event_time, clouds, number
-from burning_sky.lite_satellite import calibrate, MAX_UPLOAD_BYTES
+from burning_sky.lite_satellite import calibrate_auto, MAX_UPLOAD_BYTES
 from burning_sky.web_color_curve import draw_dynamic_color_curve
 from burning_sky.warm_web_theme import apply_warm_theme, render_hero
 from burning_sky.advanced_bridge import identity as advanced_identity, read as archive_read, write as archive_write
+from burning_sky.interactive_result_cache import load as load_interactive_cache, save as save_interactive_cache
+from burning_sky.interactive_result_cache import prune_previous_days as _prune_interactive_cache
+from burning_sky.advanced_bridge import prune_daily_cache as _prune_satellite_cache
+_prune_interactive_cache()
+_prune_satellite_cache()
 from lite.overview_data import get_overview, china_today
 from lite.bar_cards import CSS as CHART_CSS, render as render_bars
 
 # Visible build marker: if the hosted Lite still shows five dates, it is running old code.
-LITE_OVERVIEW_UI_BUILD = '3D-20261119-R3'
-LITE_SINGLE_ENGINE_BUILD = 'SHARED-ENGINE-COLOR-ANGLE-20261119-R1'
+LITE_OVERVIEW_UI_BUILD = '3D-GEOMETRIC-VISUAL-20261119-R4'
+LITE_SINGLE_ENGINE_BUILD = 'SHARED-ENGINE-CLOUD-BOTTOM-EVENT-GEOMETRIC-VISUAL-ANGLE-DAILY-CACHE-20261120-R1'
 
 st.set_page_config(page_title='Burning Skies Lite', page_icon='🌅', layout='wide', initial_sidebar_state='collapsed')
 
@@ -245,7 +250,7 @@ def _display_metric(name,value,suffix=''):
 
 def _triad(result):
     inf=result.get('inferred') or {}
-    return (inf.get('regular_score'),inf.get('color_score'),inf.get('burn_scale_index'))
+    return (inf.get('regular_score'),inf.get('color_score'),inf.get('visual_burn_scale_index'))
 
 
 def _visual_result(result, fetched_at=None, direction='evening'):
@@ -253,7 +258,7 @@ def _visual_result(result, fetched_at=None, direction='evening'):
     st.markdown('<div class="bs-lite-lead">'+__import__('html').escape(verdict(result))+'</div>',unsafe_allow_html=True)
     c1,c2,c3=st.columns(3)
     vals=_triad(result)
-    for col,name,val,suffix in zip((c1,c2,c3),('常规概率','色彩分','火烧云规模'),vals,('%','/100','%')):
+    for col,name,val,suffix in zip((c1,c2,c3),('常规概率','色彩分','视觉规模'),vals,('%','/100','%')):
         col.metric(name,_display_metric(name,val,suffix))
     st.divider()
     d1,d2=st.columns(2)
@@ -299,11 +304,11 @@ def _version_table(before,after):
     st.markdown('#### 校准前后')
     c1,c2=st.columns(2)
     for col,label,result in ((c1,'校准前',before),(c2,'校准后',after)):
-        a,b,c=_triad(result)
+        a,b,visual=_triad(result)
         with col:
             st.markdown('**'+label+'**')
-            st.caption('常规概率 · 色彩分 · 规模')
-            st.markdown(f'**{_display_metric("",a,"%")}　/　{_display_metric("",b)}　/　{_display_metric("",c,"%") }**')
+            st.caption('常规概率 · 色彩分 · 视觉规模')
+            st.markdown(f'**{_display_metric("",a,"%")}　/　{_display_metric("",b)}　/　{_display_metric("",visual,"%") }**')
 
 
 def _calibration_id(state, engine_module):
@@ -344,7 +349,8 @@ if nav=='未来三日':
     st.caption(f"发布数据：{overview.get('source_name','未知')} · "
                f"有效 {overview.get('valid_count',0)}/12 项 · "
                f"EC {counts.get('ECMWF IFS 0.25°',0)}/6 · "
-               f"GFS {counts.get('GFS Global',0)}/6")
+               f"GFS {counts.get('GFS Global',0)}/6 · "
+               f"视觉规模 {overview.get('visual_valid_count',0)}/12")
     _pub = overview.get('publication') or {}
     if _pub.get('state') == 'partial':
         _stale = _pub.get('retained_old_keys') or []
@@ -373,7 +379,8 @@ if nav=='未来三日':
                         rows.append({'日期':day['date'],'时段':name,'模式':short,
                             '常规概率':_display_metric('',record.get('probability'),'%'),
                             '色彩分':_display_metric('',record.get('color_score')),
-                            '火烧云规模':_display_metric('',record.get('burn_scale'),'%')})
+                            '几何规模':_display_metric('',record.get('burn_scale'),'%'),
+                            '视觉规模':_display_metric('',record.get('visual_burn_scale'),'%')})
             st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True)
             st.caption('说明：柱子上的 0 表示有效零值；— 表示没有已完成的数据。')
         if overview.get('updated_at'):
@@ -389,49 +396,144 @@ else:
         st.error('当前地点库为空')
         st.stop()
     names=sorted(cities.keys(),key=lambda x:(x!='合肥',x))
-    with st.form('lite_query_form'):
-        a,b,c=st.columns([2,2,2])
-        with a:
-            place=st.selectbox('地点',names,index=names.index('合肥') if '合肥' in names else 0)
-        with b:
-            day=st.date_input('日期',china_today(),min_value=china_today(),
-                              max_value=china_today()+__import__('datetime').timedelta(days=15))
-        with c:
-            model=st.selectbox('模式',['ECMWF IFS 0.25°','GFS Global'])
-        left,right=st.columns(2)
-        morning=left.form_submit_button('查询朝霞',use_container_width=True)
-        evening=right.form_submit_button('查询晚霞',use_container_width=True)
+    a,b,c=st.columns([2,2,2])
+    with a:
+        place=st.selectbox('地点',names,index=names.index('合肥') if '合肥' in names else 0,key='lite_single_place')
+    with b:
+        day=st.date_input('日期',china_today(),min_value=china_today(),
+                          max_value=china_today()+__import__('datetime').timedelta(days=15),key='lite_single_day')
+    with c:
+        model=st.selectbox('模式',['ECMWF IFS 0.25°','GFS Global','EC&GFS'],index=0,key='lite_single_model')
+    direction_label=st.segmented_control('时段',['朝霞','晚霞'],
+        default='晚霞' if st.session_state.get('lite_last_direction')=='evening' else '朝霞',
+        key='lite_direction_choice')
+    direction='morning' if direction_label=='朝霞' else 'evening'
+    st.session_state['lite_last_direction']=direction
+    run_query=st.button('查询 / 更新当前时段',type='primary',use_container_width=True,key='lite_query_current_direction')
 
-    if morning or evening:
-        lat,lon,elevation=cities[place]
-        direction='morning' if morning else 'evening'
+    lat,lon,elevation=cities[place]
+    if run_query:
         st.session_state.pop('lite_current',None)
+        st.session_state.pop('lite_model_states',None)
         st.session_state.pop('lite_version',None)
         st.session_state.pop('lite_next_version',None)
         for _old_key in list(st.session_state):
             if str(_old_key).startswith('lite_sat_upload_'):
                 st.session_state.pop(_old_key,None)
-        with st.spinner('正在计算'+('朝霞' if morning else '晚霞')+'…'):
-            try:
-                state=run_single(engine,place=place,lat=lat,lon=lon,elevation=elevation,
-                                 day=day.isoformat(),model_label=model,direction=direction)
-                state['calibration']=None
-                st.session_state['lite_current']=state
-            except Exception as ex:
-                st.error('查询失败：'+str(ex))
+        model_codes=('EC','GFS') if model=='EC&GFS' else (('EC',) if model=='ECMWF IFS 0.25°' else ('GFS',))
+        labels={'EC':'ECMWF IFS 0.25°','GFS':'GFS Global'}
+        model_states={}
+        for code in model_codes:
+            with st.spinner(f'正在依次计算{labels[code]} {"朝霞" if direction=="morning" else "晚霞"}…'):
+                try:
+                    state=run_single(engine,place=place,lat=lat,lon=lon,elevation=elevation,
+                                     day=day.isoformat(),model_label=labels[code],direction=direction)
+                    state['calibration']=None
+                    state['from_cache']=False
+                    save_interactive_cache(place=place,lat=lat,lon=lon,elevation=elevation,
+                        forecast_date=day.isoformat(),model=code,direction=direction,
+                        result=state['result'],request_cache=state.get('cache') or {},
+                        meta=state.get('meta') or {},values=state.get('values') or {'cloud_base_mode':'自动剖面推算','aod_source':'CAMS'},
+                        spatial_source_log=state.get('spatial_source_log') or [],fetched_at=state.get('fetched_at'),
+                        to_safe=engine.FireCloudApp._json_safe)
+                    model_states[code]=state
+                except Exception as ex:
+                    st.error(f'{labels[code]} 查询失败：{ex}')
+        st.session_state['lite_model_states']=model_states
+        if model_states:
+            active='EC' if 'EC' in model_states else 'GFS'
+            st.session_state['lite_current']=model_states[active]
+            st.session_state['lite_active_model']=active
 
+    # Model/date/location changes restore the latest successful result from this
+    # China-local day. No provider call is made just to switch display modes.
+    if direction in ('morning','evening') and not run_query:
+        codes=('EC','GFS') if model=='EC&GFS' else (('EC',) if model=='ECMWF IFS 0.25°' else ('GFS',))
+        loaded={}
+        for code in codes:
+            rec=load_interactive_cache(place=place,lat=lat,lon=lon,elevation=elevation,
+                forecast_date=day.isoformat(),model=code,direction=direction)
+            if rec:
+                meta=dict(rec.get('meta') or {})
+                meta.update({'place':rec['place'],'lat':rec['lat'],'lon':rec['lon'],
+                    'elev':rec['elevation'],'date':rec['date'],'model_label':rec['model_label'],
+                    'direction':rec['direction']})
+                loaded[code]={'result':rec['result'],'cache':rec.get('request_cache') or {},
+                    'meta':meta,'values':rec.get('values') or {},'fetched_at':rec.get('fetched_at'),
+                    'spatial_source_log':rec.get('spatial_source_log') or [],'calibration':None,'from_cache':True}
+                # Restore the latest same-day satellite correction if it belongs
+                # to this exact immutable baseline.
+                try:
+                    _base_key=_calibration_id(loaded[code],engine)
+                    _supplement=archive_read(_base_key+'_lite_supplement')
+                    if _supplement:
+                        loaded[code]['supplement_cache']=_supplement.get('request_cache') or {}
+                    ck=_base_key+'_lite_corrected'
+                    corrected_record=archive_read(ck)
+                    if corrected_record and corrected_record.get('baseline_sha')==hashlib.sha256(
+                        json.dumps(engine.FireCloudApp._json_safe(rec['result']),ensure_ascii=False,sort_keys=True,default=str).encode()).hexdigest():
+                        loaded[code]['calibration']=corrected_record.get('outcome')
+                except Exception:
+                    pass
+        if loaded:
+            st.session_state['lite_model_states']=loaded
+            if model=='EC&GFS':
+                _prior_active=st.session_state.get('lite_active_model')
+                active=_prior_active if _prior_active in loaded else ('EC' if 'EC' in loaded else 'GFS')
+                st.session_state['lite_detail_model']=active
+            else:
+                active='EC' if model=='ECMWF IFS 0.25°' else 'GFS'
+            st.session_state['lite_current']=loaded.get(active) or next(iter(loaded.values()))
+            st.session_state['lite_active_model']=active
+        elif st.session_state.get('lite_current'):
+            current=st.session_state['lite_current']
+            cm=current.get('meta') or {}
+            current_code='EC' if 'ECMWF' in str(cm.get('model_label','')) else 'GFS'
+            if (cm.get('place')!=place or cm.get('date')!=day.isoformat()
+                    or cm.get('direction')!=direction or current_code not in codes):
+                st.session_state.pop('lite_current',None)
+                st.session_state.pop('lite_model_states',None)
+
+    model_states=st.session_state.get('lite_model_states') or {}
     state=st.session_state.get('lite_current')
+    if model=='EC&GFS' and model_states:
+        st.markdown('#### EC / GFS 当日结果')
+        cols=st.columns(2)
+        for col,code in zip(cols,('EC','GFS')):
+            with col:
+                candidate=model_states.get(code)
+                st.markdown('**'+code+'**')
+                if candidate:
+                    _corrected=(candidate.get('calibration') or {}).get('result') if (candidate.get('calibration') or {}).get('changed') else None
+                    _shown_candidate=_corrected or candidate['result']
+                    inf=_shown_candidate.get('inferred') or {}
+                    st.metric('常规概率',_display_metric('',inf.get('regular_score'),'%'))
+                    st.metric('色彩分',_display_metric('',inf.get('color_score')))
+                    st.metric('视觉规模',_display_metric('',inf.get('visual_burn_scale_index'),'%'))
+                    st.caption('模型数据时间：'+source_time(candidate['result'],candidate.get('fetched_at')))
+                else:
+                    st.info('暂无当日完整缓存；需要查询后才会显示。')
+        available=[x for x in ('EC','GFS') if x in model_states]
+        if len(available)>1:
+            active=st.segmented_control('详细分析',available,default=st.session_state.get('lite_active_model','EC'),key='lite_detail_model')
+        else:
+            active=available[0]
+        st.session_state['lite_active_model']=active
+        state=model_states.get(active)
+        if state: st.session_state['lite_current']=state
+    elif model in ('ECMWF IFS 0.25°','GFS Global') and model_states:
+        active='EC' if model=='ECMWF IFS 0.25°' else 'GFS'
+        state=model_states.get(active) or state
+        if state: st.session_state['lite_current']=state
+
     if state:
         meta=state['meta']
         original=state['result']
         corrected=(state.get('calibration') or {}).get('result') if (state.get('calibration') or {}).get('changed') else None
         st.markdown(f"**{meta['place']} · {meta['date']} · {'朝霞' if meta['direction']=='morning' else '晚霞'} · {meta['model_label']}**")
-        st.caption('Lite 单次计算：'+LITE_SINGLE_ENGINE_BUILD+' · 与 Pro 共用 FireCloudApp 预测引擎')
+        st.caption('Lite 单次计算：'+LITE_SINGLE_ENGINE_BUILD+' · EC/GFS 共用云底受光与视觉规模算法' + (' · 已恢复当日缓存，未重新请求天气 API' if state.get('from_cache') else ''))
         if corrected:
             _version_table(original,corrected)
-            # Streamlit forbids modifying a widget's session_state AFTER that
-            # widget was instantiated in this very rerun. Apply the result of
-            # the previous calibration BEFORE rendering segmented_control.
             if st.session_state.pop('lite_next_version',None)=='校准后':
                 st.session_state['lite_version']='校准后'
             if 'lite_version' in st.session_state:
@@ -444,9 +546,10 @@ else:
         _visual_result(displayed,state.get('fetched_at'),meta['direction'])
         st.divider()
         st.markdown('#### 卫星校准')
+        upload_identity=hashlib.sha256(json.dumps([meta['place'],meta['lat'],meta['lon'],meta['elev'],meta['date'],meta['direction']],ensure_ascii=False).encode()).hexdigest()[:18]
         uploaded=st.file_uploader('上传对应时刻的卫星云图截图',type=['png','jpg','jpeg','webp'],
-                                  key='lite_sat_upload_'+_calibration_id(state,engine))
-        run_calibration=st.button('一键校准',type='primary',disabled=uploaded is None,
+                                  key='lite_sat_upload_'+upload_identity)
+        run_calibration=st.button('自动识别更接近卫星云图的模型并校准',type='primary',disabled=uploaded is None,
                                   use_container_width=True,key='lite_sat_go')
         if run_calibration and uploaded:
             raw=uploaded.getvalue()
@@ -454,26 +557,52 @@ else:
                 st.error('图片不能超过12MB')
             else:
                 uploaded_sig=hashlib.sha256(raw).hexdigest()
-                calibration_id=_calibration_id(state,engine)
-                if state.get('calibration_signature')==uploaded_sig and state.get('calibration'):
-                    st.info('当前截图已经校准，无需重复计算。')
-                else:
-                    checkpoint_key=calibration_id+'_lite_supplement'
-                    previous=archive_read(checkpoint_key) or {}
-                    recover=(previous.get('request_cache') or {}) if previous.get('screenshot_sha')==uploaded_sig else {}
-                    with st.spinner('正在自动识别并校准…'):
+                candidate_states={}
+                for code in ('EC','GFS'):
+                    rec=load_interactive_cache(place=meta['place'],lat=meta['lat'],lon=meta['lon'],
+                        elevation=meta['elev'],forecast_date=meta['date'],model=code,direction=meta['direction'])
+                    if rec:
+                        cm=dict(rec.get('meta') or {})
+                        cm.update({'place':rec['place'],'lat':rec['lat'],'lon':rec['lon'],
+                            'elev':rec['elevation'],'date':rec['date'],'model_label':rec['model_label'],
+                            'direction':rec['direction']})
+                        _candidate={'result':rec['result'],'cache':rec.get('request_cache') or {},'meta':cm}
                         try:
-                            outcome=calibrate(original,state.get('cache') or {},meta,raw,recover_cache=recover)
-                            state['calibration']=outcome
-                            state['calibration_signature']=uploaded_sig
-                            st.session_state['lite_current']=state
-                            st.session_state['lite_next_version']='校准后' if outcome['changed'] else '原始预测'
+                            _supplement=archive_read(_calibration_id(_candidate,engine)+'_lite_supplement')
+                            if _supplement:_candidate['supplement_cache']=_supplement.get('request_cache') or {}
+                        except Exception:pass
+                        candidate_states[code]=_candidate
+                if not candidate_states:
+                    st.error('没有可用的当日 EC/GFS 缓存，请先完成一次单次查询。')
+                else:
+                    with st.spinner('正在对比 EC/GFS 云带、云洞位置和卫星纹理，并自动选择基准…'):
+                        try:
+                            outcome=calibrate_auto(candidate_states,raw)
+                            selected_model=outcome['selected_model']
+                            chosen=candidate_states[selected_model]
+                            chosen['calibration']=outcome
+                            model_states[selected_model]=chosen
+                            st.session_state['lite_model_states']=model_states
+                            st.session_state['lite_current']=chosen
+                            st.session_state['lite_active_model']=selected_model
+                            baseline_sha=hashlib.sha256(json.dumps(engine.FireCloudApp._json_safe(chosen['result']),ensure_ascii=False,sort_keys=True,default=str).encode()).hexdigest()
+                            corrected_key=_calibration_id(chosen,engine)+'_lite_corrected'
+                            archive_write(corrected_key,{'baseline_sha':baseline_sha,'outcome':outcome,
+                                'screenshot_sha':uploaded_sig,'saved_at':__import__('datetime').datetime.now(__import__('zoneinfo').ZoneInfo('Asia/Shanghai')).isoformat(timespec='seconds')})
+                            checkpoint_key=_calibration_id(chosen,engine)+'_lite_supplement'
                             archive_write(checkpoint_key,{'screenshot_sha':uploaded_sig,'request_cache':outcome.get('cache') or {}})
+                            st.session_state['lite_next_version']='校准后' if outcome['changed'] else '原始预测'
+                            st.success(f'自动选择 {selected_model} 作为校准基准。')
                             st.rerun()
                         except Exception as ex:
                             partial=getattr(ex,'partial_cache',None)
                             if partial:
-                                archive_write(checkpoint_key,{'screenshot_sha':uploaded_sig,'request_cache':engine.FireCloudApp._json_safe(partial)})
+                                archive_write(_calibration_id(state,engine)+'_lite_supplement',{'screenshot_sha':uploaded_sig,'request_cache':engine.FireCloudApp._json_safe(partial)})
                             st.error('未能完成校准：'+str(ex))
         if state.get('calibration'):
             st.caption(state['calibration'].get('note') or '')
+            comparison=state['calibration'].get('model_comparison') or {}
+            if comparison:
+                st.caption('模型卫星匹配诊断（加权外观差异，越低越接近；仅为定性比较，不是卫星反演云量）：'+
+                    '；'.join(f"{k} {v.get('score') if v.get('score') is not None else '不可评分'} / {v.get('points',0)}点" for k,v in comparison.items()))
+
