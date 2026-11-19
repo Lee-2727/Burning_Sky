@@ -471,7 +471,8 @@ else:
                     'direction':rec['direction']})
                 loaded[code]={'result':rec['result'],'cache':rec.get('request_cache') or {},
                     'meta':meta,'values':rec.get('values') or {},'fetched_at':rec.get('fetched_at'),
-                    'spatial_source_log':rec.get('spatial_source_log') or [],'calibration':None,'from_cache':True}
+                    'spatial_source_log':rec.get('spatial_source_log') or [],'calibration':None,'from_cache':True,
+                    'legacy_algorithm_cache':bool(rec.get('_legacy_algorithm_cache'))}
                 # Restore the latest same-day satellite correction if it belongs
                 # to this exact immutable baseline.
                 try:
@@ -552,7 +553,10 @@ else:
         corrected=(state.get('calibration') or {}).get('result') if (state.get('calibration') or {}).get('changed') else None
         _display_model_label='EC&GFS 双模式' if model=='EC&GFS' else meta['model_label']
         st.markdown(f"**{meta['place']} · {meta['date']} · {'朝霞' if meta['direction']=='morning' else '晚霞'} · {_display_model_label}**")
-        st.caption('Lite 单次计算：'+LITE_SINGLE_ENGINE_BUILD+' · EC/GFS 共用云底受光与视觉规模算法' + (' · 已恢复当日缓存，未重新请求天气 API' if state.get('from_cache') else ''))
+        _cache_note = (' · 已恢复 R4 原始缓存：仅用于保全旧数据/离线对照，尚未按 R5 重算；未请求天气 API'
+                       if state.get('legacy_algorithm_cache') else
+                       (' · 已恢复当日缓存，未重新请求天气 API' if state.get('from_cache') else ''))
+        st.caption('Lite 单次计算：'+LITE_SINGLE_ENGINE_BUILD+' · EC/GFS 共用云底受光与视觉规模算法'+_cache_note)
         if model!='EC&GFS':
             if corrected:
                 _version_table(original,corrected)

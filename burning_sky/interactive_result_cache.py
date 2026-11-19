@@ -49,6 +49,18 @@ def identity(place, lat, lon, elevation, forecast_date, model, direction):
     return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:28]
 
 
+def legacy_identity(place, lat, lon, elevation, forecast_date, model, direction):
+    """Return the V2.3 R4 cache key (no algorithm tag) for recovery only."""
+    code = model_code(model)
+    if code not in MODEL_CODES or direction not in ('morning', 'evening'):
+        raise ValueError('interactive cache identity requires EC/GFS and morning/evening')
+    raw = json.dumps([
+        str(place or '').strip(), round(float(lat), 5), round(float(lon), 5),
+        round(float(elevation or 0), 1), str(forecast_date), code, direction,
+    ], ensure_ascii=False, separators=(',', ':'))
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:28]
+
+
 def _path(key):
     return CACHE_DIR / (str(key) + '.json.gz')
 
@@ -128,15 +140,26 @@ def load(*, place, lat, lon, elevation, forecast_date, model, direction):
     prune_previous_days()
     try:
         key = identity(place, lat, lon, elevation, forecast_date, model, direction)
+        old_key = legacy_identity(place, lat, lon, elevation, forecast_date, model, direction)
     except (TypeError, ValueError):
         return None
-    record = _read_path(_path(key))
-    if not record or record.get('schema_version') != CACHE_SCHEMA_VERSION or record.get('saved_local_date') != local_today():
-        return None
-    if record.get('cache_key') != key:
+
+    # For incident recovery, prefer the original R4 cache first so a later R5
+    # run cannot hide the pre-change evidence. Fall back to a current R5 cache.
+    record = _read_path(_path(old_key))
+    if record and record.get('schema_version') == 1 and record.get('cache_key') == old_key:
+        legacy_algorithm_cache = True
+    else:
+        record = _read_path(_path(key))
+        if not record or record.get('schema_version') != CACHE_SCHEMA_VERSION or record.get('cache_key') != key:
+            return None
+        legacy_algorithm_cache = False
+
+    if record.get('saved_local_date') != local_today():
         return None
     if not isinstance(record.get('result'), dict) or not isinstance(record['result'].get('inferred'), dict):
         return None
+    record['_legacy_algorithm_cache'] = legacy_algorithm_cache
     return record
 
 

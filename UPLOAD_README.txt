@@ -1,13 +1,15 @@
-Burning Sky V2.3 R5 精简补丁
-只包含本次修改的文件，不含完整项目、案例、缓存、debug_logs、桌面工具或 data。
+R5 紧急缓存抢救补丁（不调用天气 API）
+只包含 2 个文件：
+- burning_sky/interactive_result_cache.py
+- lite/app.py
 
-上传方式：
-1. 解压本 ZIP。
-2. 将解压出的文件覆盖到 GitHub 仓库根目录，保持原有目录结构。
-   - app.py、engine.py、REGULAR_PROBABILITY_RULES.md 放仓库根目录
-   - burning_sky/ 下的 3 个文件放入仓库现有 burning_sky/ 目录
-   - lite/app.py 放入仓库现有 lite/ 目录
-3. 不要删除或覆盖仓库现有的 data/、.github/workflows/、其他文件。
-4. Streamlit Cloud 部署完成后，重新查询武汉 GFS 朝霞，避免读取旧缓存。
+作用：
+1. 保留 R5 新缓存读取逻辑。
+2. 增加读取 V2.3 R4 原始缓存（schema_version=1、旧 cache key）的兼容回退。
+3. 如果找到旧缓存，Lite 明确标注“R4 原始缓存”，避免误认为已经按 R5 重算。
+4. 不改评分、云场、球面追踪算法；不主动发起天气 API 请求。
 
-本补丁只移除连续云经验判定，不修改严格球面光路追踪本身。
+上传：
+解压后覆盖 GitHub 仓库对应的两个文件。不要删除 data/interactive_forecast_cache。
+部署后打开 Lite，选择原地点、日期、GFS、朝霞/晚霞，但不要点击“查询/运行”按钮。
+如果服务器当天旧缓存仍存在，页面会显示恢复的 R4 缓存标记；如果未显示，说明服务器上的旧缓存不可访问/已不存在，本补丁不会伪造数据。
