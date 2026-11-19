@@ -423,10 +423,13 @@ def request_json(req, timeout=20, retries=3, cache_key=None, cache_ttl=None):
                 # Parameter ordering and percent-encoding may differ across releases.
                 matches = [v for k, v in cache.items() if _signature(k) == _signature(url)]
                 if len(matches) == 1:
+                    matched_key = next(k for k, v in cache.items() if v is matches[0])
+                    context.setdefault("used_urls", []).append(matched_key)
                     return matches[0]
                 raise RuntimeError("案例原始请求缓存不完整或与当前算法的采样请求不同，无法离线重新计算。\n"
                                    f"缺失请求：{url[:500]}\n已有请求数：{len(cache)}。"
                                    "可直接查看已保存的分析结果；如需按新版算法重新计算，必须重新联网获取缺失的采样数据。")
+            context.setdefault("used_urls", []).append(url)
             return cache[url]
     # Reuse previously captured exact URL payloads, including sunshine-path samples.
     if context and context.get('mode')=='capture' and url in context.get('cache',{}):

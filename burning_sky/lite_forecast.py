@@ -29,7 +29,7 @@ class _Label:
         return None
 
 
-def create_runner(engine, *, place, lat, lon, elevation, date, model_label):
+def create_runner(engine, *, place, lat, lon, elevation, date, model_label, values=None):
     class Runner(HybridSpatialMixin, engine.FireCloudApp):
         def after(self, *_a, **_k):
             return None
@@ -44,7 +44,7 @@ def create_runner(engine, *, place, lat, lon, elevation, date, model_label):
         def _draw_colorbar(self, *_a, **_k):
             return None
     runner = object.__new__(Runner)
-    values = {
+    runner_values = {
         'place': place, 'date': date,
         'lat': str(lat), 'lon': str(lon), 'elevation': str(elevation),
         'weather_model': model_label, 'rainbow_enabled': False,
@@ -52,12 +52,16 @@ def create_runner(engine, *, place, lat, lon, elevation, date, model_label):
         'morning_cloud_base_km': '2.00', 'evening_cloud_base_km': '2.00',
         'aod_source': 'CAMS', 'morning_aod': '', 'evening_aod': '',
     }
-    runner.vars = {k: _Value(v) for k, v in values.items()}
-    runner.input_values = dict(values)
+    if isinstance(values, dict):
+        runner_values.update(values)
+    runner_values.update({'place': place, 'date': date, 'lat': str(lat), 'lon': str(lon),
+                          'elevation': str(elevation), 'weather_model': model_label})
+    runner.vars = {k: _Value(v) for k, v in runner_values.items()}
+    runner.input_values = dict(runner_values)
     runner.direction_results = {}
     # Match the Pro WebForecastEngine configuration explicitly. Both clients
     # execute the same FireCloudApp methods and spatial OM mixin.
-    runner.spatial_experiment = True
+    runner.spatial_experiment = bool(runner_values.get('spatial_experiment', True))
     runner.spatial_enabled = runner.spatial_experiment
     runner.spatial_fetch_log = []
     runner.last_report = ''
@@ -84,15 +88,19 @@ def create_runner(engine, *, place, lat, lon, elevation, date, model_label):
     return runner
 
 
-def run_single(engine, *, place, lat, lon, elevation, day, model_label, direction):
+def run_single(engine, *, place, lat, lon, elevation, day, model_label, direction, request_cache=None, replay_values=None):
     if direction not in ('morning', 'evening'):
         raise ValueError('Lite只允许一次查询一个方向')
     runner = create_runner(engine, place=place, lat=lat, lon=lon,
-                           elevation=elevation, date=day, model_label=model_label)
+                           elevation=elevation, date=day, model_label=model_label,
+                           values=replay_values)
     previous = getattr(engine, '_CASE_REQUEST_CONTEXT', None)
-    request_cache = {}
+    replay_mode = isinstance(request_cache, dict)
+    request_cache = request_cache if replay_mode else {}
+    replay_context = {'mode':'replay', 'cache':request_cache, 'used_urls':[]} if replay_mode else {
+        'mode':'capture', 'cache':request_cache}
     try:
-        engine._CASE_REQUEST_CONTEXT = {'mode':'capture', 'cache':request_cache}
+        engine._CASE_REQUEST_CONTEXT = replay_context
         engine.messagebox.last_error = None
         runner._fetch_weather_task(direction, raise_errors=True, notify_success=False)
         if engine.messagebox.last_error:
@@ -112,6 +120,8 @@ def run_single(engine, *, place, lat, lon, elevation, day, model_label, directio
             'spatial_source_log': runner.spatial_fetch_log,
             'values': runner.input_values,
             'cache': request_cache,
+            'cache_used_urls': list(replay_context.get('used_urls') or []),
+            'offline_replay': replay_mode,
             'fetched_at': runner.last_fetch_time,
             'meta': {'place':place, 'lat':float(lat), 'lon':float(lon),
                      'elev':float(elevation), 'date':day,

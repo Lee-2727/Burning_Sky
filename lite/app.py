@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import io
+import zipfile
 from pathlib import Path
 from datetime import timedelta
 import sys
@@ -261,6 +263,69 @@ def _published(city):
     return get_overview(city)
 
 
+
+def _read_offline_case_zip(blob):
+    """Read a saved case ZIP in memory; never extract files or contact APIs."""
+    if not isinstance(blob, (bytes, bytearray)) or len(blob) > 100 * 1024 * 1024:
+        raise ValueError('案例 ZIP 无效或超过 100 MB')
+    required = {'analysis_state.json', 'request_cache.json', 'case_manifest.json'}
+    try:
+        with zipfile.ZipFile(io.BytesIO(blob), 'r') as archive:
+            bad = archive.testzip()
+            if bad:
+                raise ValueError('ZIP 完整性检查失败：' + bad)
+            names = set(archive.namelist())
+            if not required.issubset(names):
+                raise ValueError('案例 ZIP 缺少：' + '、'.join(sorted(required - names)))
+            manifest = json.loads(archive.read('case_manifest.json').decode('utf-8'))
+            analysis = json.loads(archive.read('analysis_state.json').decode('utf-8'))
+            cache = json.loads(archive.read('request_cache.json').decode('utf-8'))
+    except (zipfile.BadZipFile, KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError('无法读取案例 ZIP：' + str(exc)) from exc
+    if not isinstance(cache, dict) or not cache:
+        raise ValueError('案例中的 request_cache.json 为空或格式错误')
+    hashes = manifest.get('file_sha256') or {}
+    for name in ('analysis_state.json', 'request_cache.json'):
+        expected = hashes.get(name)
+        if expected:
+            with zipfile.ZipFile(io.BytesIO(blob), 'r') as archive:
+                actual = hashlib.sha256(archive.read(name)).hexdigest()
+            if actual != expected:
+                raise ValueError(name + ' SHA256 校验失败，文件可能损坏')
+    source = manifest.get('source_case') or {}
+    params = ((manifest.get('effective_parameters') or {}).get('request_inputs') or {})
+    place = str(source.get('place') or analysis.get('place') or params.get('place') or '').strip()
+    day = str(source.get('date') or analysis.get('date') or params.get('date') or '').strip()
+    model_code = str(source.get('model_code') or analysis.get('model_code') or '').upper()
+    model_label = 'GFS Global' if model_code == 'GFS' else ('ECMWF IFS 0.25°' if model_code == 'EC' else '')
+    lat = source.get('latitude', analysis.get('latitude', params.get('lat')))
+    lon = source.get('longitude', analysis.get('longitude', params.get('lon')))
+    elevation = source.get('elevation_m', analysis.get('elevation_m', params.get('elevation', 0)))
+    directions = analysis.get('direction_results') or {}
+    valid_directions = [d for d in ('morning', 'evening') if isinstance(directions.get(d), dict)]
+    if not place or not day or not model_label or lat is None or lon is None or not valid_directions:
+        raise ValueError('案例元数据不完整：需要地点、日期、EC/GFS 模式、坐标和方向结果')
+    return {'manifest': manifest, 'analysis': analysis, 'cache': cache, 'params': params,
+            'place': place, 'day': day, 'model_code': model_code, 'model_label': model_label,
+            'lat': float(lat), 'lon': float(lon), 'elevation': float(elevation or 0),
+            'directions': valid_directions}
+
+
+def _offline_metric_row(label, inferred):
+    def _fmt(key):
+        value = inferred.get(key)
+        try:
+            return f'{float(value):.2f}'
+        except (TypeError, ValueError):
+            return '—'
+    return {'来源': label, '常规概率': _fmt('regular_score'),
+            '色彩分': _fmt('color_score'),
+            '几何规模': _fmt('geometric_burn_scale_index'),
+            '视觉规模': _fmt('visual_burn_scale_index'),
+            '几何可染色占比': _fmt('geometric_tintable_ratio'),
+            '视觉可染色占比': _fmt('visual_tintable_ratio')}
+
+
 def _display_metric(name,value,suffix=''):
     return '—' if number(value) is None else f'{number(value):.0f}{suffix}'
 
@@ -398,6 +463,61 @@ if nav=='未来三日':
             st.caption('更新：'+str(overview['updated_at']))
 
 else:
+    st.markdown('#### 离线案例重放')
+    st.caption('上传 Pro / Lite 保存的案例 ZIP。只读取 ZIP 内 request_cache.json；缺少请求时立即报错，绝不联网补请求。')
+    offline_zip = st.file_uploader('加载案例 ZIP（离线，不请求天气 API）', type=['zip'],
+                                   key='lite_offline_case_zip')
+    offline_go = st.button('读取缓存并离线重算', type='secondary',
+                           disabled=offline_zip is None, use_container_width=True,
+                           key='lite_offline_replay_go')
+    if offline_go and offline_zip is not None:
+        try:
+            offline_case = _read_offline_case_zip(offline_zip.getvalue())
+            if len(offline_case['directions']) > 1:
+                replay_direction = st.selectbox('重放方向', offline_case['directions'],
+                    format_func=lambda x: '朝霞' if x == 'morning' else '晚霞',
+                    key='lite_offline_replay_direction')
+            else:
+                replay_direction = offline_case['directions'][0]
+            params = dict(offline_case['params'])
+            with st.spinner('正在使用 ZIP 内缓存离线重算（网络请求已禁用）…'):
+                replay = run_single(engine, place=offline_case['place'],
+                    lat=offline_case['lat'], lon=offline_case['lon'],
+                    elevation=offline_case['elevation'], day=offline_case['day'],
+                    model_label=offline_case['model_label'], direction=replay_direction,
+                    request_cache=offline_case['cache'], replay_values=params)
+            pro_record = (offline_case['analysis'].get('direction_results') or {}).get(replay_direction) or {}
+            pro_inf = pro_record.get('inferred') or {}
+            lite_inf = (replay.get('result') or {}).get('inferred') or {}
+            st.session_state['lite_offline_replay_result'] = {
+                'case': offline_case, 'direction': replay_direction,
+                'replay': replay, 'pro_inferred': pro_inf,
+                'pro_summary': pro_record.get('summary', '')}
+            st.success(f"离线重算完成：{offline_case['place']} · {offline_case['day']} · "
+                       f"{offline_case['model_code']} · {'朝霞' if replay_direction == 'morning' else '晚霞'}；"
+                       f"使用缓存请求 {len(replay.get('cache_used_urls') or [])}/{len(offline_case['cache'])} 条。")
+        except Exception as ex:
+            st.error('离线重算失败（未发起网络请求）：' + str(ex))
+    offline_result = st.session_state.get('lite_offline_replay_result')
+    if offline_result:
+        _case = offline_result['case']
+        _dir = offline_result['direction']
+        _lite_record = offline_result['replay']['result']
+        _lite_inf = (_lite_record.get('inferred') or {})
+        st.markdown(f"**离线对照：{_case['place']} · {_case['day']} · {_case['model_code']} · "
+                    f"{'朝霞' if _dir == 'morning' else '晚霞'}**")
+        _rows = [_offline_metric_row('Pro 存档', offline_result['pro_inferred']),
+                 _offline_metric_row('Lite 离线重算', _lite_inf)]
+        st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True)
+        st.caption('请求缓存使用数：'+str(len(offline_result['replay'].get('cache_used_urls') or []))+
+                   ' / '+str(len(_case['cache']))+'；未使用的缓存请求不会触发 API。')
+        with st.expander('查看 Lite 离线重算结论', expanded=True):
+            st.write(verdict(_lite_record))
+            st.caption(source_time(_lite_record, offline_result['replay'].get('fetched_at')))
+        if st.button('清除离线对照结果', key='lite_clear_offline_replay'):
+            st.session_state.pop('lite_offline_replay_result', None)
+            st.rerun()
+    st.divider()
     try:
         cities=_places()
     except (OSError, ValueError, KeyError) as ex:
@@ -471,8 +591,7 @@ else:
                     'direction':rec['direction']})
                 loaded[code]={'result':rec['result'],'cache':rec.get('request_cache') or {},
                     'meta':meta,'values':rec.get('values') or {},'fetched_at':rec.get('fetched_at'),
-                    'spatial_source_log':rec.get('spatial_source_log') or [],'calibration':None,'from_cache':True,
-                    'legacy_algorithm_cache':bool(rec.get('_legacy_algorithm_cache'))}
+                    'spatial_source_log':rec.get('spatial_source_log') or [],'calibration':None,'from_cache':True}
                 # Restore the latest same-day satellite correction if it belongs
                 # to this exact immutable baseline.
                 try:
@@ -553,10 +672,7 @@ else:
         corrected=(state.get('calibration') or {}).get('result') if (state.get('calibration') or {}).get('changed') else None
         _display_model_label='EC&GFS 双模式' if model=='EC&GFS' else meta['model_label']
         st.markdown(f"**{meta['place']} · {meta['date']} · {'朝霞' if meta['direction']=='morning' else '晚霞'} · {_display_model_label}**")
-        _cache_note = (' · 已恢复 R4 原始缓存：仅用于保全旧数据/离线对照，尚未按 R5 重算；未请求天气 API'
-                       if state.get('legacy_algorithm_cache') else
-                       (' · 已恢复当日缓存，未重新请求天气 API' if state.get('from_cache') else ''))
-        st.caption('Lite 单次计算：'+LITE_SINGLE_ENGINE_BUILD+' · EC/GFS 共用云底受光与视觉规模算法'+_cache_note)
+        st.caption('Lite 单次计算：'+LITE_SINGLE_ENGINE_BUILD+' · EC/GFS 共用云底受光与视觉规模算法' + (' · 已恢复当日缓存，未重新请求天气 API' if state.get('from_cache') else ''))
         if model!='EC&GFS':
             if corrected:
                 _version_table(original,corrected)
