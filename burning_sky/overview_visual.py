@@ -161,3 +161,24 @@ def render_direction(days, direction, title):
       <div style="font-size:12px;color:#526079;text-align:center;margin-top:7px">各日期左侧 EC · 右侧 GFS</div>
       <div style="font-size:11px;color:#64748b;padding:8px 4px 2px">{html.escape(note)}</div>
     </div>'''
+
+
+def manual_records_to_days(records, expected_dates=()):
+    """Normalize manual Actions records to the exact shape used by scheduled charts."""
+    by_date = {str(day): {'date': str(day), 'morning': {}, 'evening': {}}
+               for day in (expected_dates or ())}
+    for row in records or ():
+        if not isinstance(row, dict):
+            continue
+        day = str(row.get('date') or '')
+        direction = row.get('direction')
+        model = str(row.get('model') or '')
+        if not day or direction not in ('morning', 'evening') or model not in {m for m, _ in MODELS}:
+            continue
+        target = by_date.setdefault(day, {'date': day, 'morning': {}, 'evening': {}})
+        target[direction][model] = {
+            'probability': row.get('probability'),
+            'color_score': row.get('color_score'),
+            'burn_scale': row.get('burn_scale'),
+        }
+    return [by_date[k] for k in sorted(by_date)]

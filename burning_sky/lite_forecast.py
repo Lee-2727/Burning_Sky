@@ -54,7 +54,10 @@ def create_runner(engine, *, place, lat, lon, elevation, date, model_label):
     }
     runner.vars = {k: _Value(v) for k, v in values.items()}
     runner.direction_results = {}
-    runner.spatial_enabled = True
+    # Match the Pro WebForecastEngine configuration explicitly. Both clients
+    # execute the same FireCloudApp methods and spatial OM mixin.
+    runner.spatial_experiment = True
+    runner.spatial_enabled = runner.spatial_experiment
     runner.spatial_fetch_log = []
     runner.last_report = ''
     runner.last_fetch_time = None
@@ -67,6 +70,7 @@ def create_runner(engine, *, place, lat, lon, elevation, date, model_label):
     runner.cloud_path_result = None
     runner.fetch_in_progress = False
     runner.skip_rainbow_single_var = _Check()
+    runner.skip_rainbow_for_overview = False
     for key in (
         'morning_summary', 'evening_summary', 'morning_score_label',
         'evening_score_label', 'morning_upper_label', 'evening_upper_label',

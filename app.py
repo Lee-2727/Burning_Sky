@@ -750,23 +750,37 @@ def _manual_records_by_day(display):
 
 
 def _render_manual_overview_result(display, expected_dates):
-    """按 日期 → 朝霞/晚霞 → 模式 展示，与自动多日概览的表格布局保持一致。"""
-    by_day = _manual_records_by_day(display)
-    dates = [d for d in expected_dates]
-    dates.extend(sorted(d for d in by_day if d not in dates))
-    for day_key in dates:
-        day_records = by_day.get(day_key) or {"morning": {}, "evening": {}}
-        st.markdown(f"**{day_key}**")
-        columns = st.columns(2)
-        for column, (direction, title) in zip(columns, (("morning", "🌄 朝霞"), ("evening", "🌆 晚霞"))):
-            with column:
-                st.markdown(title)
-                frame = _manual_direction_frame(day_records.get(direction, {}))
-                try:
-                    st.dataframe(_overview_styled(frame), use_container_width=True, hide_index=True)
-                except Exception:
-                    # 某些 Streamlit 版本不接受 Styler：退回普通表格，绝不让结果区报错。
-                    st.dataframe(frame, use_container_width=True, hide_index=True)
+    """Render manual results with the same bars and detail tables as scheduled overview."""
+    from burning_sky.overview_visual import render_direction, MODELS, manual_records_to_days
+    days = manual_records_to_days((display or {}).get('records') or [], expected_dates)
+    visible_days = days[:3]
+    if len(visible_days) < 3:
+        st.info(f'目前手动查询已返回 {len(visible_days)} 个日期；未返回的日期保持缺失，不补造数据。')
+    for direction, title in (('morning', '朝霞'), ('evening', '晚霞')):
+        chart = render_direction(visible_days, direction, title)
+        if hasattr(st, 'html'):
+            st.html(chart)
+        else:
+            st.markdown(chart, unsafe_allow_html=True)
+    with st.expander('查看手动概览完整数据表格', expanded=False):
+        for direction, title in (('morning', '朝霞'), ('evening', '晚霞')):
+            st.markdown(f'**{title}**')
+            rows = []
+            for day in visible_days:
+                for model, short in MODELS:
+                    item = (day.get(direction) or {}).get(model) or {}
+                    def fmt(key, suffix):
+                        value = item.get(key)
+                        return f'{value:.0f}{suffix}' if isinstance(value, (int, float)) else '—'
+                    rows.append({'日期': day.get('date', '—'), '模式': short,
+                                 '常规概率': fmt('probability', '%'),
+                                 '色彩分': fmt('color_score', ''),
+                                 '火烧云规模': fmt('burn_scale', '%')})
+            frame = pd.DataFrame(rows)
+            try:
+                st.dataframe(_overview_styled(frame), use_container_width=True, hide_index=True)
+            except Exception:
+                st.dataframe(frame, use_container_width=True, hide_index=True)
 
 
 if st.session_state.get("show_manual_overview"):

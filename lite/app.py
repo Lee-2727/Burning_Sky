@@ -32,7 +32,8 @@ from lite.overview_data import get_overview, china_today
 from lite.bar_cards import CSS as CHART_CSS, render as render_bars
 
 # Visible build marker: if the hosted Lite still shows five dates, it is running old code.
-LITE_OVERVIEW_UI_BUILD = '3D-20261118-R2'
+LITE_OVERVIEW_UI_BUILD = '3D-20261119-R3'
+LITE_SINGLE_ENGINE_BUILD = 'SHARED-ENGINE-COLOR-ANGLE-20261119-R1'
 
 st.set_page_config(page_title='Burning Skies Lite', page_icon='🌅', layout='wide', initial_sidebar_state='collapsed')
 
@@ -252,7 +253,7 @@ def _visual_result(result, fetched_at=None, direction='evening'):
     st.markdown('<div class="bs-lite-lead">'+__import__('html').escape(verdict(result))+'</div>',unsafe_allow_html=True)
     c1,c2,c3=st.columns(3)
     vals=_triad(result)
-    for col,name,val,suffix in zip((c1,c2,c3),('常规概率','色彩分','火烧云规模'),vals,('%','/60','%')):
+    for col,name,val,suffix in zip((c1,c2,c3),('常规概率','色彩分','火烧云规模'),vals,('%','/100','%')):
         col.metric(name,_display_metric(name,val,suffix))
     st.divider()
     d1,d2=st.columns(2)
@@ -273,6 +274,25 @@ def _visual_result(result, fetched_at=None, direction='evening'):
     # but removes the long scientific legend below the original Pro figure.
     timeline=draw_dynamic_color_curve(curve.get('samples') or [],curve.get('peak'),direction)
     st.image(timeline.crop((0,0,timeline.width,429)),use_container_width=True)
+    # Expose the same verified-angle evidence used by the shared Pro engine;
+    # Lite must not silently look like an older colour-score implementation.
+    angle_diag=inferred.get('color_angle_diagnostic') or {}
+    with st.expander('色彩评分依据',expanded=False):
+        note=str(inferred.get('color_score_note') or '暂无评分说明')
+        st.caption(note)
+        reasons=inferred.get('color_score_reasons') or []
+        if reasons:
+            for reason in reasons:
+                st.write('• '+str(reason))
+        if angle_diag:
+            st.caption(
+                f"严格验证受光角度：{angle_diag.get('min_deg','—')}°～"
+                f"{angle_diag.get('max_deg','—')}°；跨度 {angle_diag.get('span_deg','—')}°；"
+                f"有效分钟 {angle_diag.get('verified_minutes','—')}；"
+                f"角度系数 {angle_diag.get('factor','—')}"
+            )
+        else:
+            st.caption('本次没有可用于色彩加权的严格验证太阳角度；不会用未验证角度补分。')
 
 
 def _version_table(before,after):
@@ -406,6 +426,7 @@ else:
         original=state['result']
         corrected=(state.get('calibration') or {}).get('result') if (state.get('calibration') or {}).get('changed') else None
         st.markdown(f"**{meta['place']} · {meta['date']} · {'朝霞' if meta['direction']=='morning' else '晚霞'} · {meta['model_label']}**")
+        st.caption('Lite 单次计算：'+LITE_SINGLE_ENGINE_BUILD+' · 与 Pro 共用 FireCloudApp 预测引擎')
         if corrected:
             _version_table(original,corrected)
             # Streamlit forbids modifying a widget's session_state AFTER that

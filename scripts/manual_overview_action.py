@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import engine
-from scripts.update_overview import _new_runner
+from scripts.update_overview import _new_runner, _record
 
 TZ = ZoneInfo('Asia/Shanghai')
 
@@ -54,13 +54,13 @@ def main():
                     runner._fetch_weather_task(direction)
                     result=runner.direction_results.get(direction)
                     if not result: raise RuntimeError('预测未返回结果')
-                    inf=result.get('inferred') or {}
-                    if any(not isinstance(inf.get(k), (int, float)) for k in ('regular_score', 'color_score', 'burn_scale_index')):
+                    # Use the exact serializer used by scheduled overview. This
+                    # preserves valid deterministic zero/no-cloud rows and the
+                    # same color-score status semantics in manual publications.
+                    row=_record(result)
+                    if any(not isinstance(row.get(k), (int, float)) for k in ('probability','color_score','burn_scale')):
                         raise RuntimeError('预测结果不完整：概率、色彩分或火烧云规模缺失')
-                    records.append({'date':day.isoformat(),'model':model,'direction':direction,
-                                    'probability':inf.get('regular_score'), 'color_score':inf.get('color_score'),
-                                    'burn_scale':inf.get('burn_scale_index'),
-                                    'spatial_calibration_status':(inf.get('spatial_calibration') or {}).get('status','not_available')})
+                    records.append({'date':day.isoformat(),'model':model,'direction':direction,**row})
                 except Exception as exc:
                     reason=str(exc)
                     errors.append(f'{day} {model} {direction}: {reason}')
