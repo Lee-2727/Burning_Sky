@@ -25,7 +25,17 @@ if str(ROOT) not in sys.path:
 import pandas as pd
 import streamlit as st
 from burning_sky.place_excel_paths import find_place_workbook
-from burning_sky.lite_forecast import run_single, verdict, source_time, event_time, clouds, number
+# Force the current deployed Lite adapter module to load; Streamlit reruns can
+# otherwise retain an older imported function object after partial deployments.
+import importlib as _importlib
+import burning_sky.lite_forecast as _lite_forecast_module
+_lite_forecast_module = _importlib.reload(_lite_forecast_module)
+run_single = _lite_forecast_module.run_single
+verdict = _lite_forecast_module.verdict
+source_time = _lite_forecast_module.source_time
+event_time = _lite_forecast_module.event_time
+clouds = _lite_forecast_module.clouds
+number = _lite_forecast_module.number
 from burning_sky.lite_satellite import calibrate_auto, MAX_UPLOAD_BYTES
 from burning_sky.warm_web_theme import apply_warm_theme, render_hero
 from burning_sky.advanced_bridge import identity as advanced_identity, read as archive_read, write as archive_write
@@ -479,6 +489,14 @@ else:
                     key='lite_offline_replay_direction')
             else:
                 replay_direction = offline_case['directions'][0]
+            import inspect as _inspect
+            _sig = _inspect.signature(run_single)
+            if 'request_cache' not in _sig.parameters:
+                raise RuntimeError(
+                    '当前服务器加载的 burning_sky/lite_forecast.py 仍是旧版本。'
+                    '请确认该文件已覆盖到仓库根目录下的 burning_sky/lite_forecast.py，'
+                    '并等待 Streamlit 完整重启后再试。当前加载路径：' +
+                    str(_lite_forecast_module.__file__) + '；函数签名：' + str(_sig))
             params = dict(offline_case['params'])
             with st.spinner('正在使用 ZIP 内缓存离线重算（网络请求已禁用）…'):
                 replay = run_single(engine, place=offline_case['place'],
