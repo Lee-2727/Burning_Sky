@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_at": "2026-11-19T15:28:18+08:00",
+  "updated_at": "2026-11-20T02:45:23+08:00",
   "cities": {
     "合肥": {
       "schema_version": 2,
@@ -9,87 +9,12 @@
       "longitude": 117.2272,
       "elevation_m": 30.0,
       "timezone": "Asia/Shanghai",
-      "updated_at": "2026-11-19 15:28:18 CST",
+      "updated_at": "2026-11-20 02:45:23 CST",
       "direction_updated_at": {
         "morning": "2026-11-19 15:28:18 CST",
         "evening": "2026-11-19 15:28:18 CST"
       },
       "days": [
-        {
-          "date": "2026-11-19",
-          "morning": {
-            "ECMWF IFS 0.25°": {
-              "probability": 0.0,
-              "color_score": 0.0,
-              "color_score_status": "scored",
-              "color_score_label": "云量不足",
-              "color_score_note": "本地目标云量不足且常规概率、火烧云规模均为0；这是有效的无火烧预报，不需要对不存在的目标云评价颜色。",
-              "verdict": "云量不足",
-              "burn_scale": 0.0,
-              "local_mid_cloud": 0.0,
-              "local_high_layer_cloud": 0.0,
-              "local_high_cloud": 0.0,
-              "fire_score_no_color": 0.0,
-              "burn_scale_label": "不烧",
-              "spatial_calibration_status": "applied",
-              "spatial_corrected_point_count": 18,
-              "event_time": "2026-11-19T06:42:32.922905"
-            },
-            "GFS Global": {
-              "probability": 0.0,
-              "color_score": 0.0,
-              "color_score_status": "scored",
-              "color_score_label": "云量不足",
-              "color_score_note": "本地目标云量不足且常规概率、火烧云规模均为0；这是有效的无火烧预报，不需要对不存在的目标云评价颜色。",
-              "verdict": "云量不足",
-              "burn_scale": 0.0,
-              "local_mid_cloud": 0.0,
-              "local_high_layer_cloud": 0.0,
-              "local_high_cloud": 0.0,
-              "fire_score_no_color": 0.0,
-              "burn_scale_label": "不烧",
-              "spatial_calibration_status": "applied",
-              "spatial_corrected_point_count": 18,
-              "event_time": "2026-11-19T06:42:32.922905"
-            }
-          },
-          "evening": {
-            "ECMWF IFS 0.25°": {
-              "probability": 66.0,
-              "color_score": 63.0,
-              "color_score_status": "scored",
-              "color_score_label": "绚烂",
-              "color_score_note": "色彩质量评价AOD、能见度及严格受光光线对应的太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
-              "verdict": "逐分钟目标采样存在有效受光时刻",
-              "burn_scale": 20.18,
-              "local_mid_cloud": 89.0,
-              "local_high_layer_cloud": 28.0,
-              "local_high_cloud": 100.0,
-              "fire_score_no_color": 13.32,
-              "burn_scale_label": "小烧",
-              "spatial_calibration_status": "applied",
-              "spatial_corrected_point_count": 26,
-              "event_time": "2026-11-19T17:09:54.609366"
-            },
-            "GFS Global": {
-              "probability": 56.0,
-              "color_score": 68.0,
-              "color_score_status": "scored",
-              "color_score_label": "绚烂",
-              "color_score_note": "色彩质量评价AOD、能见度及严格受光光线对应的太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
-              "verdict": "逐分钟目标采样存在有效受光时刻",
-              "burn_scale": 38.66,
-              "local_mid_cloud": 100.0,
-              "local_high_layer_cloud": 78.33333333333333,
-              "local_high_cloud": 100.0,
-              "fire_score_no_color": 21.65,
-              "burn_scale_label": "中烧",
-              "spatial_calibration_status": "applied",
-              "spatial_corrected_point_count": 14,
-              "event_time": "2026-11-19T17:09:54.609366"
-            }
-          }
-        },
         {
           "date": "2026-11-20",
           "morning": {
@@ -239,16 +164,48 @@
               "event_time": "2026-11-21T17:09:06.737928"
             }
           }
+        },
+        {
+          "date": "2026-11-22",
+          "morning": {},
+          "evening": {}
         }
       ],
       "publication": {
-        "state": "completed",
-        "batch_day": "2026-11-19",
-        "published_at": "2026-11-19 15:28:18 CST",
-        "valid_in_batch": 12,
-        "retained_old_keys": [],
-        "missing_keys": [],
-        "failed_keys": []
+        "state": "partial",
+        "batch_day": "2026-11-20",
+        "published_at": "2026-11-20 02:45:23 CST",
+        "valid_in_batch": 0,
+        "retained_old_keys": [
+          "合肥|2026-11-20|ECMWF IFS 0.25°|morning",
+          "合肥|2026-11-20|GFS Global|morning",
+          "合肥|2026-11-20|ECMWF IFS 0.25°|evening",
+          "合肥|2026-11-20|GFS Global|evening",
+          "合肥|2026-11-21|ECMWF IFS 0.25°|morning",
+          "合肥|2026-11-21|GFS Global|morning",
+          "合肥|2026-11-21|ECMWF IFS 0.25°|evening",
+          "合肥|2026-11-21|GFS Global|evening"
+        ],
+        "missing_keys": [
+          "合肥|2026-11-22|ECMWF IFS 0.25°|morning",
+          "合肥|2026-11-22|GFS Global|morning",
+          "合肥|2026-11-22|ECMWF IFS 0.25°|evening",
+          "合肥|2026-11-22|GFS Global|evening"
+        ],
+        "failed_keys": [
+          "合肥|2026-11-20|ECMWF IFS 0.25°|evening",
+          "合肥|2026-11-20|ECMWF IFS 0.25°|morning",
+          "合肥|2026-11-20|GFS Global|evening",
+          "合肥|2026-11-20|GFS Global|morning",
+          "合肥|2026-11-21|ECMWF IFS 0.25°|evening",
+          "合肥|2026-11-21|ECMWF IFS 0.25°|morning",
+          "合肥|2026-11-21|GFS Global|evening",
+          "合肥|2026-11-21|GFS Global|morning",
+          "合肥|2026-11-22|ECMWF IFS 0.25°|evening",
+          "合肥|2026-11-22|ECMWF IFS 0.25°|morning",
+          "合肥|2026-11-22|GFS Global|evening",
+          "合肥|2026-11-22|GFS Global|morning"
+        ]
       }
     }
   }
