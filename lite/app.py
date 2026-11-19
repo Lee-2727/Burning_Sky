@@ -37,7 +37,7 @@ from lite.bar_cards import CSS as CHART_CSS, render as render_bars
 
 # Visible build marker: if the hosted Lite still shows five dates, it is running old code.
 LITE_OVERVIEW_UI_BUILD = '3D-GEOMETRIC-VISUAL-20261119-R4'
-LITE_SINGLE_ENGINE_BUILD = 'SHARED-ENGINE-CLOUD-BOTTOM-EVENT-GEOMETRIC-VISUAL-ANGLE-DAILY-CACHE-20261120-R3-REASON-CARDS'
+LITE_SINGLE_ENGINE_BUILD = 'SHARED-ENGINE-CLOUD-BOTTOM-EVENT-GEOMETRIC-VISUAL-ANGLE-DAILY-CACHE-20261120-R4-GLASS-CARDS'
 
 st.set_page_config(page_title='Burning Skies Lite', page_icon='🌅', layout='wide', initial_sidebar_state='collapsed')
 
@@ -133,23 +133,23 @@ hr{border-color:var(--lite-hairline) !important;margin:1.4rem 0}
 [data-testid="stMetricLabel"]{color:var(--lite-faint) !important;font-size:.78rem;font-weight:500;letter-spacing:.02em}
 [data-testid="stMetricValue"]{color:var(--lite-ink) !important;font-weight:650 !important;font-size:1.62rem !important;letter-spacing:-.02em}
 
-/* Compact EC/GFS comparison cards: three readable rows instead of three
-   separate Streamlit metric cards, so each model needs less horizontal space. */
-.bs-lite-model-compact{
-  min-width:0;padding:13px 15px 11px;border:1px solid var(--lite-line);
-  border-radius:16px;background:var(--lite-card);overflow:hidden;
+/* One-line model verdict: reuse the Lite frosted-glass lead-card language,
+   but keep it compact so it reads as the conclusion beneath each model. */
+.bs-lite-model-summary{
+  min-width:0;margin:10px 0 4px;padding:13px 16px;
+  background:var(--lite-card-strong);border:1px solid var(--lite-line);
+  border-radius:18px;color:var(--lite-ink);overflow-wrap:anywhere;
+  backdrop-filter:blur(20px) saturate(150%);
+  -webkit-backdrop-filter:blur(20px) saturate(150%);
+  box-shadow:0 10px 26px rgba(8,10,20,.18);
 }
-.bs-lite-model-compact .head{font-size:14px;font-weight:700;letter-spacing:.02em;margin-bottom:8px;color:var(--lite-ink)}
-.bs-lite-model-compact .metric-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid var(--lite-hairline)}
-.bs-lite-model-compact .metric-label{font-size:12px;line-height:1.35;color:var(--lite-faint);white-space:nowrap}
-.bs-lite-model-compact .metric-value{font-size:15px;line-height:1.3;font-weight:680;color:var(--lite-ink);white-space:nowrap;font-variant-numeric:tabular-nums}
-.bs-lite-model-compact .meta{margin-top:8px;padding-top:7px;border-top:1px solid var(--lite-hairline);font-size:10.5px;line-height:1.35;color:var(--lite-faint)}
-.bs-lite-model-reason{
-  min-width:0;margin-top:8px;padding:11px 13px;border:1px solid var(--lite-line);
-  border-radius:16px;background:var(--lite-card);overflow-wrap:anywhere;
+.bs-lite-model-summary .label{
+  font-size:11px;font-weight:650;letter-spacing:.025em;
+  color:var(--lite-faint);margin-bottom:5px;
 }
-.bs-lite-model-reason .label{font-size:11px;font-weight:650;letter-spacing:.02em;color:var(--lite-faint);margin-bottom:5px}
-.bs-lite-model-reason .text{font-size:13px;line-height:1.5;font-weight:560;color:var(--lite-ink)}
+.bs-lite-model-summary .text{
+  font-size:14px;line-height:1.5;font-weight:600;color:var(--lite-ink);
+}
 
 /* Segmented navigation pill */
 .stButtonGroup, [data-testid="stSegmentedControl"]{border-radius:14px}
@@ -238,33 +238,6 @@ button[kind="primary"], [data-testid="stBaseButton-primary"]{
   [data-testid="stMetric"]{padding:11px 12px}
   [data-testid="stMetricValue"]{font-size:1.38rem !important}
   .bs-hero-cap .t{font-size:17px !important}
-}
-/* The EC/GFS comparison is intentionally denser than ordinary content.
-   On phones with at least 400 CSS px, keep its two model cards side by side;
-   on narrower phones Streamlit's native mobile layout keeps them stacked. */
-@media(min-width:400px) and (max-width:640px){
-  .st-key-lite-model-comparison [data-testid="stHorizontalBlock"]{
-    flex-wrap:nowrap !important;
-    gap:.5rem !important;
-  }
-  .st-key-lite-model-comparison [data-testid="stHorizontalBlock"] > [data-testid="column"]{
-    flex:1 1 0 !important;
-    width:50% !important;
-    min-width:0 !important;
-    max-width:50% !important;
-  }
-  .bs-lite-model-compact{
-    min-width:0; padding:10px 10px 9px; border:1px solid var(--lite-line);
-    border-radius:14px; background:var(--lite-card); overflow:hidden;
-  }
-  .bs-lite-model-compact .head{font-size:13px;font-weight:700;letter-spacing:.02em;margin-bottom:7px;color:var(--lite-ink)}
-  .bs-lite-model-compact .metric-row{display:flex;align-items:baseline;justify-content:space-between;gap:5px;padding:4px 0;border-top:1px solid var(--lite-hairline)}
-  .bs-lite-model-compact .metric-label{font-size:11px;line-height:1.35;color:var(--lite-faint);white-space:nowrap}
-  .bs-lite-model-compact .metric-value{font-size:14px;line-height:1.3;font-weight:680;color:var(--lite-ink);white-space:nowrap;font-variant-numeric:tabular-nums}
-  .bs-lite-model-reason{padding:9px 10px;border-radius:14px}
-  .bs-lite-model-reason .label{font-size:10px;margin-bottom:4px}
-  .bs-lite-model-reason .text{font-size:11.5px;line-height:1.4}
-  .st-key-lite-model-comparison [data-testid="stCaptionContainer"]{font-size:10px;line-height:1.3}
 }
 </style>''',unsafe_allow_html=True)
 
@@ -541,33 +514,26 @@ else:
     if model=='EC&GFS' and model_states:
         st.markdown('#### EC / GFS 当日结果')
         with st.container(key='lite-model-comparison'):
-            cols=st.columns(2,gap='small')
+            cols=st.columns(2,gap='large')
             for col,code in zip(cols,('EC','GFS')):
                 with col:
+                    st.markdown(f'### {code}')
                     candidate=model_states.get(code)
                     if candidate:
                         _corrected=(candidate.get('calibration') or {}).get('result') if (candidate.get('calibration') or {}).get('changed') else None
                         _shown_candidate=_corrected or candidate['result']
                         inf=_shown_candidate.get('inferred') or {}
-                        _rows=(('常规概率',_display_metric('',inf.get('regular_score'),'%')),
-                               ('色彩分',_display_metric('',inf.get('color_score'))),
-                               ('视觉规模',_display_metric('',inf.get('visual_burn_scale_index'),'%')))
-                        _html_rows=''.join(
-                            '<div class=\"metric-row\"><span class=\"metric-label\">'+__import__('html').escape(label)+
-                            '</span><span class=\"metric-value\">'+__import__('html').escape(value)+'</span></div>'
-                            for label,value in _rows)
-                        _data_time=__import__('html').escape(source_time(candidate['result'],candidate.get('fetched_at')))
-                        st.markdown('<div class=\"bs-lite-model-compact\"><div class=\"head\">'+code+
-                                    '</div>'+_html_rows+'<div class=\"meta\">数据时间：'+_data_time+'</div></div>',
-                                    unsafe_allow_html=True)
+                        # Restore the original Lite glass metric-card appearance;
+                        # only the verbose detail switch is removed.
+                        st.metric('常规概率',_display_metric('',inf.get('regular_score'),'%'))
+                        st.metric('色彩分',_display_metric('',inf.get('color_score')))
+                        st.metric('视觉规模',_display_metric('',inf.get('visual_burn_scale_index'),'%'))
                         _reason=__import__('html').escape(verdict(_shown_candidate))
-                        st.markdown('<div class=\"bs-lite-model-reason\"><div class=\"label\">判断依据</div>'
+                        st.markdown('<div class=\"bs-lite-model-summary\"><div class=\"label\">一句话总结</div>'
                                     '<div class=\"text\">'+_reason+'</div></div>',unsafe_allow_html=True)
+                        st.caption('模型数据时间：'+source_time(candidate['result'],candidate.get('fetched_at')))
                     else:
-                        st.markdown('<div class=\"bs-lite-model-compact\"><div class=\"head\">'+code+
-                                    '</div><div class=\"metric-label\">暂无当日完整缓存</div></div>',unsafe_allow_html=True)
-                        st.markdown('<div class=\"bs-lite-model-reason\"><div class=\"label\">判断依据</div>'
-                                    '<div class=\"text\">暂无可用结果</div></div>',unsafe_allow_html=True)
+                        st.info('暂无当日完整缓存；需要查询后才会显示。')
         available=[x for x in ('EC','GFS') if x in model_states]
         _active=st.session_state.get('lite_active_model')
         active=_active if _active in available else ('EC' if 'EC' in available else available[0])
