@@ -18,12 +18,14 @@ def _clip(v, lo=0., hi=1.):
 
 
 def projection_zone_illumination(cloud_cells, potential_km, bottom_rows, face_rows,
-                                 minute_offsets, step_km=15.0):
+                                 minute_offsets, step_km=15.0, include_faces=False):
     """One count per horizontal mid/high cloud zone, independent of layers.
 
-    One lit underside: 1; only verified sun-facing surface: 1/3; else 0.
-    A genuinely unknown bottom point is retained as unknown evidence and is
-    not silently promoted to lit. For repeated layers, take MAX, never SUM.
+    Primary fire-cloud mode is bottom-only: a verified underside is 1; all
+    face/top evidence is diagnostic only and contributes zero. The optional
+    include_faces mode is reserved for a separately selected anti-solar view.
+    A genuinely unknown bottom point remains unknown, never promoted to lit.
+    For repeated layers, take MAX, never SUM.
     """
     limit=float(potential_km)
     if limit<=0: return {'zones':[], 'minute_weights':{},'unknown_counts':{}}
@@ -39,12 +41,12 @@ def projection_zone_illumination(cloud_cells, potential_km, bottom_rows, face_ro
                  and float(c['end_km'])>lo+1e-7]
         if members:
             zones.append({'index':i,'start_km':lo,'end_km':hi})
-    weights={}; unknown_counts={}
+    weights={}; unknown_counts={}; bottom_lit_counts={}; face_only_counts={}
     # The bottom sampler returns the geographical position and its represented
     # width; a verified point lights its own horizontal zone, not all layers.
     for m in minute_offsets:
         values={z['index']:0.0 for z in zones}
-        unresolved=set()
+        unresolved=set(); face_zones=set()
         for row in face_rows or ():
             if int(row.get('minute_offset',-999)) != m:continue
             key=row.get('target_key') or ()
@@ -53,7 +55,9 @@ def projection_zone_illumination(cloud_cells, potential_km, bottom_rows, face_ro
             lo,hi=float(key[0]),float(key[1])
             for zone in zones:
                 if lo<zone['end_km']-1e-7 and hi>zone['start_km']+1e-7:
-                    values[zone['index']]=max(values[zone['index']],1.0/3.0)
+                    face_zones.add(zone['index'])
+                    if include_faces:
+                        values[zone['index']]=max(values[zone['index']],1.0/3.0)
         for row in bottom_rows or ():
             if int(row.get('minute_offset',-999)) != m:continue
             pos=float(row.get('position_km',-999))
@@ -76,12 +80,17 @@ def projection_zone_illumination(cloud_cells, potential_km, bottom_rows, face_ro
                     unresolved.add(zone['index'])
         weights[m]=values
         unknown_counts[m]=len([i for i in unresolved if values[i]<1.0])
-    return {'zones':zones,'minute_weights':weights,'unknown_counts':unknown_counts}
+        bottom_lit_counts[m]=sum(1 for v in values.values() if v>=1.0-1e-9)
+        face_only_counts[m]=len([i for i in face_zones if values.get(i,0.0)<1.0-1e-9])
+    return {'zones':zones,'minute_weights':weights,'unknown_counts':unknown_counts,
+            'bottom_lit_counts':bottom_lit_counts,'face_only_counts':face_only_counts,
+            'include_faces':bool(include_faces)}
 
 
 def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
                        potential_km, minutes=30, samples_per_face=32,
-                       verified_target_bands=None, verified_target_bottom_points=None):
+                       verified_target_bands=None, verified_target_bottom_points=None,
+                       include_faces=False):
     if not profiles or not event_dt or potential_km is None or potential_km<=0:
         return {'available':False,'reason':'缺少剖面、时间或有效霞云距','times':[]}
     cells=profile_cloud_cells(profiles,threshold=0.000001,
@@ -90,7 +99,8 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
     # denominator. Multiple cloud layers at the same position never double it.
     minute_offsets=list(range(-minutes,1) if direction=='morning' else range(0,minutes+1))
     projection=projection_zone_illumination(cells,potential_km,
-        verified_target_bottom_points,verified_target_bands,minute_offsets)
+        verified_target_bottom_points,verified_target_bands,minute_offsets,
+        include_faces=include_faces)
     zones=projection['zones']
     if not zones:
         return {'available':False,'reason':'霞云距内没有满足条件的中高云采样区','times':[]}
@@ -99,8 +109,8 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
         values=projection['minute_weights'][m]
         # The denominator is the NUMBER of eligible horizontal zones.
         frac=_clip(sum(values.values())/len(zones))
-        full_bottom=sum(1 for v in values.values() if v>=1.-1e-9)
-        partial_face=sum(1 for v in values.values() if 0<v<1.-1e-9)
+        full_bottom=projection['bottom_lit_counts'].get(m,0)
+        partial_face=projection['face_only_counts'].get(m,0)
         unknown_count=projection['unknown_counts'][m]
         # Area-weighted Sun angle is ONLY for color. The color calculation
         # never changes the zone weights or the strict geometry result.
@@ -109,7 +119,7 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
                       and r.get('status')=='verified_bottom']
         solar_angle=(sum(float(r['solar_altitude_deg']) for r in valid_bottom)/len(valid_bottom)
                      if valid_bottom else None)
-        if solar_angle is None:
+        if solar_angle is None and include_faces:
             valid_face=[r for r in (verified_target_bands or [])
                         if int(r.get('minute_offset',-999))==m]
             solar_angle=(sum(float(r['solar_altitude_deg']) for r in valid_face)/len(valid_face)
@@ -120,6 +130,7 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
             'front_face_fraction':(partial_face/len(zones))/3.,
             'bottom_unresolved_weight_fraction':unknown_count/len(zones),
             'bottom_lit_zone_count':full_bottom,'face_only_zone_count':partial_face,
+            'face_contributes_to_fraction':bool(include_faces),
             'eligible_zone_count':len(zones),
             'dominant':None,
             'representative_solar_altitude_deg':solar_angle,
@@ -127,8 +138,12 @@ def local_illumination(profiles, event_dt, direction, utc_offset, lat, lon,
     return {'available':True,'potential_km':float(potential_km),
         'target_count':len(zones),'target_weight':sum(z['end_km']-z['start_km'] for z in zones),
         'eligible_zones':zones,'times':result,'direction':direction,
-        'method':'horizontal_15km_zone_fraction_bottom_1_face_only_one_third',
-        'caveat':'同一水平采样区只计一次：云底受光=1，仅已严格验证的云锋面受光=1/3，否则=0；未知另外记录。云顶受光当前没有独立严格验证记录，不能据此虚增1/3。'}
+        'method':('horizontal_15km_zone_fraction_bottom_1_face_1third' if include_faces
+                  else 'horizontal_15km_zone_fraction_bottom_only'),
+        'include_faces':bool(include_faces),
+        'caveat':('同一水平采样区只计一次：云底受光=1，只有严格验证云锋面受光=1/3；未知另外记录。'
+                  if include_faces else
+                  '常规朝霞/晚霞只统计严格验证的云底受光：云底=1；云锋面、侧面和顶部不计入占比。未知另外记录。')}
 
 
 def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
@@ -208,12 +223,15 @@ def apply_to_curve(curve, illumination, atmospheric_factor=1., color_fn=None,
         return (s,p['tintable_cloud_area'],p['brightness'])
     curve['peak']=max(candidates,key=peak_key) if candidates else None
     curve['raw_peak_brightness']=round(peak_b,1)
-    curve['geometry_gate_diagnostic']={'mode':'spherical_cloud_bottom_area_plus_independent_sunward_face',
+    curve['geometry_gate_diagnostic']={'mode':('spherical_cloud_bottom_plus_face' if illumination.get('include_faces')
+                                                   else 'spherical_cloud_bottom_only'),
         'front_face_peak_fraction':max((p.get('front_face_fraction',0.) for p in illumination['times']),default=0.),
         'bottom_area_unresolved_peak_fraction':max((p.get('bottom_unresolved_weight_fraction',0.) for p in illumination['times']),default=0.),
         'target_count':illumination['target_count'],'potential_range_km':illumination['potential_km'],
         'peak_fraction':peak_fraction,'target_cover_pct':round(target_cloud_cover_pct,3),'peak_colored_area_pct':round(max((p.get('colored_cloud_area_pct',0.) for p in original),default=0.),3),'strict_peak':max(p['strict_fraction'] for p in illumination['times']),
         'possible_peak':max(p['possible_fraction'] for p in illumination['times']),
         'caveat':illumination['caveat']}
-    curve['note']='严格球面逐点云底受光为主，云锋面独立诊断；无部分云量透射，纵轴为抽样云底受光面积代理（非真实二维云面积）。'
+    curve['note']=('严格球面逐点云底受光与云锋面分别计权；纵轴为抽样云底/云面受光面积代理（非真实二维云面积）。'
+                   if illumination.get('include_faces') else
+                   '常规火烧云仅按严格球面逐点云底受光计量；云锋面、侧面和顶部不参与可染色占比，纵轴为抽样云底受光面积代理（非真实二维云面积）。')
     return curve

@@ -1703,7 +1703,7 @@ def horizontal_zone_color_peak(illumination):
     return max(rows, key=lambda row: float(row['fraction'])) if rows else None
 
 
-def apply_verified_solar_angle_color_score(inferred, bottom_rows, face_traces):
+def apply_verified_solar_angle_color_score(inferred, bottom_rows, face_traces=(), include_faces=False):
     """Apply one geometry-quality adjustment AFTER the existing AOD/visibility score.
 
     Only actually verified target illumination can supply angles. The number
@@ -1718,13 +1718,17 @@ def apply_verified_solar_angle_color_score(inferred, bottom_rows, face_traces):
         m = row.get('minute_offset')
         if isinstance(a, (int,float)) and math.isfinite(a) and isinstance(m, (int,float)):
             angles_by_minute.setdefault(int(m), []).append(float(a))
-    for row in face_traces or ():
-        if row.get('status') != 'verified_sunward_face_full_sampled_corridor':
-            continue
-        a = row.get('solar_altitude_deg')
-        m = row.get('minute_offset')
-        if isinstance(a, (int,float)) and math.isfinite(a) and isinstance(m, (int,float)):
-            angles_by_minute.setdefault(int(m), []).append(float(a))
+    # Ordinary sunrise/sunset fire-cloud scoring is underside-only. Face angles
+    # may be admitted only by an explicitly selected anti-solar/reverse-burn
+    # analysis; never let them leak into the primary backlit result.
+    if include_faces:
+        for row in face_traces or ():
+            if row.get('status') != 'verified_sunward_face_full_sampled_corridor':
+                continue
+            a = row.get('solar_altitude_deg')
+            m = row.get('minute_offset')
+            if isinstance(a, (int,float)) and math.isfinite(a) and isinstance(m, (int,float)):
+                angles_by_minute.setdefault(int(m), []).append(float(a))
     if not angles_by_minute or not isinstance(inferred.get('color_score'), (float,int)):
         return False
     # Minute-wise effective solar angles prevent a single densely sampled
@@ -1748,7 +1752,7 @@ def apply_verified_solar_angle_color_score(inferred, bottom_rows, face_traces):
     inferred.setdefault('color_score_reasons', []).append(
         f'经严格验证的受光角度 {lowest:.2f}°～{highest:.2f}°；跨度 {span:.2f}°；角度质量系数 {factor:.3f}')
     inferred['color_angle_diagnostic'] = {
-        'method':'verified_minute_solar_angle_depth_span_v1',
+        'method':('verified_minute_solar_angle_depth_span_face_enabled_v1' if include_faces else 'verified_minute_solar_angle_depth_span_bottom_only_v1'),
         'verified_minutes':len(minute_angles),
         'min_deg':round(lowest,3),'max_deg':round(highest,3),
         'span_deg':round(span,3),'factor':round(factor,4),

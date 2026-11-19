@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 from burning_sky.algorithm import (
     calculate_color_performance_score, color_score_grade,
-    horizontal_zone_color_peak,
+    horizontal_zone_color_peak, apply_verified_solar_angle_color_score,
 )
 
 
@@ -42,3 +42,12 @@ def test_peak_uses_zone_fraction_not_legacy_cloud_winner():
     ]}
     assert horizontal_zone_color_peak(illumination)['datetime']==dt+timedelta(minutes=1)
     assert horizontal_zone_color_peak({'available':True,'times':[{'fraction':0}]}) is None
+
+
+def test_primary_color_angle_score_ignores_face_only_evidence():
+    base={'color_score':80}
+    face=[{'status':'verified_sunward_face_full_sampled_corridor','minute_offset':0,'solar_altitude_deg':-7.0}]
+    assert apply_verified_solar_angle_color_score(base,[],face) is False
+    assert base['color_score']==80
+    assert apply_verified_solar_angle_color_score(base,[],face,include_faces=True) is True
+    assert base['color_score'] < 80

@@ -2008,6 +2008,9 @@ class FireCloudApp(tk.Tk):
                         inferred['adaptive_target_candidates'] = _adaptive.get('gaps', [])
                         inferred['verified_primary_ray_traces'] = _adaptive.get('verified_ray_traces', [])
                         inferred['verified_bottom_sample_traces'] = _adaptive.get('verified_target_bottom_points', [])
+                        inferred['verified_sunward_face_traces'] = [r for r in (_adaptive.get('verified_ray_traces') or [])
+                            if r.get('status') == 'verified_sunward_face_full_sampled_corridor']
+                        inferred['verified_sunward_face_bands'] = _adaptive.get('verified_target_bands', [])
                         inferred['strict_primary_path_diagnostic'] = {
                             'method_version':'DYNAMIC_SOLAR_CLOUD_EXIT_AUTO_RESAMPLE_V1',
                             'status':_adaptive.get('status'),
@@ -2309,10 +2312,40 @@ class FireCloudApp(tk.Tk):
                 # the area/timeline gate; this avoids promoting a convenient
                 # local face proxy into an independently verified light path.
                 _observed_gap_verified = False
-                _primary_path_verified = bool(
-                    _adaptive.get('status') == 'local_targets_verified'
-                    and (_adaptive.get('verified_target_bands') or
-                         _adaptive.get('bottom_verified_point_count',0)>0))
+                _bottom_rows = _adaptive.get('verified_target_bottom_points') or []
+                _face_rows = _adaptive.get('verified_target_bands') or []
+                _bottom_verified_count = sum(1 for row in _bottom_rows
+                                             if row.get('status') == 'verified_bottom')
+                _bottom_unresolved_count = sum(1 for row in _bottom_rows
+                                               if str(row.get('status','')).startswith('unresolved'))
+                _face_verified_count = len(_face_rows)
+                # Standard sunrise/sunset is a backlit view: ONLY a fully
+                # verified cloud underside may open the primary path gate.
+                # Verified sun-facing faces are preserved for reverse-burn
+                # diagnostics, but cannot make the normal fire-cloud score nonzero.
+                _primary_path_verified = _bottom_verified_count > 0
+                _expected_bottom_minutes = set(range(-30,1) if direction_key=='morning' else range(0,31))
+                _bottom_minutes = {int(row.get('minute_offset')) for row in _bottom_rows
+                                   if isinstance(row.get('minute_offset'),(int,float))}
+                _bottom_scan_complete = bool(
+                    _bottom_rows and _bottom_unresolved_count == 0
+                    and _expected_bottom_minutes.issubset(_bottom_minutes)
+                    and _profile_end + 1e-6 >= _source_check_km)
+                inferred['surface_path_diagnostics'] = {
+                    'primary_view':'backlit_cloud_bottom_only',
+                    'bottom_verified_samples':_bottom_verified_count,
+                    'bottom_blocked_samples':sum(1 for row in _bottom_rows if row.get('status')=='cloud_blocked'),
+                    'bottom_horizon_samples':sum(1 for row in _bottom_rows if row.get('status')=='earth_or_source_horizon'),
+                    'bottom_unresolved_samples':_bottom_unresolved_count,
+                    'bottom_scan_complete':_bottom_scan_complete,
+                    'verified_sunward_face_bands':_face_verified_count,
+                    'face_bands_used_in_primary_ratio':False,
+                    'note':'常规朝霞/晚霞只统计云底受光；云锋面/侧面/顶部记录保留作反烧诊断，不进入本方向可染色占比。'}
+                if _face_verified_count and not _bottom_verified_count:
+                    inferred['upstream_source_check'] = {
+                        **(inferred.get('upstream_source_check') or {}),
+                        'status':'verified_sunward_face_only_not_primary_bottom',
+                        'note':'太阳方向云锋面光路已验证，但常规逆光火烧云只接受云底受光；此面光记录不构成主方向可染色证据。'}
                 # Scenario estimate is NOT strict verification.  Only allow a
                 # separately labelled estimate when the continuous local-face
                 # geometry is positive, a sampled upstream clear gap exists,
@@ -2395,9 +2428,8 @@ class FireCloudApp(tk.Tk):
                     for k in ('humidity','prior')) else '')
                 inferred['primary_path_gate'] = {
                     'verified': bool(_primary_path_verified),
-                    'evidence': ('spherical_raytrace' if search_stage in (
-                        'spherical_raytrace_targets_verified', 'spherical_raytrace_clear')
-                        else 'observed_clear_gap_plus_strict_local_face' if _observed_gap_verified
+                    'evidence': ('strict_spherical_cloud_bottom' if _primary_path_verified
+                        else 'sunward_face_only_excluded_from_backlit_firecloud' if _face_verified_count
                         else 'none'),
                     'observed_gap_count': len(boundaries.get('observed_clear_gaps') or []),
                     'raytrace_stage': search_stage}
@@ -2407,10 +2439,8 @@ class FireCloudApp(tk.Tk):
                 # Do not classify missing profiles or raytrace exceptions as zero.
                 _complete_no_local_path = bool(
                     not _primary_path_verified
-                    and search_stage in ('spherical_raytrace_unresolved',
-                                         'spherical_raytrace_no_clear_path')
+                    and _bottom_scan_complete
                     and _source_check_km > 0
-                    and _profile_end + 1e-6 >= _source_check_km
                     and profiles
                     and _local_light.get('available')
                     and _scenario_times
@@ -2424,6 +2454,11 @@ class FireCloudApp(tk.Tk):
                         '验证覆盖充分但未找到本地有效光路：常规概率、染色占比和规模统一按0%输出。')
                 else:
                     inferred['operational_no_local_path'] = False
+                    if not _primary_path_verified and _face_verified_count and not _bottom_scan_complete:
+                        inferred['target_light_unresolved'] = True
+                        inferred['verdict'] = '云底受光尚未完成验证（云锋面不计入常规逆光）'
+                        inferred.setdefault('score_notes', []).append(
+                            '太阳方向云锋面虽有验证记录，但常规逆光主结果只接受云底；云底扫描尚有未验证采样，保留不确定性，不把面光当作通过。')
                 # A high probability must not coexist with a geometrically
                 # blocked sky and a missing tint/curve. UNKNOWN remains distinct.
                 if _complete_no_local_path or (not _primary_path_verified and search_stage == 'spherical_raytrace_no_clear_path'):
@@ -2435,8 +2470,11 @@ class FireCloudApp(tk.Tk):
                     _best_local = max(_local_light['times'],key=lambda x:x['fraction'])
                     inferred['tintable_ratio_kind'] = 'verified_profile_proxy'
                     tintable_ratio = round(100*_best_local['fraction'],1)
+                    _diag_row = max(_local_light['times'], key=lambda x:(x.get('fraction',0),x.get('face_only_zone_count',0)))
                     inferred['tintable_ratio_diagnostic'] = (
-                        '霞云距内15km横向目标区去重计数：云底受光1区，只有严格验证云锋面受光1/3区；逐分钟独立计数，不按垂向厚度计权')
+                        f"常规逆光云底统计：云底受光{_diag_row.get('bottom_lit_zone_count',0)}区/"
+                        f"{_diag_row.get('eligible_zone_count',_local_light.get('target_count',0))}区；"
+                        f"另有云锋面受光候选{_diag_row.get('face_only_zone_count',0)}区，仅作反烧诊断，不计入本方向占比。")
                     inferred['local_cloud_illumination'] = {
                         'potential_km':_local_light['potential_km'],
                         'target_count':_local_light['target_count'],
@@ -2449,9 +2487,16 @@ class FireCloudApp(tk.Tk):
                         'caveat':_local_light['caveat']}
                 else:
                     tintable_ratio = 0 if (_complete_no_local_path or search_stage == 'spherical_raytrace_no_clear_path') else None
-                    inferred['tintable_ratio_diagnostic'] = ('严格主光路确认无无遮挡光路'
-                        if search_stage == 'spherical_raytrace_no_clear_path' else
-                        '云高补齐后仍无可用连续云面目标或剖面覆盖不足；需检查具体缺失原因')
+                    if _complete_no_local_path and _local_light.get('available'):
+                        _diag_row = max(_local_light['times'], key=lambda x:x.get('face_only_zone_count',0))
+                        inferred['tintable_ratio_diagnostic'] = (
+                            f"常规逆光云底统计：云底受光0区/{_diag_row.get('eligible_zone_count',_local_light.get('target_count',0))}区；"
+                            f"云底阻挡{inferred['surface_path_diagnostics']['bottom_blocked_samples']}条，"
+                            f"地球/光源地平线阻挡{inferred['surface_path_diagnostics']['bottom_horizon_samples']}条；"
+                            f"另有云锋面受光{_diag_row.get('face_only_zone_count',0)}区，仅作反烧诊断，不计入占比。")
+                    else:
+                        inferred['tintable_ratio_diagnostic'] = ('云底受光尚未验证；云锋面记录不计入常规逆光可染色占比。'
+                            if not _bottom_scan_complete else '完整云底扫描未发现严格受光云底')
                 tintable_text = ("暂不可估" if tintable_ratio is None else f"约 {tintable_ratio}%")
                 local_cover = min(100.0, cloud_sum/range_width) if range_width > 0 else 0.0
                 # A proven lack of illuminated clouds is a physical zero, not missing data.
@@ -2466,7 +2511,8 @@ class FireCloudApp(tk.Tk):
                 if _scale_zero_reason is not None:
                     tintable_ratio = 0.0
                     tintable_text = '约 0%'
-                    inferred['tintable_ratio_diagnostic'] = _scale_zero_reason
+                    if not (_complete_no_local_path and _local_light.get('available')):
+                        inferred['tintable_ratio_diagnostic'] = _scale_zero_reason
                 inferred = apply_low_cloud_overburn_exception(
                     inferred, tintable_ratio,
                     strict_path_verified=bool(_primary_path_verified),
@@ -2544,10 +2590,10 @@ class FireCloudApp(tk.Tk):
                     from burning_sky.algorithm import apply_verified_solar_angle_color_score
                     _angle_applied = apply_verified_solar_angle_color_score(
                         inferred, _adaptive.get('verified_target_bottom_points') or [],
-                        _adaptive.get('verified_ray_traces') or [])
+                        _adaptive.get('verified_ray_traces') or [], include_faces=False)
                     inferred['color_score_label'] = color_score_grade(inferred.get('color_score'))
                     inferred['color_score_note'] = (
-                        '色彩质量评价AOD、能见度及严格受光光线对应的太阳高度角深度与跨度；'
+                        '色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；'
                         '不因受光面积或云量规模直接加分。'
                         if _angle_applied else
                         '有效受光角度不足，未额外添加太阳角度分；保持大气色彩分。')
