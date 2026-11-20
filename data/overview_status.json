@@ -1,174 +1,20 @@
 {
   "schema_version": 2,
-  "state": "partial",
+  "state": "running",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
-  "started_at": "2026-11-20 10:03:57 CST",
-  "updated_at": "2026-11-20 10:25:31 CST",
-  "current_model": "GFS Global",
-  "model_index": 2,
+  "started_at": "2026-11-20 15:05:12 CST",
+  "updated_at": "2026-11-20 15:05:12 CST",
+  "current_model": "ECMWF IFS 0.25°",
+  "model_index": 1,
   "model_total": 2,
-  "completed_models": [
-    "ECMWF IFS 0.25°",
-    "GFS Global"
-  ],
+  "completed_models": [],
   "cities": [
     "合肥"
   ],
-  "city_progress": 1,
+  "city_progress": 0,
   "city_total": 1,
-  "task_progress": 12,
+  "task_progress": 0,
   "task_total": 12,
-  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
-  "failure_count": 12,
-  "last_error": {
-    "city": "合肥",
-    "date": "2026-11-22",
-    "model": "GFS Global",
-    "direction": "evening",
-    "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-  },
-  "failed_at": "2026-11-20 10:25:31 CST",
-  "success_count": 0,
-  "visible_valid_count": 8,
-  "retained_old_count": 8,
-  "missing_count": 4,
-  "failures": [
-    {
-      "city": "合肥",
-      "date": "2026-11-20",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "morning",
-      "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-20",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "evening",
-      "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-21",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "morning",
-      "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-21",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "evening",
-      "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-22",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "morning",
-      "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-22",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "evening",
-      "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-20",
-      "model": "GFS Global",
-      "direction": "morning",
-      "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-20",
-      "model": "GFS Global",
-      "direction": "evening",
-      "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-21",
-      "model": "GFS Global",
-      "direction": "morning",
-      "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-21",
-      "model": "GFS Global",
-      "direction": "evening",
-      "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-22",
-      "model": "GFS Global",
-      "direction": "morning",
-      "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-22",
-      "model": "GFS Global",
-      "direction": "evening",
-      "error": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    }
-  ],
-  "retry_diagnostics": {
-    "合肥|2026-11-20|ECMWF IFS 0.25°|morning": {
-      "attempt": 1,
-      "reason": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    "合肥|2026-11-20|ECMWF IFS 0.25°|evening": {
-      "attempt": 1,
-      "reason": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    "合肥|2026-11-21|ECMWF IFS 0.25°|morning": {
-      "attempt": 1,
-      "reason": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    "合肥|2026-11-21|ECMWF IFS 0.25°|evening": {
-      "attempt": 1,
-      "reason": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    "合肥|2026-11-22|ECMWF IFS 0.25°|morning": {
-      "attempt": 1,
-      "reason": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    "合肥|2026-11-22|ECMWF IFS 0.25°|evening": {
-      "attempt": 1,
-      "reason": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    "合肥|2026-11-20|GFS Global|morning": {
-      "attempt": 1,
-      "reason": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    "合肥|2026-11-20|GFS Global|evening": {
-      "attempt": 1,
-      "reason": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    "合肥|2026-11-21|GFS Global|morning": {
-      "attempt": 1,
-      "reason": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    "合肥|2026-11-21|GFS Global|evening": {
-      "attempt": 1,
-      "reason": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    "合肥|2026-11-22|GFS Global|morning": {
-      "attempt": 1,
-      "reason": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    },
-    "合肥|2026-11-22|GFS Global|evening": {
-      "attempt": 1,
-      "reason": "_HeadlessForecast._set_judgment_text() takes 4 positional arguments but 5 were given"
-    }
-  },
-  "partial_published": true,
-  "message": "本轮有效 0/12；正式概览已发布，旧有效记录保留 8 项，缺失 4 项。失败项留待下次定时任务。"
+  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞"
 }
