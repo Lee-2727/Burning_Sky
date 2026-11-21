@@ -13,6 +13,8 @@ from pathlib import Path
 from datetime import timedelta
 import importlib.util
 import sys
+import threading
+import time
 
 # Set before engine import (the engine has an optional Tk desktop interface).
 os.environ['BURNING_SKY_HEADLESS'] = '1'
@@ -24,9 +26,8 @@ if str(ROOT) not in sys.path:
 import pandas as pd
 import streamlit as st
 
-# Load the same root engine.py by absolute path on every Streamlit rerun,
-# matching Pro's loader. A plain `import engine` reuses sys.modules and keeps
-# engine-level model-metadata caches alive across Lite reruns.
+# Load the same root engine.py using the same absolute-path loader as Pro.
+# This change is confined to Lite's entry point; app.py (Pro) is untouched.
 _ENGINE_PATH = ROOT / "engine.py"
 _ENGINE_SPEC = importlib.util.spec_from_file_location(
     "_burning_sky_runtime_engine", str(_ENGINE_PATH)
@@ -36,12 +37,102 @@ if _ENGINE_SPEC is None or _ENGINE_SPEC.loader is None:
 engine = importlib.util.module_from_spec(_ENGINE_SPEC)
 sys.modules[_ENGINE_SPEC.name] = engine
 _ENGINE_SPEC.loader.exec_module(engine)
-# spatial_pipeline resolves the active engine through the canonical module name.
-sys.modules['engine'] = engine
+sys.modules["engine"] = engine
 if not hasattr(engine, "WEATHER_MODEL_CATALOG"):
     raise ImportError(f"加载的引擎文件缺少 WEATHER_MODEL_CATALOG：{_ENGINE_PATH}")
 
-# Import Lite adapters only after the canonical engine alias is installed.
+# Lite-only forecast refresh scope. During an explicit Lite query, bypass the
+# persistent forecast disk cache but keep a per-query in-memory cache so a
+# duplicate URL is fetched only once. The wrappers are thread-local and delegate
+# unchanged for all non-Lite-refresh work in this Lite process.
+_LITE_REFRESH_LOCAL = threading.local()
+_ENGINE_READ_DISK_CACHE = engine._read_disk_cache
+_ENGINE_WRITE_DISK_CACHE = engine._write_disk_cache
+
+def _lite_is_forecast_url(url):
+    return "api.open-meteo.com/v1/forecast?" in str(url or "")
+
+def _lite_read_disk_cache(url):
+    if getattr(_LITE_REFRESH_LOCAL, "active", False) and _lite_is_forecast_url(url):
+        return getattr(_LITE_REFRESH_LOCAL, "forecast_cache", {}).get(url)
+    return _ENGINE_READ_DISK_CACHE(url)
+
+def _lite_write_disk_cache(url, payload, signature):
+    if getattr(_LITE_REFRESH_LOCAL, "active", False) and _lite_is_forecast_url(url):
+        cache = getattr(_LITE_REFRESH_LOCAL, "forecast_cache", None)
+        if cache is None:
+            cache = {}
+            _LITE_REFRESH_LOCAL.forecast_cache = cache
+        cache[url] = {
+            "saved_at": time.time(),
+            "meta_signature": signature,
+            "payload": payload,
+        }
+        return None
+    return _ENGINE_WRITE_DISK_CACHE(url, payload, signature)
+
+engine._read_disk_cache = _lite_read_disk_cache
+engine._write_disk_cache = _lite_write_disk_cache
+
+def _prepare_lite_fresh_query(model_codes):
+    """Refresh only Lite's own process caches; preserve the shared 429 cooldown."""
+    diagnostics = {
+        "forecast_disk_cache": "bypassed_for_this_query",
+        "model_metadata_cache": "cleared",
+        "om_batch_cache": "not_applicable",
+        "om_metadata_cache": "not_applicable",
+        "om_cooldown_preserved": True,
+    }
+    # engine.py is reloaded on every Streamlit rerun, but explicitly clear the
+    # Lite engine instance's model metadata cache at the user's query boundary.
+    metadata_cache = getattr(engine, "_MODEL_META_CACHE", None)
+    if isinstance(metadata_cache, dict):
+        metadata_cache.clear()
+
+    if "EC" not in model_codes:
+        return diagnostics
+
+    try:
+        import burning_sky.spatial_pipeline as _lite_spatial_pipeline
+        import burning_sky.spatial_om as _lite_spatial_om
+
+        cooldown_until = _lite_spatial_pipeline._OM_COOLDOWN.get("ecmwf_ifs025", 0.0)
+        remaining = max(0.0, float(cooldown_until) - time.monotonic())
+        if remaining > 0:
+            diagnostics["om_batch_cache"] = "preserved_due_to_429_cooldown"
+            diagnostics["om_metadata_cache"] = "preserved_due_to_429_cooldown"
+            diagnostics["om_cooldown_remaining_seconds"] = int(remaining)
+            return diagnostics
+
+        batch_cache = _lite_spatial_pipeline._BATCH_CACHE
+        old_count = len(batch_cache)
+        # Remove only EC entries. Do not touch GFS or the 20-minute cooldown.
+        for key in list(batch_cache):
+            if isinstance(key, tuple) and key and key[0] == "ecmwf_ifs025":
+                batch_cache.pop(key, None)
+        diagnostics["om_batch_cache"] = "cleared"
+        diagnostics["om_batch_entries_cleared"] = old_count - len(batch_cache)
+
+        metadata_fn = getattr(_lite_spatial_om, "_get_metadata_cached", None)
+        if callable(getattr(metadata_fn, "cache_clear", None)):
+            metadata_fn.cache_clear()
+            diagnostics["om_metadata_cache"] = "cleared"
+        else:
+            diagnostics["om_metadata_cache"] = "cache_clear_unavailable"
+    except Exception as exc:
+        diagnostics["om_cache_refresh_error"] = f"{type(exc).__name__}: {str(exc)[:180]}"
+    return diagnostics
+
+def _run_lite_fresh_single(**kwargs):
+    """Force fresh point-forecast and EC OM manifest reads for this Lite click only."""
+    _LITE_REFRESH_LOCAL.active = True
+    _LITE_REFRESH_LOCAL.forecast_cache = {}
+    try:
+        return run_single(engine, **kwargs)
+    finally:
+        _LITE_REFRESH_LOCAL.active = False
+        _LITE_REFRESH_LOCAL.forecast_cache = {}
+
 from burning_sky.place_excel_paths import find_place_workbook
 from burning_sky.lite_forecast import run_single, verdict, source_time, event_time, clouds, number
 from burning_sky.lite_satellite import calibrate_auto, MAX_UPLOAD_BYTES
@@ -57,7 +148,7 @@ from lite.bar_cards import CSS as CHART_CSS, render as render_bars
 
 # Visible build marker: if the hosted Lite still shows five dates, it is running old code.
 LITE_OVERVIEW_UI_BUILD = '3D-GEOMETRIC-VISUAL-20261119-R4'
-LITE_SINGLE_ENGINE_BUILD = 'SHARED-ENGINE-CLOUD-BOTTOM-EVENT-GEOMETRIC-VISUAL-ANGLE-DAILY-CACHE-20261120-R5-NO-CONTINUOUS-CLOUD'
+LITE_SINGLE_ENGINE_BUILD = 'LITE-ONLY-FRESH-FORECAST-AND-OM-QUERY-R6-20261121'
 
 st.set_page_config(page_title='Burning Skies Lite', page_icon='🌅', layout='wide', initial_sidebar_state='collapsed')
 
@@ -90,7 +181,8 @@ try:
 except (OSError,RuntimeError,KeyError):
     pass
 
-# Shared forecast engine loaded above using the same loader as Pro.
+# Shared engine is imported, not copied. The Pro UI is never imported.
+import engine
 
 apply_warm_theme()
 st.markdown(CHART_CSS,unsafe_allow_html=True)
@@ -260,7 +352,6 @@ button[kind="primary"], [data-testid="stBaseButton-primary"]{
 }
 </style>''',unsafe_allow_html=True)
 
-@st.cache_data(show_spinner=False)
 def _places():
     file=Path(find_place_workbook())
     if not file.is_file():
@@ -452,12 +543,23 @@ else:
                 st.session_state.pop(_old_key,None)
         model_codes=('EC','GFS') if model=='EC&GFS' else (('EC',) if model=='ECMWF IFS 0.25°' else ('GFS',))
         labels={'EC':'ECMWF IFS 0.25°','GFS':'GFS Global'}
+        lite_refresh_diagnostics = _prepare_lite_fresh_query(model_codes)
+        if lite_refresh_diagnostics.get("om_cooldown_remaining_seconds"):
+            st.warning(
+                "EC OM 空间云场仍处于 429 冷却期；本次保留冷却保护，"
+                "不会强行请求 OM。点 API 仍按本次主动查询刷新。"
+            )
         model_states={}
         for code in model_codes:
             with st.spinner(f'正在依次计算{labels[code]} {"朝霞" if direction=="morning" else "晚霞"}…'):
                 try:
-                    state=run_single(engine,place=place,lat=lat,lon=lon,elevation=elevation,
-                                     day=day.isoformat(),model_label=labels[code],direction=direction)
+                    state=_run_lite_fresh_single(place=place,lat=lat,lon=lon,elevation=elevation,
+                                                 day=day.isoformat(),model_label=labels[code],direction=direction)
+                    state['meta']['lite_refresh_diagnostics'] = dict(lite_refresh_diagnostics)
+                    state.setdefault('spatial_source_log', []).insert(0, {
+                        'status': 'lite_explicit_query_refresh',
+                        **lite_refresh_diagnostics,
+                    })
                     state['calibration']=None
                     state['from_cache']=False
                     save_interactive_cache(place=place,lat=lat,lon=lon,elevation=elevation,
