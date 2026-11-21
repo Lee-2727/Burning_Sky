@@ -95,6 +95,21 @@ def _event_utc(event):
     return event.astimezone(timezone.utc)
 
 
+def _event_local_naive(event):
+    """Normalize cached or live event_dt to the local naive datetime expected
+    by solar_position(..., utc_offset=8). JSON-restored results store datetimes
+    as strings, while live results may still hold datetime objects.
+    """
+    from datetime import datetime, timedelta, timezone
+    if isinstance(event, str):
+        event = datetime.fromisoformat(event)
+    if not isinstance(event, datetime):
+        raise ValueError('缺少有效的朝霞/晚霞事件时刻')
+    if event.tzinfo is not None:
+        event = event.astimezone(timezone(timedelta(hours=8))).replace(tzinfo=None)
+    return event
+
+
 def _region_bounds(lat, lon, radius_km=900):
     """Observer-centered rectangle with extra room for 700 km upstream rays."""
     import math
@@ -185,6 +200,9 @@ def render_web_panel(st, engine, result, meta, direction_key, replay_only=False)
         st.caption('本次结果缺少地理坐标或事件时间，不能生成八方位图。')
         return
     lat,lon=float(origin[0]),float(origin[1])
+    # Keep UTC for matching the OM valid time, but pass a local naive datetime
+    # into the solar-angle routine. Cached JSON restores event_dt as a string.
+    event_local=_event_local_naive(event)
     event_utc=_event_utc(event)
     observed_runs={str(row['spatial_horizontal_run']) for row in result.get('profiles',[])
                    if isinstance(row,dict) and row.get('spatial_horizontal_run')}
@@ -211,7 +229,7 @@ def render_web_panel(st, engine, result, meta, direction_key, replay_only=False)
         try:
             with st.spinner('正在复用或按需读取区域 OM 云场；一次网格读取可能包含多次 HTTP 分块……'):
                 data,source=_fetch_regional_compass_cloud(model_id,event_utc,lat,lon,expected_run=expected_run)
-                c=compass_from_verified_rays(data,lat,lon,event, direction_key,
+                c=compass_from_verified_rays(data,lat,lon,event_local, direction_key,
                                              verified_rays=traces)
             st.session_state[cache_key]={'candidate':c,'source':source}
             fig=render_compass_figure(c)
