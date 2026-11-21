@@ -1,130 +1,20 @@
 {
   "schema_version": 2,
-  "state": "rate_limited",
+  "state": "running",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
-  "started_at": "2026-11-21 03:55:48 CST",
-  "updated_at": "2026-11-21 03:56:07 CST",
-  "current_model": "GFS Global",
-  "model_index": 2,
+  "started_at": "2026-11-21 10:06:19 CST",
+  "updated_at": "2026-11-21 10:06:19 CST",
+  "current_model": "ECMWF IFS 0.25°",
+  "model_index": 1,
   "model_total": 2,
-  "completed_models": [
-    "ECMWF IFS 0.25°",
-    "GFS Global"
-  ],
+  "completed_models": [],
   "cities": [
     "合肥"
   ],
-  "city_progress": 1,
+  "city_progress": 0,
   "city_total": 1,
-  "task_progress": 12,
+  "task_progress": 0,
   "task_total": 12,
-  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
-  "failure_count": 12,
-  "last_error": {
-    "city": "合肥",
-    "date": "2026-11-23",
-    "model": "GFS Global",
-    "direction": "evening",
-    "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
-  },
-  "failed_at": "2026-11-21 03:56:07 CST",
-  "success_count": 0,
-  "visible_valid_count": 4,
-  "retained_old_count": 4,
-  "missing_count": 8,
-  "failures": [
-    {
-      "city": "合肥",
-      "date": "2026-11-21",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "morning",
-      "error": "HTTP 429: Open-Meteo 当前scheduled任务冷却中，约剩余 3600 秒；本次不发起新请求"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-21",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "evening",
-      "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-22",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "morning",
-      "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-22",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "evening",
-      "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-23",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "morning",
-      "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-23",
-      "model": "ECMWF IFS 0.25°",
-      "direction": "evening",
-      "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-21",
-      "model": "GFS Global",
-      "direction": "morning",
-      "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-21",
-      "model": "GFS Global",
-      "direction": "evening",
-      "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-22",
-      "model": "GFS Global",
-      "direction": "morning",
-      "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-22",
-      "model": "GFS Global",
-      "direction": "evening",
-      "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-23",
-      "model": "GFS Global",
-      "direction": "morning",
-      "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
-    },
-    {
-      "city": "合肥",
-      "date": "2026-11-23",
-      "model": "GFS Global",
-      "direction": "evening",
-      "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
-    }
-  ],
-  "retry_diagnostics": {
-    "合肥|2026-11-21|ECMWF IFS 0.25°|morning": {
-      "attempt": 1,
-      "reason": "HTTP 429: Open-Meteo 当前scheduled任务冷却中，约剩余 3600 秒；本次不发起新请求"
-    }
-  },
-  "partial_published": true,
-  "message": "本轮有效 0/12；正式概览已发布，旧有效记录保留 4 项，缺失 8 项。失败项留待下次定时任务。"
+  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞"
 }
