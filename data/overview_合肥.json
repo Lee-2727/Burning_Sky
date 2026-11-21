@@ -5,7 +5,7 @@
   "longitude": 117.2272,
   "elevation_m": 30.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": "2026-11-21 03:56:07 CST",
+  "updated_at": "2026-11-21 10:30:35 CST",
   "direction_updated_at": {
     "morning": "2026-11-19 15:28:18 CST",
     "evening": "2026-11-19 15:28:18 CST"
@@ -100,7 +100,7 @@
   "publication": {
     "state": "partial",
     "batch_day": "2026-11-21",
-    "published_at": "2026-11-21 03:56:07 CST",
+    "published_at": "2026-11-21 10:30:35 CST",
     "valid_in_batch": 0,
     "retained_old_keys": [
       "合肥|2026-11-21|ECMWF IFS 0.25°|morning",
