@@ -9,10 +9,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import io
-import zipfile
 from pathlib import Path
 from datetime import timedelta
+import importlib.util
 import sys
 
 # Set before engine import (the engine has an optional Tk desktop interface).
@@ -24,18 +23,27 @@ if str(ROOT) not in sys.path:
 
 import pandas as pd
 import streamlit as st
+
+# Load the same root engine.py by absolute path on every Streamlit rerun,
+# matching Pro's loader. A plain `import engine` reuses sys.modules and keeps
+# engine-level model-metadata caches alive across Lite reruns.
+_ENGINE_PATH = ROOT / "engine.py"
+_ENGINE_SPEC = importlib.util.spec_from_file_location(
+    "_burning_sky_runtime_engine", str(_ENGINE_PATH)
+)
+if _ENGINE_SPEC is None or _ENGINE_SPEC.loader is None:
+    raise ImportError(f"无法加载项目根目录的 engine.py：{_ENGINE_PATH}")
+engine = importlib.util.module_from_spec(_ENGINE_SPEC)
+sys.modules[_ENGINE_SPEC.name] = engine
+_ENGINE_SPEC.loader.exec_module(engine)
+# spatial_pipeline resolves the active engine through the canonical module name.
+sys.modules['engine'] = engine
+if not hasattr(engine, "WEATHER_MODEL_CATALOG"):
+    raise ImportError(f"加载的引擎文件缺少 WEATHER_MODEL_CATALOG：{_ENGINE_PATH}")
+
+# Import Lite adapters only after the canonical engine alias is installed.
 from burning_sky.place_excel_paths import find_place_workbook
-# Force the current deployed Lite adapter module to load; Streamlit reruns can
-# otherwise retain an older imported function object after partial deployments.
-import importlib as _importlib
-import burning_sky.lite_forecast as _lite_forecast_module
-_lite_forecast_module = _importlib.reload(_lite_forecast_module)
-run_single = _lite_forecast_module.run_single
-verdict = _lite_forecast_module.verdict
-source_time = _lite_forecast_module.source_time
-event_time = _lite_forecast_module.event_time
-clouds = _lite_forecast_module.clouds
-number = _lite_forecast_module.number
+from burning_sky.lite_forecast import run_single, verdict, source_time, event_time, clouds, number
 from burning_sky.lite_satellite import calibrate_auto, MAX_UPLOAD_BYTES
 from burning_sky.warm_web_theme import apply_warm_theme, render_hero
 from burning_sky.advanced_bridge import identity as advanced_identity, read as archive_read, write as archive_write
@@ -82,8 +90,7 @@ try:
 except (OSError,RuntimeError,KeyError):
     pass
 
-# Shared engine is imported, not copied. The Pro UI is never imported.
-import engine
+# Shared forecast engine loaded above using the same loader as Pro.
 
 apply_warm_theme()
 st.markdown(CHART_CSS,unsafe_allow_html=True)
@@ -273,69 +280,6 @@ def _published(city):
     return get_overview(city)
 
 
-
-def _read_offline_case_zip(blob):
-    """Read a saved case ZIP in memory; never extract files or contact APIs."""
-    if not isinstance(blob, (bytes, bytearray)) or len(blob) > 100 * 1024 * 1024:
-        raise ValueError('案例 ZIP 无效或超过 100 MB')
-    required = {'analysis_state.json', 'request_cache.json', 'case_manifest.json'}
-    try:
-        with zipfile.ZipFile(io.BytesIO(blob), 'r') as archive:
-            bad = archive.testzip()
-            if bad:
-                raise ValueError('ZIP 完整性检查失败：' + bad)
-            names = set(archive.namelist())
-            if not required.issubset(names):
-                raise ValueError('案例 ZIP 缺少：' + '、'.join(sorted(required - names)))
-            manifest = json.loads(archive.read('case_manifest.json').decode('utf-8'))
-            analysis = json.loads(archive.read('analysis_state.json').decode('utf-8'))
-            cache = json.loads(archive.read('request_cache.json').decode('utf-8'))
-    except (zipfile.BadZipFile, KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError('无法读取案例 ZIP：' + str(exc)) from exc
-    if not isinstance(cache, dict) or not cache:
-        raise ValueError('案例中的 request_cache.json 为空或格式错误')
-    hashes = manifest.get('file_sha256') or {}
-    for name in ('analysis_state.json', 'request_cache.json'):
-        expected = hashes.get(name)
-        if expected:
-            with zipfile.ZipFile(io.BytesIO(blob), 'r') as archive:
-                actual = hashlib.sha256(archive.read(name)).hexdigest()
-            if actual != expected:
-                raise ValueError(name + ' SHA256 校验失败，文件可能损坏')
-    source = manifest.get('source_case') or {}
-    params = ((manifest.get('effective_parameters') or {}).get('request_inputs') or {})
-    place = str(source.get('place') or analysis.get('place') or params.get('place') or '').strip()
-    day = str(source.get('date') or analysis.get('date') or params.get('date') or '').strip()
-    model_code = str(source.get('model_code') or analysis.get('model_code') or '').upper()
-    model_label = 'GFS Global' if model_code == 'GFS' else ('ECMWF IFS 0.25°' if model_code == 'EC' else '')
-    lat = source.get('latitude', analysis.get('latitude', params.get('lat')))
-    lon = source.get('longitude', analysis.get('longitude', params.get('lon')))
-    elevation = source.get('elevation_m', analysis.get('elevation_m', params.get('elevation', 0)))
-    directions = analysis.get('direction_results') or {}
-    valid_directions = [d for d in ('morning', 'evening') if isinstance(directions.get(d), dict)]
-    if not place or not day or not model_label or lat is None or lon is None or not valid_directions:
-        raise ValueError('案例元数据不完整：需要地点、日期、EC/GFS 模式、坐标和方向结果')
-    return {'manifest': manifest, 'analysis': analysis, 'cache': cache, 'params': params,
-            'place': place, 'day': day, 'model_code': model_code, 'model_label': model_label,
-            'lat': float(lat), 'lon': float(lon), 'elevation': float(elevation or 0),
-            'directions': valid_directions}
-
-
-def _offline_metric_row(label, inferred):
-    def _fmt(key):
-        value = inferred.get(key)
-        try:
-            return f'{float(value):.2f}'
-        except (TypeError, ValueError):
-            return '—'
-    return {'来源': label, '常规概率': _fmt('regular_score'),
-            '色彩分': _fmt('color_score'),
-            '几何规模': _fmt('geometric_burn_scale_index'),
-            '视觉规模': _fmt('visual_burn_scale_index'),
-            '几何可染色占比': _fmt('geometric_tintable_ratio'),
-            '视觉可染色占比': _fmt('visual_tintable_ratio')}
-
-
 def _display_metric(name,value,suffix=''):
     return '—' if number(value) is None else f'{number(value):.0f}{suffix}'
 
@@ -473,69 +417,6 @@ if nav=='未来三日':
             st.caption('更新：'+str(overview['updated_at']))
 
 else:
-    st.markdown('#### 离线案例重放')
-    st.caption('上传 Pro / Lite 保存的案例 ZIP。只读取 ZIP 内 request_cache.json；缺少请求时立即报错，绝不联网补请求。')
-    offline_zip = st.file_uploader('加载案例 ZIP（离线，不请求天气 API）', type=['zip'],
-                                   key='lite_offline_case_zip')
-    offline_go = st.button('读取缓存并离线重算', type='secondary',
-                           disabled=offline_zip is None, use_container_width=True,
-                           key='lite_offline_replay_go')
-    if offline_go and offline_zip is not None:
-        try:
-            offline_case = _read_offline_case_zip(offline_zip.getvalue())
-            if len(offline_case['directions']) > 1:
-                replay_direction = st.selectbox('重放方向', offline_case['directions'],
-                    format_func=lambda x: '朝霞' if x == 'morning' else '晚霞',
-                    key='lite_offline_replay_direction')
-            else:
-                replay_direction = offline_case['directions'][0]
-            import inspect as _inspect
-            _sig = _inspect.signature(run_single)
-            if 'request_cache' not in _sig.parameters:
-                raise RuntimeError(
-                    '当前服务器加载的 burning_sky/lite_forecast.py 仍是旧版本。'
-                    '请确认该文件已覆盖到仓库根目录下的 burning_sky/lite_forecast.py，'
-                    '并等待 Streamlit 完整重启后再试。当前加载路径：' +
-                    str(_lite_forecast_module.__file__) + '；函数签名：' + str(_sig))
-            params = dict(offline_case['params'])
-            with st.spinner('正在使用 ZIP 内缓存离线重算（网络请求已禁用）…'):
-                replay = run_single(engine, place=offline_case['place'],
-                    lat=offline_case['lat'], lon=offline_case['lon'],
-                    elevation=offline_case['elevation'], day=offline_case['day'],
-                    model_label=offline_case['model_label'], direction=replay_direction,
-                    request_cache=offline_case['cache'], replay_values=params)
-            pro_record = (offline_case['analysis'].get('direction_results') or {}).get(replay_direction) or {}
-            pro_inf = pro_record.get('inferred') or {}
-            lite_inf = (replay.get('result') or {}).get('inferred') or {}
-            st.session_state['lite_offline_replay_result'] = {
-                'case': offline_case, 'direction': replay_direction,
-                'replay': replay, 'pro_inferred': pro_inf,
-                'pro_summary': pro_record.get('summary', '')}
-            st.success(f"离线重算完成：{offline_case['place']} · {offline_case['day']} · "
-                       f"{offline_case['model_code']} · {'朝霞' if replay_direction == 'morning' else '晚霞'}；"
-                       f"使用缓存请求 {len(replay.get('cache_used_urls') or [])}/{len(offline_case['cache'])} 条。")
-        except Exception as ex:
-            st.error('离线重算失败（未发起网络请求）：' + str(ex))
-    offline_result = st.session_state.get('lite_offline_replay_result')
-    if offline_result:
-        _case = offline_result['case']
-        _dir = offline_result['direction']
-        _lite_record = offline_result['replay']['result']
-        _lite_inf = (_lite_record.get('inferred') or {})
-        st.markdown(f"**离线对照：{_case['place']} · {_case['day']} · {_case['model_code']} · "
-                    f"{'朝霞' if _dir == 'morning' else '晚霞'}**")
-        _rows = [_offline_metric_row('Pro 存档', offline_result['pro_inferred']),
-                 _offline_metric_row('Lite 离线重算', _lite_inf)]
-        st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True)
-        st.caption('请求缓存使用数：'+str(len(offline_result['replay'].get('cache_used_urls') or []))+
-                   ' / '+str(len(_case['cache']))+'；未使用的缓存请求不会触发 API。')
-        with st.expander('查看 Lite 离线重算结论', expanded=True):
-            st.write(verdict(_lite_record))
-            st.caption(source_time(_lite_record, offline_result['replay'].get('fetched_at')))
-        if st.button('清除离线对照结果', key='lite_clear_offline_replay'):
-            st.session_state.pop('lite_offline_replay_result', None)
-            st.rerun()
-    st.divider()
     try:
         cities=_places()
     except (OSError, ValueError, KeyError) as ex:
