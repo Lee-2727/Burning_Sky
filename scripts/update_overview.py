@@ -187,7 +187,7 @@ class _HeadlessForecast(HybridSpatialMixin, engine.FireCloudApp):
     def _set_text(widget, value):
         pass
     @staticmethod
-    def _set_judgment_text(widget, regular_score, color_score, burn_label):
+    def _set_judgment_text(widget, regular_score, color_score, burn_label, visual_scale=None):
         pass
     def _draw_peak_color_swatch(self, direction_key):
         pass
