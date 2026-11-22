@@ -13,8 +13,12 @@
   ],
   "completed": [
     "合肥|2026-11-23|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-23|GFS Global|evening",
+    "合肥|2026-11-23|GFS Global|morning",
     "合肥|2026-11-24|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-24|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-24|GFS Global|evening",
+    "合肥|2026-11-24|GFS Global|morning",
     "合肥|2026-11-25|ECMWF IFS 0.25°|morning"
   ],
   "snapshot": {
@@ -53,26 +57,46 @@
             "event_time": "2026-11-23T06:46:04.056542"
           },
           "GFS Global": {
-            "probability": 39.0,
+            "probability": 51.0,
             "color_score": 63.0,
             "color_score_status": "scored",
             "color_score_label": "绚烂",
             "color_score_note": "色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
             "verdict": "逐分钟目标采样存在有效受光时刻",
-            "burn_scale": 48.03,
-            "visual_burn_scale": 0.48,
-            "local_mid_cloud": 94.88888888888889,
-            "local_high_layer_cloud": 1.6666666666666667,
-            "local_high_cloud": 96.55555555555556,
-            "fire_score_no_color": 18.73,
-            "burn_scale_label": "中烧",
+            "burn_scale": 29.07,
+            "visual_burn_scale": 0.1,
+            "local_mid_cloud": 98.55555555555556,
+            "local_high_layer_cloud": 3.3333333333333335,
+            "local_high_cloud": 100.0,
+            "fire_score_no_color": 14.83,
+            "burn_scale_label": "小烧",
             "visual_burn_scale_label": "不烧",
             "spatial_calibration_status": "gfs_om_horizontal_disabled",
             "spatial_corrected_point_count": 0,
             "event_time": "2026-11-23T06:46:04.056542"
           }
         },
-        "evening": {}
+        "evening": {
+          "GFS Global": {
+            "probability": 0.0,
+            "color_score": 0.0,
+            "color_score_status": "scored",
+            "color_score_label": "平平",
+            "color_score_note": "整个时间窗口内所有有云采样区均未验证出受光",
+            "verdict": "严格主光路未证实透光",
+            "burn_scale": 0.0,
+            "visual_burn_scale": 0.0,
+            "local_mid_cloud": 77.11111111111111,
+            "local_high_layer_cloud": 68.22222222222223,
+            "local_high_cloud": 100.0,
+            "fire_score_no_color": 0.0,
+            "burn_scale_label": "不烧",
+            "visual_burn_scale_label": "不烧",
+            "spatial_calibration_status": "gfs_om_horizontal_disabled",
+            "spatial_corrected_point_count": 0,
+            "event_time": "2026-11-23T17:08:25.718044"
+          }
+        }
       },
       {
         "date": "2026-11-24",
@@ -97,20 +121,20 @@
             "event_time": "2026-11-24T06:46:56.512075"
           },
           "GFS Global": {
-            "probability": 0.0,
-            "color_score": 0.0,
+            "probability": 54.0,
+            "color_score": 63.0,
             "color_score_status": "scored",
-            "color_score_label": "平平",
-            "color_score_note": "整个时间窗口内所有有云采样区均未验证出受光",
-            "verdict": "严格主光路未证实透光",
-            "burn_scale": 0.0,
-            "visual_burn_scale": 0.0,
+            "color_score_label": "绚烂",
+            "color_score_note": "色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
+            "verdict": "逐分钟目标采样存在有效受光时刻",
+            "burn_scale": 17.52,
+            "visual_burn_scale": 85.22,
             "local_mid_cloud": 100.0,
             "local_high_layer_cloud": 100.0,
             "local_high_cloud": 100.0,
-            "fire_score_no_color": 0.0,
-            "burn_scale_label": "不烧",
-            "visual_burn_scale_label": "不烧",
+            "fire_score_no_color": 9.46,
+            "burn_scale_label": "小烧",
+            "visual_burn_scale_label": "大烧",
             "spatial_calibration_status": "gfs_om_horizontal_disabled",
             "spatial_corrected_point_count": 0,
             "event_time": "2026-11-24T06:46:56.512075"
@@ -134,6 +158,25 @@
             "visual_burn_scale_label": "微烧",
             "spatial_calibration_status": "applied",
             "spatial_corrected_point_count": 22,
+            "event_time": "2026-11-24T17:08:07.817253"
+          },
+          "GFS Global": {
+            "probability": 65.0,
+            "color_score": 69.0,
+            "color_score_status": "scored",
+            "color_score_label": "绚烂",
+            "color_score_note": "色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
+            "verdict": "逐分钟目标采样存在有效受光时刻",
+            "burn_scale": 79.71,
+            "visual_burn_scale": 86.96,
+            "local_mid_cloud": 12.777777777777779,
+            "local_high_layer_cloud": 100.0,
+            "local_high_cloud": 100.0,
+            "fire_score_no_color": 51.81,
+            "burn_scale_label": "大烧",
+            "visual_burn_scale_label": "大烧",
+            "spatial_calibration_status": "gfs_om_horizontal_disabled",
+            "spatial_corrected_point_count": 0,
             "event_time": "2026-11-24T17:08:07.817253"
           }
         }
@@ -165,5 +208,5 @@
       }
     ]
   },
-  "saved_at": "2026-11-23T04:03:01+08:00"
+  "saved_at": "2026-11-23T04:16:50+08:00"
 }
