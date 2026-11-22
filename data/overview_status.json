@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "state": "running",
+  "state": "rate_limited",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
   "started_at": "2026-11-22 14:58:30 CST",
-  "updated_at": "2026-11-22 15:04:55 CST",
+  "updated_at": "2026-11-22 15:04:57 CST",
   "current_model": "GFS Global",
   "model_index": 2,
   "model_total": 2,
@@ -20,12 +20,12 @@
   "task_progress": 12,
   "task_total": 12,
   "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
-  "partial_published": false,
+  "partial_published": true,
   "success_count": 8,
   "visible_valid_count": 8,
   "retained_old_count": 0,
   "missing_count": 4,
-  "message": "恢复任务启动前已发布有效检查点数据；现在只补未完成项目。",
+  "message": "本轮有效 8/12；正式概览已发布，旧有效记录保留 0 项，缺失 4 项。失败项留待下次定时任务。",
   "failure_count": 4,
   "last_error": {
     "city": "合肥",
@@ -33,5 +33,50 @@
     "model": "GFS Global",
     "direction": "evening",
     "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
+  },
+  "failed_at": "2026-11-22 15:04:57 CST",
+  "failures": [
+    {
+      "city": "合肥",
+      "date": "2026-11-23",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "error": "预测流程返回指标不完整：probability=48.0, color_score=0.0, burn_scale=None, visual_burn_scale=None"
+    },
+    {
+      "city": "合肥",
+      "date": "2026-11-22",
+      "model": "GFS Global",
+      "direction": "morning",
+      "error": "预测流程返回指标不完整：probability=20.0, color_score=None, burn_scale=0.0, visual_burn_scale=0.0"
+    },
+    {
+      "city": "合肥",
+      "date": "2026-11-23",
+      "model": "GFS Global",
+      "direction": "evening",
+      "error": "HTTP 429: Open-Meteo 当前scheduled任务冷却中，约剩余 100 秒；本次不发起新请求"
+    },
+    {
+      "city": "合肥",
+      "date": "2026-11-24",
+      "model": "GFS Global",
+      "direction": "evening",
+      "error": "本轮 Open-Meteo 每小时额度已耗尽；任务延后到下次定时更新"
+    }
+  ],
+  "retry_diagnostics": {
+    "合肥|2026-11-23|ECMWF IFS 0.25°|evening": {
+      "attempt": 1,
+      "reason": "预测流程返回指标不完整：probability=48.0, color_score=0.0, burn_scale=None, visual_burn_scale=None"
+    },
+    "合肥|2026-11-22|GFS Global|morning": {
+      "attempt": 1,
+      "reason": "预测流程返回指标不完整：probability=20.0, color_score=None, burn_scale=0.0, visual_burn_scale=0.0"
+    },
+    "合肥|2026-11-23|GFS Global|evening": {
+      "attempt": 1,
+      "reason": "HTTP 429: Open-Meteo 当前scheduled任务冷却中，约剩余 100 秒；本次不发起新请求"
+    }
   }
 }
