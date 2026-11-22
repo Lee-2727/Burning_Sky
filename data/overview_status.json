@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "state": "running",
+  "state": "partial",
   "direction": "both",
   "direction_title": "朝霞及晚霞",
   "started_at": "2026-11-22 14:58:30 CST",
-  "updated_at": "2026-11-22 14:58:30 CST",
+  "updated_at": "2026-11-22 14:58:31 CST",
   "current_model": "ECMWF IFS 0.25°",
   "model_index": 1,
   "model_total": 2,
@@ -16,5 +16,11 @@
   "city_total": 1,
   "task_progress": 0,
   "task_total": 12,
-  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞"
+  "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
+  "partial_published": true,
+  "success_count": 8,
+  "visible_valid_count": 8,
+  "retained_old_count": 0,
+  "missing_count": 4,
+  "message": "恢复任务启动前已发布有效检查点数据；现在只补未完成项目。"
 }
