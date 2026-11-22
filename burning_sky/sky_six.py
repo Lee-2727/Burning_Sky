@@ -934,6 +934,8 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
     event_az = solar_position(event_dt,utc_offset,lat,lon)[1]
     uncovered_minutes=set(); coverage_debug=[]
     source_boundary_unresolved_minutes=set()
+    earth_occluded_face_count=0
+    earth_occluded_face_examples=[]
     off_axis_used=set(); off_axis_missing=set()
     horizontal_conflict_minutes=set()
     horizontal_conflict_count=0
@@ -959,6 +961,22 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
             # Profile targets are fixed geographic clouds, NOT moving with the sun.
             plat,plon=destination(lat,lon,event_az,face)
             alt,solar_az=solar_position(dt,utc_offset,plat,plon)
+            # plan_off_axis_rays deliberately does not request a profile when
+            # Earth blocks every candidate height on this target face. Mirror
+            # that exact physical gate here: an Earth-occluded face is a
+            # deterministic non-illuminated target, not missing data.
+            face_heights=(float(target['bottom_km']),float(target['top_km']))
+            if all(_sun_ray_earth_occluded(h,alt) for h in face_heights):
+                earth_occluded_face_count+=1
+                if len(earth_occluded_face_examples)<12:
+                    earth_occluded_face_examples.append({
+                        'minute_offset':minute,
+                        'target_face_km':round(face,3),
+                        'solar_altitude_deg':round(alt,5),
+                        'candidate_height_range_km':[
+                            round(min(face_heights),4),round(max(face_heights),4)],
+                        'status':'earth_or_source_horizon'})
+                continue
             coverage=_solar_corridor_coverage(event_az,lat,lon,face,solar_az,required)
             if not coverage['covered']:
                 ray_key=(minute,round(face,5))
@@ -1151,6 +1169,8 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
 
             'off_axis_rays_measured':len(off_axis_used),
             'off_axis_rays_missing':len(off_axis_missing),
+            'earth_occluded_face_count':earth_occluded_face_count,
+            'earth_occluded_face_examples':earth_occluded_face_examples,
             'cloud_top_clearance_km':DEFAULT_CLOUD_ATMOSPHERE_TOP_KM,  # source sampling altitude, NOT fixed 700km veto
             'source_termination_rule':'dynamic_solar_ascending_escape_plus_full_cloud_intersections',
             'dynamic_source_horizon':source_plan,
