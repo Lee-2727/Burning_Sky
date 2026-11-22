@@ -30,9 +30,10 @@ def supported(model_id):
     return str(model_id) == 'ecmwf_ifs025'
 
 
-def _key(coords, event_utc, model_id):
+def _key(coords, event_utc, model_id, spatial_version=None):
     t = event_utc.isoformat() if isinstance(event_utc, datetime) else str(event_utc)
-    return (model_id,t,tuple((round(float(lat),5),round(float(lon),5)) for lat,lon in coords))
+    base = (model_id,t,tuple((round(float(lat),5),round(float(lon),5)) for lat,lon in coords))
+    return base if spatial_version is None else base + (tuple(spatial_version),)
 
 
 def fetch_with_spatial(owner, fallback, coords, distances, event_utc, model_id,
@@ -73,22 +74,38 @@ def fetch_with_spatial(owner, fallback, coords, distances, event_utc, model_id,
             return out
     except ImportError:
         pass
-    key=_key(coords,event_utc,model_id)
-    until=_OM_COOLDOWN.get(model_id,0)
-    if time.monotonic()<until:
-        logs.append({'status':'point_api_fallback','model':model_id,'distance_count':len(distances),
-                     'reason':'OM rate-limit cooldown active; 20-minute stop, no retry'})
-        return out
+    base_key=_key(coords,event_utc,model_id)
     try:
+        from .spatial_om import (
+            get_metadata_for_event, resolve_valid_file, fetch_horizontal_clouds
+        )
+        # Every explicit forecast checks the tiny S3 manifests. It downloads
+        # the much larger .om raster only when the selected run/valid-time
+        # identity differs from the in-process batch cache.
+        manifest=get_metadata_for_event(model_id,event_utc,refresh=True)
+        resolved=resolve_valid_file(model_id,event_utc,metadata=manifest)
+        spatial_version=(resolved['reference_time'],resolved['valid_time'],resolved['url'])
+        key=_key(coords,event_utc,model_id,spatial_version)
         horizontal=_BATCH_CACHE.get(key)
         if horizontal is None:
-            from .spatial_om import fetch_horizontal_clouds
-            horizontal=fetch_horizontal_clouds(coords,distances,event_utc,model_id)
+            until=_OM_COOLDOWN.get(model_id,0)
+            if time.monotonic()<until:
+                logs.append({'status':'point_api_fallback','model':model_id,
+                             'distance_count':len(distances),
+                             'reason':'OM data-file rate-limit cooldown active; 20-minute stop, no new .om download',
+                             'manifest_kind':resolved.get('manifest_kind'),
+                             'run':resolved.get('reference_time'),'valid':resolved.get('valid_time')})
+                return out
+            horizontal=fetch_horizontal_clouds(
+                coords,distances,event_utc,model_id,metadata=manifest
+            )
             _BATCH_CACHE[key]=horizontal
             if len(_BATCH_CACHE)>_MAX_CACHED_BATCHES:
                 _BATCH_CACHE.popitem(last=False)
+            cache_status='spatial_downloaded_new_version'
         else:
             _BATCH_CACHE.move_to_end(key)
+            cache_status='spatial_cache_hit_version_verified'
         # Persist the exact auxiliary horizontal cloud evidence alongside the
         # normal URL response cache so same-day replay/calibration retains every
         # source actually used by the forecast.
@@ -97,15 +114,19 @@ def fetch_with_spatial(owner, fallback, coords, distances, event_utc, model_id,
         attached=bind_horizontal_profiles(out.get('samples',[]),horizontal)
         info=horizontal.get('spatial_source') or {}
         used=bool(attached.get('attached'))
-        logs.append({'status':'spatial_horizontal_used_vertical_api' if used else 'point_api_fallback',
+        logs.append({'status':cache_status if used else 'point_api_fallback',
                      'model':model_id,'distance_count':len(distances),
                      'horizontal_bound_points':attached.get('attached',0),
                      'reason':attached.get('reason'),
-                     'run':info.get('reference_time'),'valid':info.get('valid_time'),
+                     'run':info.get('reference_time') or resolved.get('reference_time'),
+                     'valid':info.get('valid_time') or resolved.get('valid_time'),
+                     'manifest_kind':resolved.get('manifest_kind'),
+                     'manifest_checks':resolved.get('manifest_checks'),
+                     'manifest_last_modified':resolved.get('manifest_last_modified'),
                      'layer_origin':info.get('layer_origin'),'evidence':info.get('evidence'),
                      'pressure_source':'point_api',
                      'run_match':'not_proven',
-                     'note':'OM horizontal vs point API run identity not proven; no missing data interpreted as clear'})
+                     'note':'每次主动查询检查 in-progress/latest 清单；仅当目标 OM run/valid-time 版本变化时读取新 .om 文件；缺测不解释为晴空'})
     except Exception as exc:
         if '429' in str(exc) or 'rate limit' in str(exc).lower() or '限流' in str(exc):
             _OM_COOLDOWN[model_id]=time.monotonic()+1200

@@ -52,17 +52,94 @@ def metadata_url(model_id):
     return f'{BASE}/{domain}/latest.json'
 
 
-@lru_cache(maxsize=8)
-def _get_metadata_cached(domain, refresh_bucket):
-    url = f'{BASE}/{domain}/latest.json'
-    request = urllib.request.Request(url, headers={'User-Agent': 'BurningSkies-SpatialPilot/0.1'})
-    with urllib.request.urlopen(request, timeout=8) as response:
-        info = json.load(response)
-    if not isinstance(info, dict) or not info.get('reference_time') or not info.get('valid_times'):
-        raise SpatialUnavailable('最新空间模型清单缺少起报或有效时次')
-    if info.get('completed') is not True:
-        raise SpatialUnavailable('空间模型尚未完整发布')
+@lru_cache(maxsize=16)
+def _get_metadata_cached(domain, refresh_bucket, kind='latest'):
+    # Keep one cache_clear() entry point for older Lite refresh hooks. The
+    # optional kind separates latest and in-progress entries in the same LRU.
+    return _download_manifest(domain, kind)
+
+
+def _download_manifest(domain, kind):
+    if kind not in ('latest', 'in-progress'):
+        raise SpatialUnavailable('未知 OM 空间清单类型')
+    url = f'{BASE}/{domain}/{kind}.json'
+    request = urllib.request.Request(url, headers={'User-Agent': 'BurningSkies-SpatialPilot/0.2'})
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            info = json.load(response)
+            headers = getattr(response, 'headers', {}) or {}
+            etag = headers.get('ETag') if hasattr(headers, 'get') else None
+            last_modified = headers.get('Last-Modified') if hasattr(headers, 'get') else None
+    except Exception as exc:
+        raise SpatialUnavailable(f'读取 OM {kind}.json 失败：{type(exc).__name__}: {str(exc)[:140]}') from exc
+    if (not isinstance(info, dict) or not info.get('reference_time')
+            or not isinstance(info.get('valid_times'), list) or not info.get('valid_times')):
+        raise SpatialUnavailable(f'OM {kind}.json 缺少起报时间或有效时次')
+    if kind == 'latest' and info.get('completed') is not True:
+        raise SpatialUnavailable('OM latest.json 尚未标记为完整批次')
+    info = dict(info)
+    info['_manifest_kind'] = kind
+    info['_manifest_url'] = url
+    info['_manifest_etag'] = etag
+    info['_manifest_last_modified'] = last_modified
     return info
+
+
+def get_metadata_for_event(model_id, event_utc, *, refresh=True):
+    """Resolve the newest published spatial manifest that contains event time.
+
+    `in-progress.json` is checked before `latest.json` so a valid timestamp
+    already published from a still-running model cycle can be used without
+    waiting for the whole cycle to finish. Metadata is tiny; `refresh=True`
+    intentionally checks the S3 manifests for every explicit forecast query.
+    """
+    domain = ALLOWED_MODELS.get(model_id)
+    if domain is None:
+        raise SpatialUnavailable('当前模型不在空间网格试验范围内')
+    target = _as_utc(event_utc)
+    candidates = []
+    diagnostics = []
+    for kind in ('in-progress', 'latest'):
+        try:
+            if refresh:
+                manifest = _download_manifest(domain, kind)
+            else:
+                import time
+                manifest = _get_metadata_cached(domain, int(time.time() // 600), kind)
+            valid = [_as_utc(v) for v in manifest.get('valid_times', [])]
+            if not valid:
+                raise SpatialUnavailable('清单没有有效时次')
+            selected = min(valid, key=lambda dt: abs((dt-target).total_seconds()))
+            delta = abs((selected-target).total_seconds())
+            reference = _as_utc(manifest['reference_time'])
+            if reference > selected:
+                raise SpatialUnavailable('清单起报时间晚于目标有效时刻')
+            if delta > MAX_TIME_DELTA_SECONDS:
+                raise SpatialUnavailable(f'最近有效时次相差 {round(delta/60)} 分钟，超过允许范围')
+            variables = set(manifest.get('variables') or [])
+            # EC horizontal calibration requires all three native 2-D layers.
+            if model_id == 'ecmwf_ifs025' and not {
+                    'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high'
+            }.issubset(variables):
+                raise SpatialUnavailable('清单尚未列出完整的原生低/中/高云场')
+            candidates.append((delta, -reference.timestamp(),
+                               0 if kind == 'in-progress' else 1, manifest))
+            diagnostics.append({'kind':kind,'status':'available',
+                                'reference_time':reference.isoformat(),
+                                'nearest_valid_time':selected.isoformat(),
+                                'delta_seconds':delta})
+        except Exception as exc:
+            diagnostics.append({'kind':kind,'status':'unavailable',
+                                'reason':f'{type(exc).__name__}: {str(exc)[:180]}'})
+    if not candidates:
+        reasons = '; '.join(f"{x['kind']}: {x.get('reason','no matching valid time')}" for x in diagnostics)
+        raise SpatialUnavailable('没有可用于目标时刻的 OM 空间清单：' + reasons)
+    # Prefer the closest valid time; ties choose the newest model run, then
+    # in-progress over latest when both refer to the same run.
+    chosen = min(candidates, key=lambda x: (x[0], x[1], x[2]))[3]
+    chosen = dict(chosen)
+    chosen['_manifest_checks'] = diagnostics
+    return chosen
 
 
 def resolve_valid_file(model_id, event_utc, metadata=None):
@@ -89,6 +166,11 @@ def resolve_valid_file(model_id, event_utc, metadata=None):
         'model_domain': domain, 'reference_time': reference.isoformat(),
         'valid_time': selected.isoformat(), 'delta_seconds': delta,
         'url': url, 'variables': set(metadata.get('variables', [])),
+        'manifest_kind': metadata.get('_manifest_kind', 'latest'),
+        'manifest_url': metadata.get('_manifest_url'),
+        'manifest_etag': metadata.get('_manifest_etag'),
+        'manifest_last_modified': metadata.get('_manifest_last_modified'),
+        'manifest_checks': metadata.get('_manifest_checks', []),
     }
 
 
@@ -398,6 +480,11 @@ def _cloud_source_info(info,spec,n,points):
         'layer_origin':spec['mode'], 'evidence':spec['evidence'],
         'pressure_profile_source':'point_api_required',
         'model_run_equality_with_api':'unverified',
+        'manifest_kind':info.get('manifest_kind','latest'),
+        'manifest_url':info.get('manifest_url'),
+        'manifest_etag':info.get('manifest_etag'),
+        'manifest_last_modified':info.get('manifest_last_modified'),
+        'manifest_checks':info.get('manifest_checks',[]),
     }
 
 
