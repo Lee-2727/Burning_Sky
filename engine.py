@@ -423,13 +423,10 @@ def request_json(req, timeout=20, retries=3, cache_key=None, cache_ttl=None):
                 # Parameter ordering and percent-encoding may differ across releases.
                 matches = [v for k, v in cache.items() if _signature(k) == _signature(url)]
                 if len(matches) == 1:
-                    matched_key = next(k for k, v in cache.items() if v is matches[0])
-                    context.setdefault("used_urls", []).append(matched_key)
                     return matches[0]
                 raise RuntimeError("案例原始请求缓存不完整或与当前算法的采样请求不同，无法离线重新计算。\n"
                                    f"缺失请求：{url[:500]}\n已有请求数：{len(cache)}。"
                                    "可直接查看已保存的分析结果；如需按新版算法重新计算，必须重新联网获取缺失的采样数据。")
-            context.setdefault("used_urls", []).append(url)
             return cache[url]
     # Reuse previously captured exact URL payloads, including sunshine-path samples.
     if context and context.get('mode')=='capture' and url in context.get('cache',{}):
@@ -2000,7 +1997,13 @@ class FireCloudApp(tk.Tk):
                             data['lat'], data['lon'], direction_key, float(local_reach or 0),
                             extension_factor=1.3,
                             target_limit_km=boundaries.get('fire_cloud_range_km'),
-                            source_scan_km=_source_check_km,
+                            # _source_check_km is already rounded to the provider
+                            # grid. Passing it as min_scan_km would round it a
+                            # second time (e.g. 900 -> 950) and reject rays that
+                            # were correctly sampled only to 900 km. Let the
+                            # validator recompute the same dynamic horizon from
+                            # the same final profiles, using the common 700-km
+                            # planning floor.
                             off_axis_ray_profiles=_off_axis_profiles,
                             use_horizontal_fusion=not bool(_manual_overrides))
                         _ray_debug['adaptive_equivalent'] = _adaptive
@@ -2016,7 +2019,7 @@ class FireCloudApp(tk.Tk):
                             if r.get('status') == 'verified_sunward_face_full_sampled_corridor']
                         inferred['verified_sunward_face_bands'] = _adaptive.get('verified_target_bands', [])
                         inferred['strict_primary_path_diagnostic'] = {
-                            'method_version':'DYNAMIC_SOLAR_CLOUD_EXIT_AUTO_RESAMPLE_V1',
+                            'method_version':'DYNAMIC_SOLAR_CLOUD_EXIT_AUTO_RESAMPLE_V2',
                             'status':_adaptive.get('status'),
                             'verified_minutes':_adaptive.get('verified_minutes',[]),
                             'required_profile_km':_adaptive.get('required_profile_km'),
@@ -2024,6 +2027,8 @@ class FireCloudApp(tk.Tk):
                             'target_limit_km':_adaptive.get('target_limit_km'),
                             'off_axis_rays_measured':_adaptive.get('off_axis_rays_measured'),
                             'off_axis_rays_missing':_adaptive.get('off_axis_rays_missing'),
+                            'earth_occluded_face_count':_adaptive.get('earth_occluded_face_count',0),
+                            'earth_occluded_face_examples':_adaptive.get('earth_occluded_face_examples',[]),
                             'horizontal_ray_checks':_adaptive.get('horizontal_ray_checks',0),
                             'horizontal_evaluated_nodes':_adaptive.get('horizontal_evaluated_nodes',0),
                             'horizontal_conflict_count':_adaptive.get('horizontal_conflict_count',0),
