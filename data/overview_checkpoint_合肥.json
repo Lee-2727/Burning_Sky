@@ -28,10 +28,10 @@
     "longitude": 117.2272,
     "elevation_m": 30.0,
     "timezone": "Asia/Shanghai",
-    "updated_at": "2026-11-22 15:53:38 CST",
+    "updated_at": "2026-11-23 04:16:51 CST",
     "direction_updated_at": {
-      "morning": "2026-11-22 15:53:38 CST",
-      "evening": "2026-11-22 15:53:38 CST"
+      "morning": "2026-11-23 04:16:51 CST",
+      "evening": "2026-11-23 04:16:51 CST"
     },
     "days": [
       {
@@ -208,5 +208,5 @@
       }
     ]
   },
-  "saved_at": "2026-11-23T04:16:51+08:00"
+  "saved_at": "2026-11-23T10:19:26+08:00"
 }
