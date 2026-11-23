@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_at": "2026-11-23T15:23:31+08:00",
+  "updated_at": "2026-11-23T15:41:15+08:00",
   "cities": {
     "合肥": {
       "schema_version": 2,
@@ -9,10 +9,10 @@
       "longitude": 117.2272,
       "elevation_m": 30.0,
       "timezone": "Asia/Shanghai",
-      "updated_at": "2026-11-23 15:23:31 CST",
+      "updated_at": "2026-11-23 15:41:15 CST",
       "direction_updated_at": {
-        "morning": "2026-11-23 15:23:31 CST",
-        "evening": "2026-11-23 15:23:31 CST"
+        "morning": "2026-11-23 15:41:15 CST",
+        "evening": "2026-11-23 15:41:15 CST"
       },
       "days": [
         {
@@ -121,20 +121,20 @@
               "event_time": "2026-11-24T06:46:56.512075"
             },
             "GFS Global": {
-              "probability": 54.0,
-              "color_score": 63.0,
+              "probability": 67.0,
+              "color_score": 61.0,
               "color_score_status": "scored",
               "color_score_label": "绚烂",
               "color_score_note": "色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
               "verdict": "逐分钟目标采样存在有效受光时刻",
-              "burn_scale": 17.52,
-              "visual_burn_scale": 85.22,
-              "local_mid_cloud": 100.0,
+              "burn_scale": 83.93,
+              "visual_burn_scale": 91.23,
+              "local_mid_cloud": 36.22222222222222,
               "local_high_layer_cloud": 100.0,
               "local_high_cloud": 100.0,
-              "fire_score_no_color": 9.46,
-              "burn_scale_label": "小烧",
-              "visual_burn_scale_label": "大烧",
+              "fire_score_no_color": 56.23,
+              "burn_scale_label": "大烧",
+              "visual_burn_scale_label": "世纪大烧",
               "spatial_calibration_status": "gfs_om_horizontal_disabled",
               "spatial_corrected_point_count": 0,
               "event_time": "2026-11-24T06:46:56.512075"
@@ -162,17 +162,17 @@
             },
             "GFS Global": {
               "probability": 65.0,
-              "color_score": 69.0,
+              "color_score": 70.0,
               "color_score_status": "scored",
-              "color_score_label": "绚烂",
+              "color_score_label": "史诗",
               "color_score_note": "色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
               "verdict": "逐分钟目标采样存在有效受光时刻",
-              "burn_scale": 79.71,
-              "visual_burn_scale": 86.96,
-              "local_mid_cloud": 12.777777777777779,
-              "local_high_layer_cloud": 100.0,
+              "burn_scale": 78.44,
+              "visual_burn_scale": 85.75,
+              "local_mid_cloud": 14.444444444444445,
+              "local_high_layer_cloud": 97.33333333333333,
               "local_high_cloud": 100.0,
-              "fire_score_no_color": 51.81,
+              "fire_score_no_color": 50.99,
               "burn_scale_label": "大烧",
               "visual_burn_scale_label": "大烧",
               "spatial_calibration_status": "gfs_om_horizontal_disabled",
@@ -213,8 +213,8 @@
               "burn_scale": 0.0,
               "visual_burn_scale": 0.0,
               "local_mid_cloud": 0.0,
-              "local_high_layer_cloud": 41.333333333333336,
-              "local_high_cloud": 41.333333333333336,
+              "local_high_layer_cloud": 35.44444444444444,
+              "local_high_cloud": 35.44444444444444,
               "fire_score_no_color": 0.0,
               "burn_scale_label": "不烧",
               "visual_burn_scale_label": "不烧",
@@ -249,18 +249,18 @@
       "publication": {
         "state": "partial",
         "batch_day": "2026-11-23",
-        "published_at": "2026-11-23 15:23:31 CST",
-        "valid_in_batch": 7,
+        "published_at": "2026-11-23 15:41:15 CST",
+        "valid_in_batch": 10,
         "retained_old_keys": [
-          "合肥|2026-11-24|GFS Global|morning",
-          "合肥|2026-11-24|GFS Global|evening",
-          "合肥|2026-11-25|GFS Global|morning",
           "合肥|2026-11-25|GFS Global|evening"
         ],
         "missing_keys": [
           "合肥|2026-11-25|ECMWF IFS 0.25°|evening"
         ],
-        "failed_keys": []
+        "failed_keys": [
+          "合肥|2026-11-25|ECMWF IFS 0.25°|evening",
+          "合肥|2026-11-25|GFS Global|evening"
+        ]
       }
     }
   }
