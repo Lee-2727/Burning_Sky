@@ -58,8 +58,14 @@ def main():
                     # preserves valid deterministic zero/no-cloud rows and the
                     # same color-score status semantics in manual publications.
                     row=_record(result)
-                    if any(not isinstance(row.get(k), (int, float)) for k in ('probability','color_score','burn_scale','visual_burn_scale')):
-                        raise RuntimeError('预测结果不完整：概率、色彩分、几何规模或视觉规模缺失')
+                    # Probability, colour score and geometric burn scale are the three
+                    # required overview metrics. Visual scale is a supplementary
+                    # metric and may legitimately be unavailable in older or
+                    # partially populated engine results; preserve None rather
+                    # than rejecting an otherwise valid forecast row.
+                    if any(not isinstance(row.get(k), (int, float)) or isinstance(row.get(k), bool)
+                           for k in ('probability', 'color_score', 'burn_scale')):
+                        raise RuntimeError('预测结果不完整：常规概率、色彩分或几何规模缺失')
                     records.append({'date':day.isoformat(),'model':model,'direction':direction,**row})
                 except Exception as exc:
                     reason=str(exc)
