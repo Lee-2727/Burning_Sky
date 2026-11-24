@@ -14,6 +14,7 @@ import signal
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from collections import Counter
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -187,7 +188,7 @@ class _HeadlessForecast(HybridSpatialMixin, engine.FireCloudApp):
     def _set_text(widget, value):
         pass
     @staticmethod
-    def _set_judgment_text(widget, regular_score, color_score, burn_label, visual_scale=None):
+    def _set_judgment_text(widget, regular_score, color_score, burn_label):
         pass
     def _draw_peak_color_swatch(self, direction_key):
         pass
@@ -236,7 +237,174 @@ def _new_runner(city, day, model_label, lat=None, lon=None, elevation_m=None):
     runner.evening_aod_status_var = _Value("")
     return runner
 
-def _record(result):
+def _apply_complete_bottom_zero_for_overview(result, direction):
+    """Normalize a proven no-burn result for the scheduled overview only.
+
+    This intentionally lives in update_overview.py, not engine.py: it does not
+    alter Pro's interactive single-query result or the shared forecast engine.
+    A zero is published only when the saved primary cloud-bottom sweep is
+    complete, every minute has the same complete strip count, every strip has
+    a terminal blocked/horizon result, and the source profile reaches the
+    required dynamic horizon. Secondary face/off-axis diagnostics are separate.
+    """
+    if not isinstance(result, dict) or direction not in ('morning', 'evening'):
+        return False
+    inferred = result.get('inferred')
+    if not isinstance(inferred, dict):
+        return False
+    surface = inferred.get('surface_path_diagnostics') or {}
+    strict = inferred.get('strict_primary_path_diagnostic') or {}
+    primary_gate = inferred.get('primary_path_gate') or {}
+    rows = inferred.get('verified_bottom_sample_traces') or []
+
+    # Never override an explicit special-rule verdict or any positive verified
+    # cloud-bottom illumination.
+    if inferred.get('verdict_override'):
+        return False
+    if primary_gate.get('verified') is True:
+        return False
+    if surface.get('bottom_scan_complete') is not True:
+        return False
+    try:
+        if float(surface.get('bottom_verified_samples', 0) or 0) != 0:
+            return False
+        if float(surface.get('bottom_unresolved_samples', 0) or 0) != 0:
+            return False
+        if float(surface.get('bottom_nonterminal_samples', 0) or 0) != 0:
+            return False
+        if float(surface.get('bottom_missing_samples', 0) or 0) != 0:
+            return False
+        if float(surface.get('bottom_out_of_window_samples', 0) or 0) != 0:
+            return False
+        required_km = float(strict.get('required_profile_km'))
+        available_km = float(strict.get('available_profile_km'))
+    except (TypeError, ValueError):
+        return False
+    if required_km <= 0 or available_km + 1e-6 < required_km or not rows:
+        return False
+
+    expected_minutes = set(range(-30, 1)) if direction == 'morning' else set(range(0, 31))
+    terminal_statuses = {'cloud_blocked', 'earth_or_source_horizon', 'verified_bottom'}
+    counts = Counter()
+    verified_count = 0
+    for row in rows:
+        if not isinstance(row, dict) or row.get('status') not in terminal_statuses:
+            return False
+        minute = row.get('minute_offset')
+        if not isinstance(minute, (int, float)) or int(minute) not in expected_minutes:
+            return False
+        counts[int(minute)] += 1
+        if row.get('status') == 'verified_bottom':
+            verified_count += 1
+    if verified_count != 0 or set(counts) != expected_minutes:
+        return False
+    per_minute_counts = set(counts.values())
+    if len(per_minute_counts) != 1 or not per_minute_counts or next(iter(per_minute_counts)) <= 0:
+        return False
+
+    observed_per_minute = next(iter(per_minute_counts))
+    declared_per_minute = surface.get('bottom_expected_samples_per_minute')
+    if declared_per_minute is not None:
+        try:
+            if int(declared_per_minute) != observed_per_minute:
+                return False
+        except (TypeError, ValueError):
+            return False
+
+    # The current case's adaptive status is combined face+bottom. Preserve it
+    # for diagnostics, but make the primary cloud-bottom result authoritative.
+    combined_status = strict.get('adaptive_combined_status') or strict.get('status')
+    off_axis = inferred.get('off_axis_resampling') or {}
+    missing_face_rays = strict.get('off_axis_rays_missing')
+    if missing_face_rays is None:
+        missing_face_rays = off_axis.get('strict_face_rays_missing', 0)
+    try:
+        missing_face_rays = int(missing_face_rays or 0)
+    except (TypeError, ValueError):
+        missing_face_rays = 0
+    secondary_status = (
+        'partial_unverified' if missing_face_rays > 0 or off_axis.get('state') == 'partial_unverified'
+        else 'verified_or_not_required'
+    )
+
+    surface.update({
+        'bottom_expected_samples_per_minute': observed_per_minute,
+        'bottom_expected_total_samples': observed_per_minute * len(expected_minutes),
+        'bottom_actual_samples': len(rows),
+        'bottom_missing_samples': 0,
+        'bottom_out_of_window_samples': 0,
+        'bottom_status_counts': dict(Counter(row['status'] for row in rows)),
+        'bottom_scan_complete': True,
+    })
+    inferred['surface_path_diagnostics'] = surface
+    strict.update({
+        'adaptive_combined_status': combined_status,
+        'primary_bottom_status': 'complete_no_illumination',
+        'primary_bottom_expected_samples_per_minute': observed_per_minute,
+        'primary_bottom_expected_total_samples': observed_per_minute * len(expected_minutes),
+        'primary_bottom_missing_samples': 0,
+        'secondary_face_off_axis_missing': missing_face_rays,
+        'secondary_face_off_axis_status': secondary_status,
+        'secondary_face_data_blocks_primary_bottom_verdict': False,
+        'status': 'complete_no_illumination',
+    })
+    inferred['strict_primary_path_diagnostic'] = strict
+    off_axis.update({
+        'strict_ray_scope': 'secondary_sunward_face_diagnostic',
+        'does_not_gate_standard_cloud_bottom_score': True,
+        'strict_face_rays_missing': missing_face_rays,
+    })
+    inferred['off_axis_resampling'] = off_axis
+    primary_gate.update({
+        'verified': False,
+        'evidence': 'complete_cloud_bottom_scan_no_illumination',
+        'primary_bottom_status': 'complete_no_illumination',
+        'bottom_scan_complete': True,
+        'bottom_verified_samples': 0,
+        'bottom_missing_samples': 0,
+        'secondary_face_validation_status': secondary_status,
+    })
+    inferred['primary_path_gate'] = primary_gate
+
+    inferred.update({
+        'regular_score': 0,
+        'score': 0,
+        'upper_score': 0,
+        'color_score': 0,
+        'tintable_ratio': 0.0,
+        'geometric_tintable_ratio': 0.0,
+        'visual_tintable_ratio': 0.0,
+        'burn_scale_index': 0.0,
+        'geometric_burn_scale_index': 0.0,
+        'visual_burn_scale_index': 0.0,
+        'burn_scale_label': '不烧',
+        'geometric_burn_scale_label': '不烧',
+        'visual_burn_scale_label': '不烧',
+        'burn_summary_label': '不烧',
+        'operational_no_local_path': True,
+        'target_light_unresolved': False,
+        'verdict': '完整云底球面光路扫描未发现受光（常规火烧云按0%）',
+        'color_score_note': '完整云底扫描的全部采样均为云阻挡或地平线阻挡；没有严格受光云底，色彩评分为0。',
+        'color_score_peak_method': 'overview_complete_cloud_bottom_no_illumination_zero',
+        'tintable_ratio_diagnostic': (
+            f'完整云底扫描：0/{len(rows)} 个采样点受光；'
+            f"云阻挡 {sum(row['status']=='cloud_blocked' for row in rows)}，"
+            f"地平线阻挡 {sum(row['status']=='earth_or_source_horizon' for row in rows)}。"
+            '辅助云锋面偏轴缺测不影响常规朝晚霞云底主判。'
+        ),
+    })
+    notes = inferred.setdefault('score_notes', [])
+    note = (
+        '定时概览安全修正：云底主扫描逐分钟、逐条带完整，'
+        '全部为云阻挡或地平线阻挡；辅助云锋面偏轴状态单独保留，不阻止常规云底零值结论。'
+    )
+    if note not in notes:
+        notes.append(note)
+    return True
+
+
+def _record(result, direction=None):
+    _apply_complete_bottom_zero_for_overview(result, direction)
     inferred = (result or {}).get("inferred", {})
     def numeric(value):
         try:
@@ -542,7 +710,7 @@ def main():
                                 diagnostic_traceback = traceback.format_exc()
                                 engine.messagebox.last_error = ('Forecast error', str(exc))
                             result = runner.direction_results.get(direction)
-                            record = _record(result) if result else None
+                            record = _record(result, direction) if result else None
                             error = engine.messagebox.last_error
                             valid_attempt = (not error and isinstance(record, dict)
                                              and all(isinstance(record.get(k), (int, float))
