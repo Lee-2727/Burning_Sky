@@ -5,7 +5,7 @@
   "longitude": 117.2272,
   "elevation_m": 30.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": "2026-11-24 04:17:49 CST",
+  "updated_at": "2026-11-24 08:47:44 CST",
   "direction_updated_at": {
     "morning": "2026-11-24 04:17:49 CST",
     "evening": "2026-11-24 04:17:49 CST"
@@ -206,12 +206,18 @@
   "publication": {
     "state": "partial",
     "batch_day": "2026-11-24",
-    "published_at": "2026-11-24 04:17:49 CST",
-    "valid_in_batch": 6,
+    "published_at": "2026-11-24 08:47:44 CST",
+    "valid_in_batch": 0,
     "retained_old_keys": [
+      "合肥|2026-11-24|ECMWF IFS 0.25°|morning",
+      "合肥|2026-11-24|GFS Global|morning",
+      "合肥|2026-11-24|ECMWF IFS 0.25°|evening",
+      "合肥|2026-11-24|GFS Global|evening",
       "合肥|2026-11-25|ECMWF IFS 0.25°|morning",
       "合肥|2026-11-25|GFS Global|morning",
-      "合肥|2026-11-25|GFS Global|evening"
+      "合肥|2026-11-25|ECMWF IFS 0.25°|evening",
+      "合肥|2026-11-25|GFS Global|evening",
+      "合肥|2026-11-26|ECMWF IFS 0.25°|evening"
     ],
     "missing_keys": [
       "合肥|2026-11-26|ECMWF IFS 0.25°|morning",
@@ -219,9 +225,15 @@
       "合肥|2026-11-26|GFS Global|evening"
     ],
     "failed_keys": [
+      "合肥|2026-11-24|ECMWF IFS 0.25°|evening",
+      "合肥|2026-11-24|ECMWF IFS 0.25°|morning",
+      "合肥|2026-11-24|GFS Global|evening",
+      "合肥|2026-11-24|GFS Global|morning",
+      "合肥|2026-11-25|ECMWF IFS 0.25°|evening",
       "合肥|2026-11-25|ECMWF IFS 0.25°|morning",
       "合肥|2026-11-25|GFS Global|evening",
       "合肥|2026-11-25|GFS Global|morning",
+      "合肥|2026-11-26|ECMWF IFS 0.25°|evening",
       "合肥|2026-11-26|ECMWF IFS 0.25°|morning",
       "合肥|2026-11-26|GFS Global|evening",
       "合肥|2026-11-26|GFS Global|morning"
