@@ -5,10 +5,10 @@
   "longitude": 117.2272,
   "elevation_m": 30.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": "2026-11-24 12:52:37 CST",
+  "updated_at": "2026-11-24 15:04:51 CST",
   "direction_updated_at": {
-    "morning": "2026-11-24 12:52:37 CST",
-    "evening": "2026-11-24 12:52:37 CST"
+    "morning": "2026-11-24 15:04:51 CST",
+    "evening": "2026-11-24 15:04:51 CST"
   },
   "days": [
     {
@@ -226,7 +226,7 @@
   "publication": {
     "state": "partial",
     "batch_day": "2026-11-24",
-    "published_at": "2026-11-24 12:52:37 CST",
+    "published_at": "2026-11-24 15:04:51 CST",
     "valid_in_batch": 8,
     "retained_old_keys": [
       "合肥|2026-11-25|GFS Global|morning",
@@ -236,11 +236,6 @@
       "合肥|2026-11-26|GFS Global|morning",
       "合肥|2026-11-26|GFS Global|evening"
     ],
-    "failed_keys": [
-      "合肥|2026-11-25|GFS Global|evening",
-      "合肥|2026-11-25|GFS Global|morning",
-      "合肥|2026-11-26|GFS Global|evening",
-      "合肥|2026-11-26|GFS Global|morning"
-    ]
+    "failed_keys": []
   }
 }
