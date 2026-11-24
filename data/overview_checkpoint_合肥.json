@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "batch_day": "2026-11-25",
+  "place": "合肥",
+  "model_labels": [
+    "ECMWF IFS 0.25°",
+    "GFS Global"
+  ],
+  "dates": [
+    "2026-11-25",
+    "2026-11-26",
+    "2026-11-27"
+  ],
+  "completed": [
+    "合肥|2026-11-25|ECMWF IFS 0.25°|evening",
+    "合肥|2026-11-25|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-26|ECMWF IFS 0.25°|evening",
+    "合肥|2026-11-27|ECMWF IFS 0.25°|evening",
+    "合肥|2026-11-27|ECMWF IFS 0.25°|morning"
+  ],
+  "snapshot": {
+    "schema_version": 2,
+    "place": "合肥",
+    "latitude": 31.8206,
+    "longitude": 117.2272,
+    "elevation_m": 30.0,
+    "timezone": "Asia/Shanghai",
+    "updated_at": "2026-11-24 15:15:13 CST",
+    "direction_updated_at": {
+      "morning": "2026-11-24 15:15:13 CST",
+      "evening": "2026-11-24 15:15:13 CST"
+    },
+    "days": [
+      {
+        "date": "2026-11-25",
+        "morning": {
+          "ECMWF IFS 0.25°": {
+            "probability": 91.0,
+            "color_score": 63.0,
+            "color_score_status": "scored",
+            "color_score_label": "绚烂",
+            "color_score_note": "色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
+            "verdict": "逐分钟目标采样存在有效受光时刻",
+            "burn_scale": 50.5,
+            "visual_burn_scale": 50.5,
+            "local_mid_cloud": 0.0,
+            "local_high_layer_cloud": 84.0,
+            "local_high_cloud": 84.0,
+            "fire_score_no_color": 45.95,
+            "burn_scale_label": "中烧",
+            "visual_burn_scale_label": "中烧",
+            "spatial_calibration_status": "applied",
+            "spatial_corrected_point_count": 25,
+            "event_time": "2026-11-25T06:47:48.763221"
+          },
+          "GFS Global": {
+            "probability": 61.0,
+            "color_score": 65.0,
+            "color_score_status": "scored",
+            "color_score_label": "绚烂",
+            "color_score_note": "色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
+            "verdict": "逐分钟目标采样存在有效受光时刻",
+            "burn_scale": 45.16,
+            "visual_burn_scale": 11.97,
+            "local_mid_cloud": 0.0,
+            "local_high_layer_cloud": 100.0,
+            "local_high_cloud": 100.0,
+            "fire_score_no_color": 27.55,
+            "burn_scale_label": "中烧",
+            "visual_burn_scale_label": "微烧",
+            "spatial_calibration_status": "gfs_om_horizontal_disabled",
+            "spatial_corrected_point_count": 0,
+            "event_time": "2026-11-25T06:47:48.763221"
+          }
+        },
+        "evening": {
+          "GFS Global": {
+            "probability": 54.0,
+            "color_score": 60.0,
+            "color_score_status": "scored",
+            "color_score_label": "绚烂",
+            "color_score_note": "色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
+            "verdict": "逐分钟目标采样存在有效受光时刻",
+            "burn_scale": 35.3,
+            "visual_burn_scale": 0.1,
+            "local_mid_cloud": 78.66666666666667,
+            "local_high_layer_cloud": 100.0,
+            "local_high_cloud": 100.0,
+            "fire_score_no_color": 19.06,
+            "burn_scale_label": "中烧",
+            "visual_burn_scale_label": "不烧",
+            "spatial_calibration_status": "gfs_om_horizontal_disabled",
+            "spatial_corrected_point_count": 0,
+            "event_time": "2026-11-25T17:07:51.662498"
+          },
+          "ECMWF IFS 0.25°": {
+            "probability": 0.0,
+            "color_score": 0.0,
+            "color_score_status": "scored",
+            "color_score_label": "平平",
+            "color_score_note": "完整云底扫描的全部采样均为云阻挡或地平线阻挡；没有严格受光云底，色彩评分为0。",
+            "verdict": "完整云底球面光路扫描未发现受光（常规火烧云按0%）",
+            "burn_scale": 0.0,
+            "visual_burn_scale": 0.0,
+            "local_mid_cloud": 0.0,
+            "local_high_layer_cloud": 23.0,
+            "local_high_cloud": 23.0,
+            "fire_score_no_color": 0.0,
+            "burn_scale_label": "不烧",
+            "visual_burn_scale_label": "不烧",
+            "spatial_calibration_status": "applied",
+            "spatial_corrected_point_count": 27,
+            "event_time": "2026-11-25T17:07:51.662498"
+          }
+        }
+      },
+      {
+        "date": "2026-11-26",
+        "morning": {
+          "ECMWF IFS 0.25°": {
+            "probability": 0.0,
+            "color_score": 0.0,
+            "color_score_status": "scored",
+            "color_score_label": "平平",
+            "color_score_note": "整个时间窗口内所有有云采样区均未验证出受光",
+            "verdict": "光板天",
+            "burn_scale": 0.0,
+            "visual_burn_scale": 0.0,
+            "local_mid_cloud": 0.0,
+            "local_high_layer_cloud": 0.0,
+            "local_high_cloud": 0.0,
+            "fire_score_no_color": 0.0,
+            "burn_scale_label": "不烧",
+            "visual_burn_scale_label": "不烧",
+            "spatial_calibration_status": "applied",
+            "spatial_corrected_point_count": 22,
+            "event_time": "2026-11-26T06:48:40.766063"
+          },
+          "GFS Global": {
+            "probability": 0.0,
+            "color_score": 0.0,
+            "color_score_status": "scored",
+            "color_score_label": "平平",
+            "color_score_note": "完整云底扫描的全部采样均为云阻挡或地平线阻挡；没有严格受光云底，色彩评分为0。",
+            "verdict": "完整云底球面光路扫描未发现受光（常规火烧云按0%）",
+            "burn_scale": 0.0,
+            "visual_burn_scale": 0.0,
+            "local_mid_cloud": 70.77777777777777,
+            "local_high_layer_cloud": 13.88888888888889,
+            "local_high_cloud": 84.66666666666666,
+            "fire_score_no_color": 0.0,
+            "burn_scale_label": "不烧",
+            "visual_burn_scale_label": "不烧",
+            "spatial_calibration_status": "gfs_om_horizontal_disabled",
+            "spatial_corrected_point_count": 0,
+            "event_time": "2026-11-26T06:48:40.766063"
+          }
+        },
+        "evening": {
+          "ECMWF IFS 0.25°": {
+            "probability": 0.0,
+            "color_score": 0.0,
+            "color_score_status": "scored",
+            "color_score_label": "云量不足",
+            "color_score_note": "本地目标云量不足且常规概率、几何规模与视觉规模均为0；这是有效的无火烧预报，不需要对不存在的目标云评价颜色。",
+            "verdict": "云量不足",
+            "burn_scale": 0.0,
+            "visual_burn_scale": 0.0,
+            "local_mid_cloud": 0.0,
+            "local_high_layer_cloud": 0.0,
+            "local_high_cloud": 0.0,
+            "fire_score_no_color": 0.0,
+            "burn_scale_label": "不烧",
+            "visual_burn_scale_label": "不烧",
+            "spatial_calibration_status": "applied",
+            "spatial_corrected_point_count": 18,
+            "event_time": "2026-11-26T17:07:37.264068"
+          },
+          "GFS Global": {
+            "probability": 0.0,
+            "color_score": 0.0,
+            "color_score_status": "scored",
+            "color_score_label": "云量不足",
+            "color_score_note": "本地目标云量不足且常规概率、几何规模与视觉规模均为0；这是有效的无火烧预报，不需要对不存在的目标云评价颜色。",
+            "verdict": "云量不足",
+            "burn_scale": 0.0,
+            "visual_burn_scale": 0.0,
+            "local_mid_cloud": 0.0,
+            "local_high_layer_cloud": 0.0,
+            "local_high_cloud": 0.0,
+            "fire_score_no_color": 0.0,
+            "burn_scale_label": "不烧",
+            "visual_burn_scale_label": "不烧",
+            "spatial_calibration_status": "gfs_om_horizontal_disabled",
+            "spatial_corrected_point_count": 0,
+            "event_time": "2026-11-26T17:07:37.264068"
+          }
+        }
+      },
+      {
+        "date": "2026-11-27",
+        "morning": {
+          "ECMWF IFS 0.25°": {
+            "probability": 0.0,
+            "color_score": 0.0,
+            "color_score_status": "scored",
+            "color_score_label": "云量不足",
+            "color_score_note": "本地目标云量不足且常规概率、几何规模与视觉规模均为0；这是有效的无火烧预报，不需要对不存在的目标云评价颜色。",
+            "verdict": "云量不足",
+            "burn_scale": 0.0,
+            "visual_burn_scale": 0.0,
+            "local_mid_cloud": 0.0,
+            "local_high_layer_cloud": 2.0,
+            "local_high_cloud": 2.0,
+            "fire_score_no_color": 0.0,
+            "burn_scale_label": "不烧",
+            "visual_burn_scale_label": "不烧",
+            "spatial_calibration_status": "applied",
+            "spatial_corrected_point_count": 18,
+            "event_time": "2026-11-27T06:49:32.479778"
+          }
+        },
+        "evening": {
+          "ECMWF IFS 0.25°": {
+            "probability": 0.0,
+            "color_score": 0.0,
+            "color_score_status": "scored",
+            "color_score_label": "云量不足",
+            "color_score_note": "本地目标云量不足且常规概率、几何规模与视觉规模均为0；这是有效的无火烧预报，不需要对不存在的目标云评价颜色。",
+            "verdict": "云量不足",
+            "burn_scale": 0.0,
+            "visual_burn_scale": 0.0,
+            "local_mid_cloud": 0.0,
+            "local_high_layer_cloud": 0.0,
+            "local_high_cloud": 0.0,
+            "fire_score_no_color": 0.0,
+            "burn_scale_label": "不烧",
+            "visual_burn_scale_label": "不烧",
+            "spatial_calibration_status": "applied",
+            "spatial_corrected_point_count": 18,
+            "event_time": "2026-11-27T17:07:24.636855"
+          }
+        }
+      }
+    ]
+  },
+  "saved_at": "2026-11-25T04:11:04+08:00"
+}
