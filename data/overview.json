@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_at": "2026-11-26T03:48:36+08:00",
+  "updated_at": "2026-11-26T03:50:31+08:00",
   "cities": {
     "合肥": {
       "schema_version": 2,
@@ -9,10 +9,10 @@
       "longitude": 117.2272,
       "elevation_m": 30.0,
       "timezone": "Asia/Shanghai",
-      "updated_at": "2026-11-26 03:48:36 CST",
+      "updated_at": "2026-11-26 03:50:31 CST",
       "direction_updated_at": {
-        "morning": "2026-11-26 03:48:36 CST",
-        "evening": "2026-11-26 03:48:36 CST"
+        "morning": "2026-11-26 03:50:31 CST",
+        "evening": "2026-11-26 03:50:31 CST"
       },
       "days": [
         {
@@ -142,20 +142,20 @@
           },
           "evening": {
             "ECMWF IFS 0.25°": {
-              "probability": 0.0,
-              "color_score": 0.0,
+              "probability": 53.0,
+              "color_score": 54.0,
               "color_score_status": "scored",
-              "color_score_label": "云量不足",
-              "color_score_note": "本地目标云量不足且常规概率、几何规模与视觉规模均为0；这是有效的无火烧预报，不需要对不存在的目标云评价颜色。",
-              "verdict": "云量不足",
-              "burn_scale": 0.0,
-              "visual_burn_scale": 0.0,
-              "local_mid_cloud": 0.0,
-              "local_high_layer_cloud": 0.0,
-              "local_high_cloud": 0.0,
-              "fire_score_no_color": 0.0,
-              "burn_scale_label": "不烧",
-              "visual_burn_scale_label": "不烧",
+              "color_score_label": "绚烂",
+              "color_score_note": "色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
+              "verdict": "光板天",
+              "burn_scale": 51.17,
+              "visual_burn_scale": 51.17,
+              "local_mid_cloud": 97.0,
+              "local_high_layer_cloud": 3.0,
+              "local_high_cloud": 100.0,
+              "fire_score_no_color": 27.12,
+              "burn_scale_label": "中烧",
+              "visual_burn_scale_label": "中烧",
               "spatial_calibration_status": "applied",
               "spatial_corrected_point_count": 18,
               "event_time": "2026-11-27T17:07:24.636855"
@@ -201,6 +201,25 @@
               "visual_burn_scale_label": "不烧",
               "spatial_calibration_status": "applied",
               "spatial_corrected_point_count": 18,
+              "event_time": "2026-11-28T06:50:23.862679"
+            },
+            "GFS Global": {
+              "probability": 20.0,
+              "color_score": 0.0,
+              "color_score_status": "scored",
+              "color_score_label": "云量不足",
+              "color_score_note": "本地没有达到云量门槛的可染色区域，按0分记录色彩。",
+              "verdict": "云量不足",
+              "burn_scale": 0.0,
+              "visual_burn_scale": 0.0,
+              "local_mid_cloud": 0.0,
+              "local_high_layer_cloud": 0.0,
+              "local_high_cloud": 0.0,
+              "fire_score_no_color": 0.0,
+              "burn_scale_label": "不烧",
+              "visual_burn_scale_label": "不烧",
+              "spatial_calibration_status": "gfs_om_horizontal_disabled",
+              "spatial_corrected_point_count": 0,
               "event_time": "2026-11-28T06:50:23.862679"
             }
           },
@@ -249,16 +268,15 @@
       "publication": {
         "state": "partial",
         "batch_day": "2026-11-26",
-        "published_at": "2026-11-26 03:48:36 CST",
-        "valid_in_batch": 9,
+        "published_at": "2026-11-26 03:50:31 CST",
+        "valid_in_batch": 11,
         "retained_old_keys": [
-          "合肥|2026-11-27|ECMWF IFS 0.25°|evening",
           "合肥|2026-11-27|GFS Global|evening"
         ],
-        "missing_keys": [
-          "合肥|2026-11-28|GFS Global|morning"
-        ],
-        "failed_keys": []
+        "missing_keys": [],
+        "failed_keys": [
+          "合肥|2026-11-27|GFS Global|evening"
+        ]
       }
     }
   }
