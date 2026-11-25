@@ -655,8 +655,17 @@ if st.session_state.get("show_multi_day_overview"):
         # for the existence of already published forecasts.
         from burning_sky.overview_status_ui import render_overview_status as _render_status_banner
         _render_status_banner(st, _update_status, _overview, city=_overview_city)
-        from burning_sky.overview_actions_control import render_overview_actions as _render_scheduled_actions
-        _render_scheduled_actions(st, _APP_DIR)
+        try:
+            from burning_sky.overview_actions_control import render_overview_actions as _render_scheduled_actions
+        except (ImportError, SyntaxError) as exc:
+            import logging
+            logging.getLogger(__name__).exception("Unable to import overview Actions controls")
+            location = ""
+            if isinstance(exc, SyntaxError) and exc.filename and exc.lineno:
+                location = f"（{os.path.basename(exc.filename)} 第 {exc.lineno} 行）"
+            st.warning(f"后台任务控制暂不可用{location}。已发布的概览仍可查看。")
+        else:
+            _render_scheduled_actions(st, _APP_DIR)
         if not _overview or not _overview.get("days"):
             st.info(f"尚无{_overview_city}已保存的概览数据。后台完成后这里会展示未来三日EC/GFS朝霞与晚霞。")
         else:
