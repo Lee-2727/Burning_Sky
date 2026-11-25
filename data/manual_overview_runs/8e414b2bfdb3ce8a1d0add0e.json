@@ -1,0 +1,166 @@
+{
+  "identity": {
+    "place": "合肥",
+    "lat": 31.8206,
+    "lon": 117.2272,
+    "elev": 30.0,
+    "date": "2026-11-14",
+    "models": [
+      "ECMWF IFS 0.25°",
+      "GFS Global",
+      "ICON Global"
+    ]
+  },
+  "obtained_at": "2026-11-14T08:49:00+08:00",
+  "records": [
+    {
+      "date": "2026-11-14",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-14",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-14",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-14",
+      "model": "GFS Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-14",
+      "model": "ICON Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-14",
+      "model": "ICON Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-15",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 20,
+      "color_score": 4,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-15",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 69,
+      "color_score": 24,
+      "burn_scale": 10.16
+    },
+    {
+      "date": "2026-11-15",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 14,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-15",
+      "model": "GFS Global",
+      "direction": "evening",
+      "probability": 10,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-15",
+      "model": "ICON Global",
+      "direction": "morning",
+      "probability": 8,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-15",
+      "model": "ICON Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-16",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-16",
+      "model": "ECMWF IFS 0.25°",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 54,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-16",
+      "model": "GFS Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-16",
+      "model": "GFS Global",
+      "direction": "evening",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-16",
+      "model": "ICON Global",
+      "direction": "morning",
+      "probability": 0,
+      "color_score": 0,
+      "burn_scale": 0.0
+    },
+    {
+      "date": "2026-11-16",
+      "model": "ICON Global",
+      "direction": "evening",
+      "probability": 9,
+      "color_score": 0,
+      "burn_scale": 0.0
+    }
+  ],
+  "errors": [],
+  "completed": 18,
+  "total": 18,
+  "state": "completed",
+  "request_id": "8e414b2bfdb3ce8a1d0add0e"
+}
