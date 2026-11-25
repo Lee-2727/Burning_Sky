@@ -8,18 +8,15 @@ MODELS=(('ECMWF IFS 0.25°','EC'),('GFS Global','GFS'))
 
 
 def render(days,direction,title):
-    specs=(('ECMWF IFS 0.25°','EC','burn_scale','几何'),
-           ('ECMWF IFS 0.25°','EC','visual_burn_scale','视觉'),
-           ('GFS Global','GFS','burn_scale','几何'),
-           ('GFS Global','GFS','visual_burn_scale','视觉'))
+    specs = MODELS
     records=[]; peak=10.0
     for day in list(days)[:3]:
         pair=[]
-        for model,label,key,kind in specs:
+        for model,label in specs:
             r=(day.get(direction) or {}).get(model) or {}
-            scale=_num(r.get(key)); prob=_num(r.get('probability')); score=_num(r.get('color_score'))
+            scale=_num(r.get('visual_burn_scale')); prob=_num(r.get('probability')); score=_num(r.get('color_score'))
             if scale is not None:peak=max(peak,max(0.,scale))
-            pair.append((label,kind,scale,prob,score))
+            pair.append((label,scale,prob,score))
         records.append((day.get('date',''),pair))
     ticks=''.join(f'<div>{peak*i/4:.0f}%</div>' for i in (4,3,2,1,0))
     columns=[]
@@ -27,24 +24,23 @@ def render(days,direction,title):
         try:dt=date.fromisoformat(str(day)).strftime('%m/%d')
         except (ValueError,TypeError):dt='—'
         bars=[]
-        for label,kind,scale,prob,score in pair:
+        for label,scale,prob,score in pair:
             if scale is None or prob is None or score is None:
                 bars.append('<div class="bs-lite-bar missing" title="暂无数据">—</div>'); continue
             scale=max(0.,scale); prob=max(0.,min(100.,prob)); color=color_for_score(score)
-            tip=html.escape(f'{dt} 火烧云规模·{label}{kind}{scale:.1f}% · 常规概率{prob:.0f}% · 色彩分{score:.0f}',quote=True)
+            tip=html.escape(f'{dt} 火烧云规模·{label}视觉{scale:.1f}% · 常规概率{prob:.0f}% · 色彩分{score:.0f}',quote=True)
             if prob<=0. or scale<=0.:
                 bars.append(f'<div class="bs-lite-bar empty" title="{tip}"></div>')
             else:
                 height=min(100.,scale/peak*100.)
-                border='border:1px solid rgba(244,246,251,.5);' if kind=='视觉' else ''
-                bars.append(f'<div class="bs-lite-bar has-data" title="{tip}" style="height:{height:.4f}%;{border}">'
+                bars.append(f'<div class="bs-lite-bar has-data" title="{tip}" style="height:{height:.4f}%;">'
                             f'<div class="bs-lite-bar-fill" style="background:{color};opacity:{prob/100:.4f}"></div></div>')
         columns.append('<div class="bs-lite-day"><div class="bs-lite-pair">'+''.join(bars)+
                        '</div><div class="bs-lite-daylabel">'+html.escape(dt)+'</div></div>')
     return f"""<div class="bs-lite-card"><div class="bs-lite-card-title">{html.escape(title)}</div>
       <div class="bs-lite-graph"><div class="bs-lite-ticks">{ticks}</div>
       <div class="bs-lite-axis"><div class="bs-lite-days">{''.join(columns)}</div></div></div>
-      <div class="bs-lite-legend">EC几何　EC视觉　GFS几何　GFS视觉</div></div>"""
+      <div class="bs-lite-legend">视觉规模 · ECMWF　GFS</div></div>"""
 
 
 CSS='''<style>

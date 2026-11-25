@@ -37,7 +37,7 @@ RETRY_WAIT_SECONDS = 25  # Short bounded wait, never repeated 180-second waits.
 # When a quota remains exhausted, retain checkpoint and leave the task unfinished;
 # later scheduled runs will retry it without redoing completed tasks.
 
-UPDATER_BUILD_ID = 'three-day-safe-action-controls-20261118'
+UPDATER_BUILD_ID = 'three-day-strict-underside-v1'
 
 # GitHub Actions uses Linux; cap a single stalled API/forecast task so that
 # remaining valid results can still be published. No hard kill on Windows.
@@ -577,6 +577,7 @@ def main():
     try:
         previous_checkpoint = json.loads(CHECKPOINT.read_text(encoding='utf-8'))
         if (run_mode == 'resume' and previous_checkpoint.get('batch_day') == now.date().isoformat()
+                and previous_checkpoint.get('updater_build') == UPDATER_BUILD_ID
                 and previous_checkpoint.get('place') == PLACE
                 and previous_checkpoint.get('model_labels') == [m['label'] for m in models]
                 and previous_checkpoint.get('dates') == [d.isoformat() for d in dates]):
@@ -595,6 +596,7 @@ def main():
     def save_checkpoint():
         _write_json_atomic(CHECKPOINT, {
             'schema_version': 1, 'batch_day': now.date().isoformat(),
+            'updater_build': UPDATER_BUILD_ID,
             'place': PLACE, 'model_labels': [m['label'] for m in models],
             'dates': [d.isoformat() for d in dates],
             'completed': sorted(checkpoint_completed), 'snapshot': snapshots[PLACE],
