@@ -4,17 +4,19 @@
   "direction": "both",
   "direction_title": "朝霞及晚霞",
   "started_at": "2026-11-26 03:48:35 CST",
-  "updated_at": "2026-11-26 03:48:38 CST",
+  "updated_at": "2026-11-26 03:49:42 CST",
   "current_model": "ECMWF IFS 0.25°",
   "model_index": 1,
   "model_total": 2,
-  "completed_models": [],
+  "completed_models": [
+    "ECMWF IFS 0.25°"
+  ],
   "cities": [
     "合肥"
   ],
-  "city_progress": 0,
+  "city_progress": 1,
   "city_total": 1,
-  "task_progress": 0,
+  "task_progress": 6,
   "task_total": 12,
   "next_update": "北京时间每日 03:00、09:00、14:00 同时更新朝霞和晚霞",
   "partial_published": false,
@@ -22,5 +24,7 @@
   "visible_valid_count": 11,
   "retained_old_count": 2,
   "missing_count": 1,
-  "message": "恢复任务启动前已发布有效检查点数据；现在只补未完成项目。"
+  "message": "恢复任务启动前已发布有效检查点数据；现在只补未完成项目。",
+  "failure_count": 0,
+  "last_error": null
 }

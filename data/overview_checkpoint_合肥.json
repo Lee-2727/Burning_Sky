@@ -17,6 +17,7 @@
     "合肥|2026-11-26|ECMWF IFS 0.25°|morning",
     "合肥|2026-11-26|GFS Global|evening",
     "合肥|2026-11-26|GFS Global|morning",
+    "合肥|2026-11-27|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-27|ECMWF IFS 0.25°|morning",
     "合肥|2026-11-27|GFS Global|morning",
     "合肥|2026-11-28|ECMWF IFS 0.25°|evening",
@@ -30,10 +31,10 @@
     "longitude": 117.2272,
     "elevation_m": 30.0,
     "timezone": "Asia/Shanghai",
-    "updated_at": "2026-11-25 15:14:21 CST",
+    "updated_at": "2026-11-26 01:05:44 CST",
     "direction_updated_at": {
-      "morning": "2026-11-25 15:14:21 CST",
-      "evening": "2026-11-25 15:14:21 CST"
+      "morning": "2026-11-26 01:05:44 CST",
+      "evening": "2026-11-26 01:05:44 CST"
     },
     "days": [
       {
@@ -163,20 +164,20 @@
         },
         "evening": {
           "ECMWF IFS 0.25°": {
-            "probability": 0.0,
-            "color_score": 0.0,
+            "probability": 53.0,
+            "color_score": 54.0,
             "color_score_status": "scored",
-            "color_score_label": "云量不足",
-            "color_score_note": "本地目标云量不足且常规概率、几何规模与视觉规模均为0；这是有效的无火烧预报，不需要对不存在的目标云评价颜色。",
-            "verdict": "云量不足",
-            "burn_scale": 0.0,
-            "visual_burn_scale": 0.0,
-            "local_mid_cloud": 0.0,
-            "local_high_layer_cloud": 0.0,
-            "local_high_cloud": 0.0,
-            "fire_score_no_color": 0.0,
-            "burn_scale_label": "不烧",
-            "visual_burn_scale_label": "不烧",
+            "color_score_label": "绚烂",
+            "color_score_note": "色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
+            "verdict": "光板天",
+            "burn_scale": 51.17,
+            "visual_burn_scale": 51.17,
+            "local_mid_cloud": 97.0,
+            "local_high_layer_cloud": 3.0,
+            "local_high_cloud": 100.0,
+            "fire_score_no_color": 27.12,
+            "burn_scale_label": "中烧",
+            "visual_burn_scale_label": "中烧",
             "spatial_calibration_status": "applied",
             "spatial_corrected_point_count": 18,
             "event_time": "2026-11-27T17:07:24.636855"
@@ -268,5 +269,5 @@
       }
     ]
   },
-  "saved_at": "2026-11-26T01:05:44+08:00"
+  "saved_at": "2026-11-26T03:49:42+08:00"
 }
