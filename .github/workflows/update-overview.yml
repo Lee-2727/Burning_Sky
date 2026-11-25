@@ -1,0 +1,65 @@
+name: Update Burning Skies three-day overview
+
+on:
+  # Times are UTC: 19:00 = 03:00 CST next day; 01:00 = 09:00 CST;
+  # 06:00 = 14:00 CST. GitHub may start scheduled jobs later than cron.
+  schedule:
+    - cron: '0 1,6,19 * * *'
+  workflow_dispatch:
+    inputs:
+      run_mode:
+        description: '继续同日检查点，或从头计算当前未来三日'
+        required: true
+        default: resume
+        type: choice
+        options:
+          - resume
+          - fresh
+
+permissions:
+  contents: write
+
+# Same workflow cannot run two writers at once. The Python publisher additionally
+# handles remote updates from OTHER workflows with clean detached worktrees.
+concurrency:
+  group: burning-skies-overview-publisher-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore model forecast responses
+        uses: actions/cache/restore@v4
+        with:
+          path: fire_cloud_cache
+          key: overview-forecast-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: overview-forecast-v1-
+
+      - name: Update overview and publish safely
+        env:
+          BURNING_SKY_OVERVIEW_RUN_MODE: ${{ inputs.run_mode || 'resume' }}
+        run: python scripts/update_overview.py
+
+      - name: Save model forecast responses
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: fire_cloud_cache
+          key: overview-forecast-v1-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # Do NOT append a separate git add/commit/push action: the Python script
+      # publishes checkpoint and final results itself from a clean worktree.
