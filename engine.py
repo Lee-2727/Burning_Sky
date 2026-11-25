@@ -2626,16 +2626,19 @@ class FireCloudApp(tk.Tk):
                 from burning_sky.algorithm import color_score_grade, horizontal_zone_color_peak
                 _zone_times = (_local_light.get('times') or []) if _local_light.get('available') else []
                 _peak_zone = horizontal_zone_color_peak(_local_light)
-                # A deterministic no-cloud verdict is a valid negative forecast,
-                # not an unresolved colour calculation. If there is no tintable
-                # target and both probability and scale are exactly zero, publish
-                # a numeric zero colour score instead of None. This prevents the
-                # scheduled overview validator from discarding an otherwise
-                # complete no-burn result merely because no cloud exists to score.
+                # The weather-only probability can retain its 20% ceiling even
+                # when the complete scan has no eligible cloud area to score.
+                _no_eligible_color_area = (
+                    inferred.get('verdict_rule') == 'zero_potential_fire_cloud_range_cap_20pct'
+                    and _bottom_scan_complete
+                    and potential_limit is None
+                    and boundaries.get('cloudy_count') == 0
+                )
                 _no_colorable_cloud = (
                     inferred.get('verdict_override') == '云量不足'
                     and isinstance(inferred.get('regular_score'), (int, float))
-                    and float(inferred.get('regular_score')) <= 0.0
+                    and (float(inferred.get('regular_score')) <= 0.0 or _no_eligible_color_area)
+                    and visual_burn_scale_index == 0.0
                     and isinstance(burn_scale_index, (int, float))
                     and float(burn_scale_index) <= 0.0
                     and isinstance(tintable_ratio, (int, float))
@@ -2644,7 +2647,7 @@ class FireCloudApp(tk.Tk):
                 if _no_colorable_cloud:
                     inferred['color_score'] = 0
                     inferred['color_score_label'] = '云量不足'
-                    inferred['color_score_note'] = '本地目标云量不足且常规概率、几何规模与视觉规模均为0；这是有效的无火烧预报，不需要对不存在的目标云评价颜色。'
+                    inferred['color_score_note'] = '本地没有达到云量门槛的可染色区域，按0分记录色彩。'
                     inferred['color_score_peak_method'] = 'no_colorable_cloud_zero'
                 elif _peak_zone is not None:
                     _peak_dt = _peak_zone['datetime']
