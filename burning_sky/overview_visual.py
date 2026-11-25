@@ -47,12 +47,10 @@ def _records_for(day, direction):
 
 
 def render_direction(days, direction, title):
-    """Render EC/GFS geometric and visual scales as four bars per day."""
+    """Render one visual-scale bar per model per day."""
     days = list(days or [])[:3]
     bar_specs = (
-        ('ECMWF IFS 0.25°', 'EC', 'burn_scale', '几何'),
         ('ECMWF IFS 0.25°', 'EC', 'visual_burn_scale', '视觉'),
-        ('GFS Global', 'GFS', 'burn_scale', '几何'),
         ('GFS Global', 'GFS', 'visual_burn_scale', '视觉'),
     )
     all_scales = []
@@ -108,8 +106,7 @@ def render_direction(days, direction, title):
             if probability <= 0.0 or scale <= 0.0:
                 bars.append(f'<div title="{tip}" style="width:18%;max-width:18px;height:0;flex:none;border:0;background:none"></div>')
             else:
-                border = '1px solid rgba(74,85,104,.45)' if kind == '视觉' else '0'
-                bars.append(f'<div title="{tip}" style="width:18%;max-width:18px;height:{bar_height:.4f}%;background:{color};opacity:{probability/100:.4f};border-radius:5px 5px 0 0;border:{border};box-sizing:border-box"></div>')
+                bars.append(f'<div title="{tip}" style="width:18%;max-width:18px;height:{bar_height:.4f}%;background:{color};opacity:{probability/100:.4f};border-radius:5px 5px 0 0;border:0;box-sizing:border-box"></div>')
         columns.append(
             '<div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:stretch">'
             '<div style="height:192px;display:flex;justify-content:center;align-items:flex-end;gap:4px;position:relative;z-index:1">'
@@ -118,14 +115,14 @@ def render_direction(days, direction, title):
             '</div>'
         )
     if all_zero:
-        note = '本轮几何规模与视觉规模均为0%；零值按规则不绘制。'
+        note = '本轮视觉规模均为 0%。'
     elif not available:
         note = '当前没有可用于绘图的完整指标；缺失数据以虚线标记。'
     else:
-        note = '每日期四柱：EC几何、EC视觉、GFS几何、GFS视觉；悬停可查看概率、色彩分与对应规模。'
+        note = '悬停可查看视觉规模、常规概率和色彩分。'
     return f"""<div style="background:rgba(255,255,255,.82);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.78);border-radius:22px;padding:17px 20px 14px;box-shadow:0 8px 30px rgba(23,26,54,.09);margin:10px 0 20px;color:#27344a;font-family:-apple-system,BlinkMacSystemFont,'Microsoft YaHei',sans-serif">
       <div style="font-size:20px;font-weight:700;padding:2px 4px">{html.escape(title)}</div>
-      <div style="font-size:12px;color:#526079;padding:4px 4px 0">火烧云规模分几何与视觉两项 · 柱高=规模 · 不透明度=常规概率÷100 · 颜色=色彩分</div>
+      <div style="font-size:12px;color:#526079;padding:4px 4px 0">柱高=视觉规模 · 不透明度=常规概率÷100 · 颜色=色彩分</div>
       <div style="display:flex;width:100%;margin-top:18px;align-items:stretch;gap:10px">
         <div style="width:42px;flex:none;position:relative;height:192px">{labels}</div>
         <div style="min-width:0;flex:1;position:relative">
@@ -133,7 +130,7 @@ def render_direction(days, direction, title):
           <div style="position:relative;display:flex;gap:4px">{''.join(columns)}</div>
         </div>
       </div>
-      <div style="font-size:12px;color:#526079;text-align:center;margin-top:7px">EC几何　EC视觉　GFS几何　GFS视觉</div>
+      <div style="font-size:12px;color:#526079;text-align:center;margin-top:7px">ECMWF　GFS</div>
       <div style="font-size:11px;color:#64748b;padding:8px 4px 2px">{html.escape(note)}</div>
     </div>"""
 

@@ -794,7 +794,8 @@ def dynamic_solar_source_horizon(profiles, event_dt, utc_offset, lat, lon,
 def _validated_cloud_bottom(target, minute, dt, event_az, lat, lon, utc_offset,
                             required, axis_cells, axis_profiles, off_axis_profiles,
                             use_horizontal_fusion, target_pressure_by_distance,
-                            measured_index=None, sample_count=5, sweep_strips=None):
+                            measured_index=None, sample_count=5, sweep_strips=None,
+                            partial_cloud_cells=()):
     """Strict spherical/cloud-occlusion test at every sampled *cloud bottom*.
 
     Returns individual area-strip observations; inconclusive off-axis paths
@@ -823,6 +824,11 @@ def _validated_cloud_bottom(target, minute, dt, event_az, lat, lon, utc_offset,
         if _sun_ray_earth_occluded(bottom,alt):
             outcome.append({'status':'earth_or_source_horizon','position_km':pos,
                             'solar_altitude_deg':alt,'target_key':key});continue
+        # Trace from the underside toward the Sun. A horizontal or rising
+        # ray cannot enter the underside from below.
+        if alt >= 0.0:
+            outcome.append({'status':'not_underside_incidence','position_km':pos,
+                            'solar_altitude_deg':alt,'target_key':key});continue
         obstacles=[c for c in axis_cells if float(c['end_km'])>pos and
                    float(c['start_km'])<required]
         travel=required-pos
@@ -849,6 +855,12 @@ def _validated_cloud_bottom(target, minute, dt, event_az, lat, lon, utc_offset,
             outcome.append({'status':'unresolved_source_boundary','position_km':pos,
                             'solar_altitude_deg':alt,'target_key':key,
                             'required_source_km':round(pos+exit_travel,2)});continue
+        # Fractional cloud is insufficient to prove solid blockage, but a
+        # ray intersecting it is also insufficient to verify underside light.
+        if any(_cloud_ray_intersects_bottom(pos,bottom,alt,c,required)
+               for c in partial_cloud_cells):
+            outcome.append({'status':'unresolved_partial_cloud','position_km':pos,
+                            'solar_altitude_deg':alt,'target_key':key});continue
         outcome.append({'status':'verified_bottom','position_km':pos,
                         'solar_altitude_deg':alt,'target_key':key,
                         'source_boundary_altitude_km':round(_ray_height_km(bottom,alt,travel),3)})
@@ -907,6 +919,7 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
     # merely because it contributes some fractional cloud coverage.
     cells=profile_cloud_cells(valid,threshold=25.,blur_horizontal_km=0.,blur_vertical_km=0.)
     all_target_cells=profile_cloud_cells(valid,threshold=0.000001,blur_horizontal_km=0.,blur_vertical_km=0.)
+    partial_cloud_cells=tuple(c for c in all_target_cells if float(c['cloud_cover'])<25.)
     target_cells,stacking_diag=_exposed_cloud_target_cells(all_target_cells,cells)
     limit = min(reach, max(0.0, float(target_limit_km))) if target_limit_km is not None else reach
     # Target is its real SUNWARD face, not the profile-centre point. A ray
@@ -1114,7 +1127,7 @@ def adaptive_equivalent_gaps(profiles, event_dt, utc_offset, lat, lon, direction
                 target,minute,dt,event_az,lat,lon,utc_offset,required,
                 cells,valid,off_axis_ray_profiles,use_horizontal_fusion,
                 target_pressure_by_distance,measured_index,
-                sweep_strips=base_strips)
+                sweep_strips=base_strips,partial_cloud_cells=partial_cloud_cells)
             verified_target_bottom_points.extend(
                 {'minute_offset':minute,**point} for point in underside)
             for point in underside:
