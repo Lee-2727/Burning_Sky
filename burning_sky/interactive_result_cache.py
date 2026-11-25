@@ -19,7 +19,7 @@ CACHE_DIR = Path(__file__).resolve().parents[1] / 'data' / 'interactive_forecast
 LOCAL_TZ = ZoneInfo('Asia/Shanghai')
 MODEL_CODES = {'EC': 'ECMWF IFS 0.25°', 'GFS': 'GFS Global'}
 CACHE_SCHEMA_VERSION = 2
-ALGORITHM_CACHE_TAG = '20261120-no-continuous-cloud-heuristic-v1'
+ALGORITHM_CACHE_TAG = 'complete-bottom-scan-v2'
 
 
 def local_now():
