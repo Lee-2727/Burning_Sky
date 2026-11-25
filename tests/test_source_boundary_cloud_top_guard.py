@@ -53,3 +53,21 @@ def test_full_solar_earth_criterion_is_geometric_not_future_cloud_guess():
     assert not sky_six._sun_ray_earth_occluded(10,-3)
     assert sky_six._sun_ray_earth_occluded(10,-5)
     assert not sky_six._sun_ray_earth_occluded(1,3)
+
+
+def test_sun_above_local_horizon_cannot_illuminate_underside():
+    points = _bottom_at_solar_altitude(0.25)
+    assert all(p['status'] == 'not_underside_incidence' for p in points)
+
+
+def test_partial_cloud_crossing_prevents_strict_bottom_verification():
+    target = {'start_km': 100., 'end_km': 200., 'bottom_km': 10.,
+              'top_km': 11., 'cloud_cover': 70.}
+    partial_cloud = {'start_km': 480., 'end_km': 540., 'bottom_km': 0.,
+                     'top_km': 20., 'cloud_cover': 10.}
+    with patch.object(sky_six, 'solar_position', return_value=(-3., 90.)):
+        points = sky_six._validated_cloud_bottom(
+            target, -3, datetime(2026, 11, 20, 6), 90., 31.8, 117.2, 8.,
+            1150., [target], [], {}, False, {}, partial_cloud_cells=[partial_cloud])
+    assert len(points) == 5
+    assert all(p['status'] == 'unresolved_partial_cloud' for p in points)
