@@ -2331,8 +2331,14 @@ class FireCloudApp(tk.Tk):
                 _face_rows = _adaptive.get('verified_target_bands') or []
                 _bottom_verified_count = sum(1 for row in _bottom_rows
                                              if row.get('status') == 'verified_bottom')
-                _bottom_unresolved_count = sum(1 for row in _bottom_rows
-                                               if str(row.get('status','')).startswith('unresolved'))
+                _bottom_partial_cloud_count = sum(
+                    row.get('status') == 'unresolved_partial_cloud' for row in _bottom_rows)
+                _bottom_terminal_statuses = {
+                    'verified_bottom', 'cloud_blocked', 'earth_or_source_horizon',
+                    'not_underside_incidence', 'unresolved_partial_cloud',
+                }
+                _bottom_unresolved_count = sum(
+                    row.get('status') not in _bottom_terminal_statuses for row in _bottom_rows)
                 _face_verified_count = len(_face_rows)
                 # Standard sunrise/sunset is a backlit view: ONLY a fully
                 # verified cloud underside may open the primary path gate.
@@ -2340,11 +2346,12 @@ class FireCloudApp(tk.Tk):
                 # diagnostics, but cannot make the normal fire-cloud score nonzero.
                 _primary_path_verified = _bottom_verified_count > 0
                 _expected_bottom_minutes = set(range(-30,1) if direction_key=='morning' else range(0,31))
-                _bottom_minutes = {int(row.get('minute_offset')) for row in _bottom_rows
-                                   if isinstance(row.get('minute_offset'),(int,float))}
+                from collections import Counter
+                _bottom_minutes = Counter(row.get('minute_offset') for row in _bottom_rows)
                 _bottom_scan_complete = bool(
                     _bottom_rows and _bottom_unresolved_count == 0
-                    and _expected_bottom_minutes.issubset(_bottom_minutes)
+                    and set(_bottom_minutes) == _expected_bottom_minutes
+                    and len(set(_bottom_minutes.values())) == 1
                     and _profile_end + 1e-6 >= _source_check_km)
                 inferred['surface_path_diagnostics'] = {
                     'primary_view':'backlit_cloud_bottom_only',
@@ -2352,6 +2359,7 @@ class FireCloudApp(tk.Tk):
                     'bottom_blocked_samples':sum(1 for row in _bottom_rows if row.get('status')=='cloud_blocked'),
                     'bottom_horizon_samples':sum(1 for row in _bottom_rows if row.get('status')=='earth_or_source_horizon'),
                     'bottom_unresolved_samples':_bottom_unresolved_count,
+                    'bottom_partial_cloud_samples':_bottom_partial_cloud_count,
                     'bottom_scan_complete':_bottom_scan_complete,
                     'verified_sunward_face_bands':_face_verified_count,
                     'face_bands_used_in_primary_ratio':False,
@@ -2460,7 +2468,7 @@ class FireCloudApp(tk.Tk):
                     and _local_light.get('available')
                     and _scenario_times
                     and not _observed_gap_verified
-                    and _adaptive.get('status') not in ('unresolved_data','error'))
+                    and _adaptive.get('status') != 'error')
                 if _complete_no_local_path:
                     inferred['operational_no_local_path'] = True
                     inferred['regular_score'] = inferred['score'] = 0
@@ -2478,7 +2486,7 @@ class FireCloudApp(tk.Tk):
                 # blocked sky and a missing tint/curve. UNKNOWN remains distinct.
                 if _complete_no_local_path or (not _primary_path_verified and search_stage == 'spherical_raytrace_no_clear_path'):
                     inferred['regular_score'] = inferred['score'] = 0
-                    inferred['verdict'] = '严格主光路未证实透光'
+                    inferred['verdict'] = '不烧：未发现严格通过的云底受光路径'
                 elif _observed_gap_verified:
                     inferred['verdict'] = '明确晴空间隔及连续云面严格光路均存在有效受光时刻' 
                 visual_tintable_ratio = None
@@ -2669,7 +2677,7 @@ class FireCloudApp(tk.Tk):
                     # a confirmed sunset result.
                     _uncertain = any(float(r.get('bottom_unresolved_weight_fraction') or 0)>0
                                      for r in _zone_times)
-                    if _uncertain:
+                    if _uncertain and not _complete_no_local_path:
                         inferred['color_score'] = None
                         inferred['color_score_label'] = '严格受光尚未验证'
                         inferred['color_score_note'] = '部分采样区缺少完整受光验证，不能给确定性色彩评分'
