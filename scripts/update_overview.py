@@ -37,7 +37,7 @@ RETRY_WAIT_SECONDS = 25  # Short bounded wait, never repeated 180-second waits.
 # When a quota remains exhausted, retain checkpoint and leave the task unfinished;
 # later scheduled runs will retry it without redoing completed tasks.
 
-UPDATER_BUILD_ID = 'three-day-strict-underside-v1'
+UPDATER_BUILD_ID = 'three-day-strict-underside-v2'
 
 # GitHub Actions uses Linux; cap a single stalled API/forecast task so that
 # remaining valid results can still be published. No hard kill on Windows.
@@ -286,7 +286,8 @@ def _apply_complete_bottom_zero_for_overview(result, direction):
         return False
 
     expected_minutes = set(range(-30, 1)) if direction == 'morning' else set(range(0, 31))
-    terminal_statuses = {'cloud_blocked', 'earth_or_source_horizon', 'verified_bottom'}
+    terminal_statuses = {'cloud_blocked', 'earth_or_source_horizon', 'verified_bottom',
+                         'not_underside_incidence', 'unresolved_partial_cloud'}
     counts = Counter()
     verified_count = 0
     for row in rows:
