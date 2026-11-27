@@ -15,10 +15,15 @@
   "completed": [
     "合肥|2026-11-28|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-28|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-28|GFS Global|evening",
     "合肥|2026-11-29|ECMWF IFS 0.25°|evening",
     "合肥|2026-11-29|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-29|GFS Global|evening",
+    "合肥|2026-11-29|GFS Global|morning",
     "合肥|2026-11-30|ECMWF IFS 0.25°|evening",
-    "合肥|2026-11-30|ECMWF IFS 0.25°|morning"
+    "合肥|2026-11-30|ECMWF IFS 0.25°|morning",
+    "合肥|2026-11-30|GFS Global|evening",
+    "合肥|2026-11-30|GFS Global|morning"
   ],
   "snapshot": {
     "schema_version": 2,
@@ -220,6 +225,25 @@
             "spatial_calibration_status": "applied",
             "spatial_corrected_point_count": 18,
             "event_time": "2026-11-30T06:52:05.465352"
+          },
+          "GFS Global": {
+            "probability": 0.0,
+            "color_score": 0.0,
+            "color_score_status": "scored",
+            "color_score_label": "云量不足",
+            "color_score_note": "本地没有达到云量门槛的可染色区域，按0分记录色彩。",
+            "verdict": "云量不足",
+            "burn_scale": 0.0,
+            "visual_burn_scale": 0.0,
+            "local_mid_cloud": 0.0,
+            "local_high_layer_cloud": 0.0,
+            "local_high_cloud": 0.0,
+            "fire_score_no_color": 0.0,
+            "burn_scale_label": "不烧",
+            "visual_burn_scale_label": "不烧",
+            "spatial_calibration_status": "gfs_om_horizontal_disabled",
+            "spatial_corrected_point_count": 0,
+            "event_time": "2026-11-30T06:52:05.465352"
           }
         },
         "evening": {
@@ -241,10 +265,29 @@
             "spatial_calibration_status": "applied",
             "spatial_corrected_point_count": 18,
             "event_time": "2026-11-30T17:06:57.431023"
+          },
+          "GFS Global": {
+            "probability": 0.0,
+            "color_score": 0.0,
+            "color_score_status": "scored",
+            "color_score_label": "云量不足",
+            "color_score_note": "本地没有达到云量门槛的可染色区域，按0分记录色彩。",
+            "verdict": "云量不足",
+            "burn_scale": 0.0,
+            "visual_burn_scale": 0.0,
+            "local_mid_cloud": 0.0,
+            "local_high_layer_cloud": 0.0,
+            "local_high_cloud": 0.0,
+            "fire_score_no_color": 0.0,
+            "burn_scale_label": "不烧",
+            "visual_burn_scale_label": "不烧",
+            "spatial_calibration_status": "gfs_om_horizontal_disabled",
+            "spatial_corrected_point_count": 0,
+            "event_time": "2026-11-30T17:06:57.431023"
           }
         }
       }
     ]
   },
-  "saved_at": "2026-11-28T04:10:09+08:00"
+  "saved_at": "2026-11-28T04:18:45+08:00"
 }
