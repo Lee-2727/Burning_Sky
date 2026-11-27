@@ -5,115 +5,32 @@
   "longitude": 117.2272,
   "elevation_m": 30.0,
   "timezone": "Asia/Shanghai",
-  "updated_at": "2026-11-27 15:17:28 CST",
+  "updated_at": "2026-11-28 04:18:47 CST",
   "direction_updated_at": {
-    "morning": "2026-11-27 15:17:28 CST",
-    "evening": "2026-11-27 15:17:28 CST"
+    "morning": "2026-11-28 04:18:47 CST",
+    "evening": "2026-11-28 04:18:47 CST"
   },
   "days": [
-    {
-      "date": "2026-11-27",
-      "morning": {
-        "ECMWF IFS 0.25°": {
-          "probability": 0.0,
-          "color_score": 0.0,
-          "color_score_status": "scored",
-          "color_score_label": "云量不足",
-          "color_score_note": "本地没有达到云量门槛的可染色区域，按0分记录色彩。",
-          "verdict": "云量不足",
-          "burn_scale": 0.0,
-          "visual_burn_scale": 0.0,
-          "local_mid_cloud": 0.0,
-          "local_high_layer_cloud": 0.0,
-          "local_high_cloud": 0.0,
-          "fire_score_no_color": 0.0,
-          "burn_scale_label": "不烧",
-          "visual_burn_scale_label": "不烧",
-          "spatial_calibration_status": "applied",
-          "spatial_corrected_point_count": 18,
-          "event_time": "2026-11-27T06:49:32.479778"
-        },
-        "GFS Global": {
-          "probability": 0.0,
-          "color_score": 0.0,
-          "color_score_status": "scored",
-          "color_score_label": "云量不足",
-          "color_score_note": "本地没有达到云量门槛的可染色区域，按0分记录色彩。",
-          "verdict": "云量不足",
-          "burn_scale": 0.0,
-          "visual_burn_scale": 0.0,
-          "local_mid_cloud": 0.0,
-          "local_high_layer_cloud": 0.0,
-          "local_high_cloud": 0.0,
-          "fire_score_no_color": 0.0,
-          "burn_scale_label": "不烧",
-          "visual_burn_scale_label": "不烧",
-          "spatial_calibration_status": "gfs_om_horizontal_disabled",
-          "spatial_corrected_point_count": 0,
-          "event_time": "2026-11-27T06:49:32.479778"
-        }
-      },
-      "evening": {
-        "ECMWF IFS 0.25°": {
-          "probability": 20.0,
-          "color_score": 0.0,
-          "color_score_status": "scored",
-          "color_score_label": "云量不足",
-          "color_score_note": "本地没有达到云量门槛的可染色区域，按0分记录色彩。",
-          "verdict": "云量不足",
-          "burn_scale": 0.0,
-          "visual_burn_scale": 0.0,
-          "local_mid_cloud": 16.0,
-          "local_high_layer_cloud": 0.0,
-          "local_high_cloud": 16.0,
-          "fire_score_no_color": 0.0,
-          "burn_scale_label": "不烧",
-          "visual_burn_scale_label": "不烧",
-          "spatial_calibration_status": "applied",
-          "spatial_corrected_point_count": 20,
-          "event_time": "2026-11-27T17:07:24.636855"
-        },
-        "GFS Global": {
-          "probability": 89.0,
-          "color_score": 55.0,
-          "color_score_status": "scored",
-          "color_score_label": "绚烂",
-          "color_score_note": "色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
-          "verdict": "逐分钟目标采样存在有效受光时刻",
-          "burn_scale": 66.22,
-          "visual_burn_scale": 66.22,
-          "local_mid_cloud": 100.0,
-          "local_high_layer_cloud": 77.77777777777777,
-          "local_high_cloud": 100.0,
-          "fire_score_no_color": 58.94,
-          "burn_scale_label": "大烧",
-          "visual_burn_scale_label": "大烧",
-          "spatial_calibration_status": "gfs_om_horizontal_disabled",
-          "spatial_corrected_point_count": 0,
-          "event_time": "2026-11-27T17:07:24.636855"
-        }
-      }
-    },
     {
       "date": "2026-11-28",
       "morning": {
         "ECMWF IFS 0.25°": {
-          "probability": 20.0,
-          "color_score": 0.0,
+          "probability": 58.0,
+          "color_score": 55.0,
           "color_score_status": "scored",
-          "color_score_label": "云量不足",
-          "color_score_note": "本地没有达到云量门槛的可染色区域，按0分记录色彩。",
-          "verdict": "云量不足",
-          "burn_scale": 0.0,
-          "visual_burn_scale": 0.0,
-          "local_mid_cloud": 3.0,
+          "color_score_label": "绚烂",
+          "color_score_note": "色彩质量评价AOD、能见度及严格验证的云底受光太阳高度角深度与跨度；不因受光面积或云量规模直接加分。",
+          "verdict": "逐分钟目标采样未证实受光（非几何否定）",
+          "burn_scale": 24.67,
+          "visual_burn_scale": 24.67,
+          "local_mid_cloud": 20.0,
           "local_high_layer_cloud": 0.0,
-          "local_high_cloud": 3.0,
-          "fire_score_no_color": 0.0,
-          "burn_scale_label": "不烧",
-          "visual_burn_scale_label": "不烧",
+          "local_high_cloud": 20.0,
+          "fire_score_no_color": 14.31,
+          "burn_scale_label": "小烧",
+          "visual_burn_scale_label": "小烧",
           "spatial_calibration_status": "applied",
-          "spatial_corrected_point_count": 22,
+          "spatial_corrected_point_count": 18,
           "event_time": "2026-11-28T06:50:23.862679"
         },
         "GFS Global": {
@@ -153,7 +70,7 @@
           "burn_scale_label": "不烧",
           "visual_burn_scale_label": "不烧",
           "spatial_calibration_status": "applied",
-          "spatial_corrected_point_count": 18,
+          "spatial_corrected_point_count": 10,
           "event_time": "2026-11-28T17:07:13.786624"
         },
         "GFS Global": {
@@ -259,12 +176,95 @@
           "event_time": "2026-11-29T17:07:04.717865"
         }
       }
+    },
+    {
+      "date": "2026-11-30",
+      "morning": {
+        "ECMWF IFS 0.25°": {
+          "probability": 0.0,
+          "color_score": 0.0,
+          "color_score_status": "scored",
+          "color_score_label": "云量不足",
+          "color_score_note": "本地没有达到云量门槛的可染色区域，按0分记录色彩。",
+          "verdict": "云量不足",
+          "burn_scale": 0.0,
+          "visual_burn_scale": 0.0,
+          "local_mid_cloud": 0.0,
+          "local_high_layer_cloud": 0.0,
+          "local_high_cloud": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "不烧",
+          "visual_burn_scale_label": "不烧",
+          "spatial_calibration_status": "applied",
+          "spatial_corrected_point_count": 18,
+          "event_time": "2026-11-30T06:52:05.465352"
+        },
+        "GFS Global": {
+          "probability": 0.0,
+          "color_score": 0.0,
+          "color_score_status": "scored",
+          "color_score_label": "云量不足",
+          "color_score_note": "本地没有达到云量门槛的可染色区域，按0分记录色彩。",
+          "verdict": "云量不足",
+          "burn_scale": 0.0,
+          "visual_burn_scale": 0.0,
+          "local_mid_cloud": 0.0,
+          "local_high_layer_cloud": 0.0,
+          "local_high_cloud": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "不烧",
+          "visual_burn_scale_label": "不烧",
+          "spatial_calibration_status": "gfs_om_horizontal_disabled",
+          "spatial_corrected_point_count": 0,
+          "event_time": "2026-11-30T06:52:05.465352"
+        }
+      },
+      "evening": {
+        "ECMWF IFS 0.25°": {
+          "probability": 0.0,
+          "color_score": 0.0,
+          "color_score_status": "scored",
+          "color_score_label": "云量不足",
+          "color_score_note": "本地没有达到云量门槛的可染色区域，按0分记录色彩。",
+          "verdict": "云量不足",
+          "burn_scale": 0.0,
+          "visual_burn_scale": 0.0,
+          "local_mid_cloud": 0.0,
+          "local_high_layer_cloud": 0.0,
+          "local_high_cloud": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "不烧",
+          "visual_burn_scale_label": "不烧",
+          "spatial_calibration_status": "applied",
+          "spatial_corrected_point_count": 18,
+          "event_time": "2026-11-30T17:06:57.431023"
+        },
+        "GFS Global": {
+          "probability": 0.0,
+          "color_score": 0.0,
+          "color_score_status": "scored",
+          "color_score_label": "云量不足",
+          "color_score_note": "本地没有达到云量门槛的可染色区域，按0分记录色彩。",
+          "verdict": "云量不足",
+          "burn_scale": 0.0,
+          "visual_burn_scale": 0.0,
+          "local_mid_cloud": 0.0,
+          "local_high_layer_cloud": 0.0,
+          "local_high_cloud": 0.0,
+          "fire_score_no_color": 0.0,
+          "burn_scale_label": "不烧",
+          "visual_burn_scale_label": "不烧",
+          "spatial_calibration_status": "gfs_om_horizontal_disabled",
+          "spatial_corrected_point_count": 0,
+          "event_time": "2026-11-30T17:06:57.431023"
+        }
+      }
     }
   ],
   "publication": {
     "state": "partial",
-    "batch_day": "2026-11-27",
-    "published_at": "2026-11-27 15:17:28 CST",
+    "batch_day": "2026-11-28",
+    "published_at": "2026-11-28 04:18:47 CST",
     "valid_in_batch": 11,
     "retained_old_keys": [
       "合肥|2026-11-28|GFS Global|morning"
