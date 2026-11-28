@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_at": "2026-11-28T10:12:59+08:00",
+  "updated_at": "2026-11-28T10:15:17+08:00",
   "cities": {
     "合肥": {
       "schema_version": 2,
@@ -9,10 +9,10 @@
       "longitude": 117.2272,
       "elevation_m": 30.0,
       "timezone": "Asia/Shanghai",
-      "updated_at": "2026-11-28 10:12:59 CST",
+      "updated_at": "2026-11-28 10:15:17 CST",
       "direction_updated_at": {
-        "morning": "2026-11-28 10:12:59 CST",
-        "evening": "2026-11-28 10:12:59 CST"
+        "morning": "2026-11-28 10:15:17 CST",
+        "evening": "2026-11-28 10:15:17 CST"
       },
       "days": [
         {
@@ -268,13 +268,15 @@
       "publication": {
         "state": "partial",
         "batch_day": "2026-11-28",
-        "published_at": "2026-11-28 10:12:59 CST",
+        "published_at": "2026-11-28 10:15:17 CST",
         "valid_in_batch": 11,
         "retained_old_keys": [
           "合肥|2026-11-28|GFS Global|morning"
         ],
         "missing_keys": [],
-        "failed_keys": []
+        "failed_keys": [
+          "合肥|2026-11-28|GFS Global|morning"
+        ]
       }
     }
   }
